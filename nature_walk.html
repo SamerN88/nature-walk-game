@@ -962,7 +962,7 @@
             if (ak47MuzzleFlash) {
                 ak47MuzzleFlash.visible = true;
                 ak47MuzzleFlash.material.opacity = 1;
-                const scale = 0.75 + Math.random() * 1.25; //DEBUG - muzzle flash scale
+                const scale = 0.75 + Math.random() * 1.25;
                 const scaleZ = 0.75 + Math.random() * 1.25;
                 ak47MuzzleFlash.scale.set(scale, scale, scaleZ);
             }
@@ -1085,7 +1085,7 @@
             player.add(playerAk47);
 
             const flashMat = new THREE.MeshBasicMaterial({
-                color: AK47_BEAM_COLOR, //DEBUG: muzzle flash color
+                color: AK47_BEAM_COLOR,
                 transparent: true,
                 opacity: 0.98,
                 side: THREE.DoubleSide,
@@ -4130,9 +4130,12 @@
                 new THREE.BoxGeometry(0.7, 0.35, 0.05),
                 mouthMat
             );
+
+            // NOTE: REMOVED MOUTH COLOR, NOW IT'S SEE-THROUGH
             // slightly behind the jaw bones
-            mouthBack.position.set(0, 5.18, 0.3);
-            jawGroup.add(mouthBack);
+            // mouthBack.position.set(0, 5.18, 0.3);
+            // jawGroup.add(mouthBack);
+
             demon.add(jawGroup);
 
             // children[6,7,8,9]: Arms + hands (animated)
