@@ -1266,8 +1266,8 @@
             const cos = Math.cos(rotation);
             const sin = Math.sin(rotation);
             return {
-                x: x * cos - z * sin,
-                z: x * sin + z * cos
+                x: x * cos + z * sin,
+                z: -x * sin + z * cos
             };
         }
 
@@ -1285,8 +1285,8 @@
             const cos = Math.cos(rotation);
             const sin = Math.sin(rotation);
             return {
-                x: dx * cos + dz * sin,
-                z: -dx * sin + dz * cos
+                x: dx * cos - dz * sin,
+                z: dx * sin + dz * cos
             };
         }
 
@@ -1425,6 +1425,133 @@
             return addStructureBox(world.x, world.z, y, width, height, depth, rotation, extra);
         }
 
+        function addRigidBoxStructureParts(group, material, parts) {
+            return parts.map(part => {
+                const mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(part.width, part.height, part.depth),
+                    material
+                );
+                mesh.position.set(part.localX, part.localY + part.height / 2, part.localZ);
+                mesh.castShadow = part.castShadow !== false;
+                mesh.receiveShadow = part.receiveShadow !== false;
+                group.add(mesh);
+                return { mesh, part };
+            });
+        }
+
+        function registerRigidBoxStructureParts(partMeshes, extraForPart = null) {
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            const worldEuler = new THREE.Euler();
+
+            partMeshes.forEach(({ mesh, part }, index) => {
+                mesh.getWorldPosition(worldPos);
+                mesh.getWorldQuaternion(worldQuat);
+                mesh.getWorldScale(worldScale);
+                worldEuler.setFromQuaternion(worldQuat, 'YXZ');
+
+                const extra = extraForPart ? (extraForPart(part, index) || {}) : {};
+                addStructureBox(
+                    worldPos.x,
+                    worldPos.z,
+                    worldPos.y - (part.height * worldScale.y) / 2,
+                    part.width * worldScale.x,
+                    part.height * worldScale.y,
+                    part.depth * worldScale.z,
+                    worldEuler.y,
+                    extra
+                );
+            });
+        }
+
+        function createColliderMarker(parent, type, config = {}) {
+            const marker = new THREE.Object3D();
+            marker.position.set(config.localX || 0, config.localY || 0, config.localZ || 0);
+            marker.rotation.y = config.localRotation || 0;
+            marker.userData.collider = {
+                type,
+                ...config
+            };
+            parent.add(marker);
+            return marker;
+        }
+
+        function registerColliderMarkers(markers) {
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            const worldEuler = new THREE.Euler();
+
+            markers.forEach(marker => {
+                const collider = marker.userData.collider;
+                if (!collider) return;
+
+                marker.getWorldPosition(worldPos);
+                marker.getWorldQuaternion(worldQuat);
+                marker.getWorldScale(worldScale);
+                worldEuler.setFromQuaternion(worldQuat, 'YXZ');
+
+                if (collider.type === 'solidWall') {
+                    const halfW = collider.halfW * worldScale.x;
+                    const halfD = collider.halfD * worldScale.z;
+                    const height = collider.height * worldScale.y;
+                    addSolidWallRect(
+                        worldPos.x,
+                        worldPos.z,
+                        halfW,
+                        halfD,
+                        worldPos.y - height / 2,
+                        worldPos.y + height / 2,
+                        worldEuler.y,
+                        collider.extra || {}
+                    );
+                } else if (collider.type === 'structureBox') {
+                    const width = collider.width * worldScale.x;
+                    const height = collider.height * worldScale.y;
+                    const depth = collider.depth * worldScale.z;
+                    addStructureBox(
+                        worldPos.x,
+                        worldPos.z,
+                        worldPos.y - height / 2,
+                        width,
+                        height,
+                        depth,
+                        worldEuler.y,
+                        collider.extra || {}
+                    );
+                } else if (collider.type === 'ceilingRect') {
+                    addCeilingRect(
+                        worldPos.x,
+                        worldPos.z,
+                        collider.halfW * worldScale.x,
+                        collider.halfD * worldScale.z,
+                        worldPos.y,
+                        worldEuler.y
+                    );
+                } else if (collider.type === 'roofCollider') {
+                    const thickness = collider.thickness * worldScale.y;
+                    addRoofColliderRect(
+                        worldPos.x,
+                        worldPos.z,
+                        collider.halfW * worldScale.x,
+                        collider.halfD * worldScale.z,
+                        worldPos.y + thickness / 2,
+                        worldPos.y - thickness / 2,
+                        worldEuler.y
+                    );
+                } else if (collider.type === 'enclosedBound') {
+                    addEnclosedBoundRect(
+                        worldPos.x,
+                        worldPos.z,
+                        collider.halfW * worldScale.x,
+                        collider.halfD * worldScale.z,
+                        worldEuler.y
+                    );
+                }
+            });
+        }
+
         function addSolidWallRect(x, z, halfW, halfD, minY, maxY, rotation = 0, extra = {}) {
             const wall = {
                 x,
@@ -1486,6 +1613,94 @@
 
             const pushZ = overlapZ * (local.z >= 0 ? 1 : -1);
             return rotateXZ(0, pushZ, wall.rotation || 0);
+        }
+
+        function clampPlayerToWorldBounds() {
+            const bound = WORLD_SIZE - 10;
+            const clampedX = Math.max(-bound, Math.min(bound, player.position.x));
+            const clampedZ = Math.max(-bound, Math.min(bound, player.position.z));
+            const hitX = clampedX !== player.position.x;
+            const hitZ = clampedZ !== player.position.z;
+            player.position.x = clampedX;
+            player.position.z = clampedZ;
+            return { hitX, hitZ };
+        }
+
+        function isWallActiveForY(wall, y) {
+            return wall.minY === undefined || (y >= wall.minY && y <= wall.maxY);
+        }
+
+        function resolvePlayerWallOverlaps(radius, resolvePasses = 3) {
+            let blockedX = false;
+            let blockedZ = false;
+
+            for (let pass = 0; pass < resolvePasses; pass++) {
+                let hadOverlap = false;
+
+                for (const wall of solidWalls) {
+                    if (!isWallActiveForY(wall, player.position.y)) continue;
+                    const push = resolveCircularWallCollision(player.position, radius, wall);
+                    if (!push) continue;
+
+                    player.position.x += push.x;
+                    player.position.z += push.z;
+                    if (Math.abs(push.x) > 1e-5) blockedX = true;
+                    if (Math.abs(push.z) > 1e-5) blockedZ = true;
+                    hadOverlap = true;
+                }
+
+                const bounded = clampPlayerToWorldBounds();
+                blockedX = blockedX || bounded.hitX;
+                blockedZ = blockedZ || bounded.hitZ;
+                if (!hadOverlap) break;
+            }
+
+            return { blockedX, blockedZ };
+        }
+
+        function getPlayerMovementSubsteps(totalDX, totalDZ) {
+            const maxComponent = Math.max(Math.abs(totalDX), Math.abs(totalDZ));
+            if (maxComponent <= 1e-6) return 1;
+            return Math.max(1, Math.min(24, Math.ceil(maxComponent / 0.35)));
+        }
+
+        function movePlayerAxisWithCollisions(axis, amount, radius) {
+            if (Math.abs(amount) <= 1e-8) return false;
+
+            player.position[axis] += amount;
+            const bounded = clampPlayerToWorldBounds();
+            const overlaps = resolvePlayerWallOverlaps(radius);
+
+            return axis === 'x'
+                ? (bounded.hitX || overlaps.blockedX)
+                : (bounded.hitZ || overlaps.blockedZ);
+        }
+
+        function movePlayerHorizontallyWithCollisions(delta, radius) {
+            const totalDX = velocity.x * delta;
+            const totalDZ = velocity.z * delta;
+            const substeps = getPlayerMovementSubsteps(totalDX, totalDZ);
+
+            let stepDX = totalDX / substeps;
+            let stepDZ = totalDZ / substeps;
+
+            for (let i = 0; i < substeps; i++) {
+                if (stepDX !== 0) {
+                    const blockedX = movePlayerAxisWithCollisions('x', stepDX, radius);
+                    if (blockedX) {
+                        velocity.x = 0;
+                        stepDX = 0;
+                    }
+                }
+
+                if (stepDZ !== 0) {
+                    const blockedZ = movePlayerAxisWithCollisions('z', stepDZ, radius);
+                    if (blockedZ) {
+                        velocity.z = 0;
+                        stepDZ = 0;
+                    }
+                }
+            }
         }
 
         function makeCollisionDebugMaterial(opacity = 0.22) {
@@ -1888,39 +2103,23 @@
                 if (!placement) continue;
 
                 const archGroundY = getGroundHeight(placement.x, placement.z);
-
                 const archGroup = new THREE.Group();
-
-                const leftPillar = new THREE.Mesh(
-                    new THREE.BoxGeometry(3, placement.archHeight, 3),
-                    stoneMaterial
+                const archParts = [
+                    { localX: -6, localY: 0, localZ: 0, width: 3, height: placement.archHeight, depth: 3 },
+                    { localX: 6, localY: 0, localZ: 0, width: 3, height: placement.archHeight, depth: 3 },
+                    { localX: 0, localY: placement.archHeight, localZ: 0, width: 15, height: 3, depth: 4 }
+                ];
+                const archPartMeshes = addRigidBoxStructureParts(
+                    archGroup,
+                    stoneMaterial,
+                    archParts
                 );
-                leftPillar.position.set(-6, placement.archHeight / 2, 0);
-                leftPillar.castShadow = true;
-                archGroup.add(leftPillar);
-                addLocalStructureBox(placement.x, placement.z, -6, 0, archGroundY, 3, placement.archHeight, 3, placement.rotation);
-
-                const rightPillar = new THREE.Mesh(
-                    new THREE.BoxGeometry(3, placement.archHeight, 3),
-                    stoneMaterial
-                );
-                rightPillar.position.set(6, placement.archHeight / 2, 0);
-                rightPillar.castShadow = true;
-                archGroup.add(rightPillar);
-                addLocalStructureBox(placement.x, placement.z, 6, 0, archGroundY, 3, placement.archHeight, 3, placement.rotation);
-
-                const archTop = new THREE.Mesh(
-                    new THREE.BoxGeometry(15, 3, 4),
-                    stoneMaterial
-                );
-                archTop.position.set(0, placement.archHeight + 1.5, 0);
-                archTop.castShadow = true;
-                archGroup.add(archTop);
-                addLocalStructureBox(placement.x, placement.z, 0, 0, archGroundY + placement.archHeight, 15, 3, 4, placement.rotation);
 
                 archGroup.position.set(placement.x, archGroundY, placement.z);
                 archGroup.rotation.y = placement.rotation;
                 scene.add(archGroup);
+                archGroup.updateMatrixWorld(true);
+                registerRigidBoxStructureParts(archPartMeshes);
             }
 
             for (let t = 0; t < 15; t++) {
@@ -2007,10 +2206,9 @@
                         height = s.y + s.height;
                     }
                 } else if (s.type === 'ramp') {
-                    const cos = Math.cos(-s.rotation);
-                    const sin = Math.sin(-s.rotation);
-                    const localX = (x - s.x) * cos - (z - s.z) * sin;
-                    const localZ = (x - s.x) * sin + (z - s.z) * cos;
+                    const local = worldToLocalXZ(x, z, s.x, s.z, s.rotation || 0);
+                    const localX = local.x;
+                    const localZ = local.z;
 
                     if (Math.abs(localX) < s.width / 2 && Math.abs(localZ) < s.length / 2) {
                         const progress = (localZ + s.length / 2) / s.length;
@@ -2291,6 +2489,7 @@
             housePlacements.forEach((placement, houseIndex) => {
                 const groundY = getGroundHeight(placement.x, placement.z);
                 const house = new THREE.Group();
+                const houseColliderMarkers = [];
 
                 // Floor
                 const floor = new THREE.Mesh(
@@ -2364,22 +2563,24 @@
                 if (houseIndex === chestHouseIndex) addHouseChest(house, placement, groundY);
                 else addHouseTable(house, placement, groundY);
 
+                houseColliderMarkers.push(
+                    createColliderMarker(house, 'solidWall', { localX: 0, localY: 4, localZ: -4.75, halfW: 6.0, halfD: 0.25, height: 8, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'solidWall', { localX: -5.75, localY: 4, localZ: 0, halfW: 0.25, halfD: 5.0, height: 8, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'solidWall', { localX: 5.75, localY: 4, localZ: 0, halfW: 0.25, halfD: 5.0, height: 8, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'solidWall', { localX: -4, localY: 4, localZ: 4.75, halfW: 2.0, halfD: 0.25, height: 8, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'solidWall', { localX: 4, localY: 4, localZ: 4.75, halfW: 2.0, halfD: 0.25, height: 8, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'solidWall', { localX: 0, localY: 7, localZ: 4.75, halfW: 2.0, halfD: 0.25, height: 2, extra: { isEnclosed: true } }),
+                    createColliderMarker(house, 'structureBox', { localX: 0, localY: 0.25, localZ: 0, width: 12, height: 0.5, depth: 10 }),
+                    createColliderMarker(house, 'ceilingRect', { localX: 0, localY: 8, localZ: 0, halfW: 6.0, halfD: 5.0 }),
+                    createColliderMarker(house, 'roofCollider', { localX: 0, localY: 8.5, localZ: 0, halfW: 7.0, halfD: 6.0, thickness: 1.0 }),
+                    createColliderMarker(house, 'enclosedBound', { localX: 0, localY: 0, localZ: 0, halfW: 8, halfD: 7 })
+                );
+
                 house.position.set(placement.x, groundY, placement.z);
                 house.rotation.y = placement.rotation;
                 scene.add(house);
-
-                const houseMaxY = groundY + 8;
-                addLocalSolidWall(placement.x, placement.z, 0, -4.75, 6.0, 0.25, groundY, houseMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, -5.75, 0, 0.25, 5.0, groundY, houseMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, 5.75, 0, 0.25, 5.0, groundY, houseMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, -4, 4.75, 2.0, 0.25, groundY, houseMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, 4, 4.75, 2.0, 0.25, groundY, houseMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, 0, 4.75, 2.0, 0.25, groundY + 6, houseMaxY, placement.rotation, { isEnclosed: true });
-
-                addStructureBox(placement.x, placement.z, groundY, 12, 0.5, 10, placement.rotation);
-                addCeilingRect(placement.x, placement.z, 6.0, 5.0, groundY + 8, placement.rotation);
-                addRoofColliderRect(placement.x, placement.z, 7.0, 6.0, groundY + 9, groundY + 8, placement.rotation);
-                addEnclosedBoundRect(placement.x, placement.z, 8, 7, placement.rotation);
+                house.updateMatrixWorld(true);
+                registerColliderMarkers(houseColliderMarkers);
             });
 
             const caveRegions = [
@@ -2404,6 +2605,7 @@
 
                 const groundY = getGroundHeight(placement.x, placement.z);
                 const cave = new THREE.Group();
+                const caveColliderMarkers = [];
 
                 const cW = 8;
                 const cD = 12;
@@ -2529,21 +2731,20 @@
                 cave.position.set(placement.x, groundY, placement.z);
                 cave.rotation.y = placement.rotation;
                 scene.add(cave);
+                caveColliderMarkers.push(
+                    createColliderMarker(cave, 'solidWall', { localX: -cW - wT / 2, localY: cH / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: cH, extra: { isEnclosed: true } }),
+                    createColliderMarker(cave, 'solidWall', { localX: cW + wT / 2, localY: cH / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: cH, extra: { isEnclosed: true } }),
+                    createColliderMarker(cave, 'solidWall', { localX: 0, localY: cH / 2, localZ: -cD - wT / 2, halfW: cW + wT, halfD: wT / 2, height: cH, extra: { isEnclosed: true } }),
+                    createColliderMarker(cave, 'structureBox', { localX: 0, localY: 0.1, localZ: -cD / 2, width: cW * 2, height: 0.2, depth: cD }),
+                    createColliderMarker(cave, 'ceilingRect', { localX: 0, localY: cH, localZ: (-cD + leanInset) / 2, halfW: ceilingInnerW / 2, halfD: ceilingInnerD / 2 }),
+                    createColliderMarker(cave, 'roofCollider', { localX: 0, localY: cH - roofThickness / 2, localZ: (-cD - wT + leanInset) / 2, halfW: roofTopOuterW / 2, halfD: roofTopOuterD / 2, thickness: roofThickness }),
+                    createColliderMarker(cave, 'enclosedBound', { localX: 0, localY: 0, localZ: -cD / 2, halfW: cW + wT + 2, halfD: cD / 2 + wT + 1 })
+                );
+                cave.updateMatrixWorld(true);
+                registerColliderMarkers(caveColliderMarkers);
 
                 const fireWorld = localToWorldXZ(placement.x, placement.z, 0, -cD / 2, placement.rotation);
                 campfirePositions.push(new THREE.Vector3(fireWorld.x, groundY + 0.2, fireWorld.z));
-
-                const wallMinY = groundY;
-                const wallMaxY = groundY + cH;
-
-                addLocalSolidWall(placement.x, placement.z, -cW - wT / 2, -cD / 2, wT / 2, cD / 2, wallMinY, wallMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, cW + wT / 2, -cD / 2, wT / 2, cD / 2, wallMinY, wallMaxY, placement.rotation, { isEnclosed: true });
-                addLocalSolidWall(placement.x, placement.z, 0, -cD - wT / 2, cW + wT, wT / 2, wallMinY, wallMaxY, placement.rotation, { isEnclosed: true });
-
-                addLocalStructureBox(placement.x, placement.z, 0, -cD / 2, groundY, cW * 2, 0.2, cD, placement.rotation);
-                addLocalCeiling(placement.x, placement.z, 0, (-cD + leanInset) / 2, ceilingInnerW / 2, ceilingInnerD / 2, groundY + cH, placement.rotation);
-                addLocalRoofCollider(placement.x, placement.z, 0, (-cD - wT + leanInset) / 2, roofTopOuterW / 2, roofTopOuterD / 2, groundY + cH, groundY + cH - roofThickness, placement.rotation);
-                addLocalEnclosedBound(placement.x, placement.z, 0, -cD / 2, cW + wT + 2, cD / 2 + wT + 1, placement.rotation);
             });
 
             const tentRegions = [
@@ -2570,6 +2771,7 @@
 
                 const groundY = getGroundHeight(placement.x, placement.z);
                 const tent = new THREE.Group();
+                const tentColliderMarkers = [];
 
                 // Tent fabric - 3 sided pyramid (south/+Z face is open entrance)
                 // Corners at NE(4.24,0,4.24), NW(-4.24,0,4.24), SW(-4.24,0,-4.24), SE(4.24,0,-4.24), Apex(0,7,0)
@@ -2618,17 +2820,20 @@
                 bedroll.position.set(-1, 0.4, 0);
                 tent.add(bedroll);
 
+                tentColliderMarkers.push(
+                    createColliderMarker(tent, 'solidWall', { localX: 4.24, localY: 3.5, localZ: 0, halfW: 0.18, halfD: 4.24, height: 7.0, extra: { isEnclosed: true, bulletPass: true } }),
+                    createColliderMarker(tent, 'solidWall', { localX: -4.24, localY: 3.5, localZ: 0, halfW: 0.18, halfD: 4.24, height: 7.0, extra: { isEnclosed: true, bulletPass: true } }),
+                    createColliderMarker(tent, 'solidWall', { localX: 0, localY: 3.5, localZ: -4.24, halfW: 4.24, halfD: 0.18, height: 7.0, extra: { isEnclosed: true, bulletPass: true } }),
+                    createColliderMarker(tent, 'ceilingRect', { localX: 0, localY: 6.8, localZ: 0, halfW: 4.3, halfD: 4.3 }),
+                    createColliderMarker(tent, 'roofCollider', { localX: 0, localY: 6.85, localZ: 0, halfW: 4.3, halfD: 4.3, thickness: 0.5 }),
+                    createColliderMarker(tent, 'enclosedBound', { localX: 0, localY: 0, localZ: 0, halfW: 6, halfD: 6 })
+                );
+
                 tent.position.set(placement.x, groundY, placement.z);
                 tent.rotation.y = placement.rotation;
                 scene.add(tent);
-
-                const tentMaxY = groundY + 7.0;
-                addLocalSolidWall(placement.x, placement.z, 4.24, 0, 0.18, 4.24, groundY, tentMaxY, placement.rotation, { isEnclosed: true, bulletPass: true });
-                addLocalSolidWall(placement.x, placement.z, -4.24, 0, 0.18, 4.24, groundY, tentMaxY, placement.rotation, { isEnclosed: true, bulletPass: true });
-                addLocalSolidWall(placement.x, placement.z, 0, -4.24, 4.24, 0.18, groundY, tentMaxY, placement.rotation, { isEnclosed: true, bulletPass: true });
-                addCeilingRect(placement.x, placement.z, 4.3, 4.3, groundY + 6.8, placement.rotation);
-                addRoofColliderRect(placement.x, placement.z, 4.3, 4.3, groundY + 7.1, groundY + 6.6, placement.rotation);
-                addEnclosedBoundRect(placement.x, placement.z, 6, 6, placement.rotation);
+                tent.updateMatrixWorld(true);
+                registerColliderMarkers(tentColliderMarkers);
             });
         }
 
@@ -5247,6 +5452,7 @@
         const RUN_SPEED = WALK_SPEED*2;
         const ACCEL = 14;  // MODIFIED: accel controls how quickly you reach full speed while holding movement
         const DECEL = 20;  // MODIFIED: decel controls how quickly you come to a stop after releasing movement
+        const PLAYER_RADIUS = 0.5;
 
         function update(delta) {
             if (playerDead) return;
@@ -5306,20 +5512,9 @@
                 // MODIFIED: smoothly move current Z velocity toward target Z velocity
                 velocity.z += (targetVZ - velocity.z) * lerpFactor;
 
-                // MODIFIED: removed old friction-based horizontal movement model entirely
-                // MODIFIED: now velocity.x and velocity.z are true velocities, so apply once with * delta
-                player.position.x += velocity.x * delta;
-
+                movePlayerHorizontallyWithCollisions(delta, PLAYER_RADIUS);
                 const previousY = player.position.y;
                 player.position.y += velocity.y * delta;
-
-                // MODIFIED: now velocity.x and velocity.z are true velocities, so apply once with * delta
-                player.position.z += velocity.z * delta;
-
-                // Keep player in bounds
-                const bound = WORLD_SIZE - 10;
-                player.position.x = Math.max(-bound, Math.min(bound, player.position.x));
-                player.position.z = Math.max(-bound, Math.min(bound, player.position.z));
 
                 // Gravity and ground collision at new position
                 const terrainHeight = getGroundHeight(player.position.x, player.position.z);
@@ -5338,18 +5533,9 @@
                     : groundHeight;
                 isGrounded = (player.position.y <= supportHeight + 0.2 && velocity.y <= 0);
 
-                // Horizontal wall collision (Y-bounded walls only apply within their height range)
-                const playerRadius = 0.5;
-                for (const wall of solidWalls) {
-                    if (wall.minY !== undefined && (player.position.y < wall.minY || player.position.y > wall.maxY)) continue;
-                    const push = resolveCircularWallCollision(player.position, playerRadius, wall);
-                    if (push) {
-                        player.position.x += push.x;
-                        player.position.z += push.z;
-                        if (Math.abs(push.x) >= Math.abs(push.z)) velocity.x = 0;
-                        else velocity.z = 0;
-                    }
-                }
+                const finalOverlap = resolvePlayerWallOverlaps(PLAYER_RADIUS);
+                if (finalOverlap.blockedX) velocity.x = 0;
+                if (finalOverlap.blockedZ) velocity.z = 0;
 
                 // Ceiling collision only blocks upward movement from below (inside structures).
                 for (const ceil of ceilings) {
