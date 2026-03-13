@@ -4144,7 +4144,7 @@
             const armLongSpikeGeo = new THREE.CylinderGeometry(0.01, 0.19, 2.9, 6);
             const armShortSpikeGeo = new THREE.CylinderGeometry(0.01, 0.19, 0.9, 6);
             if (DEMON_TYPE === 0) {
-                // Style 1: 4 cylindrical arms with 2 floating spheres
+                // Style 1: 4 cylindrical arms with 2 floating spheres (WEAKEST TYPE)
                 [-1, 1].forEach(side => {
                     // TOP arm
                     const arm1 = new THREE.Mesh(armGeo, skinMat);
@@ -4224,7 +4224,7 @@
                     demon.add(arm3);
                 });
             } else {
-                // Style 4: 6 long spikes for arms
+                // Style 4: 6 long spikes for arms (STRONGEST TYPE)
                 [-1, 1].forEach(side => {
                     // TOP arm — long horizontal spikes
                     const arm1 = new THREE.Mesh(armLongSpikeGeo, skinMat);
@@ -4283,7 +4283,7 @@
                 speed,
                 hitCooldown,
                 hitTimer: Math.random() * hitCooldown,
-                gunShotsToKill: 2 + Math.floor(Math.random() * 5), // 2-6 AK shots
+                gunShotsToKill: 3 + DEMON_TYPE,
                 gunHitCenterY: 4.8, // root is at feet; gun ray tests should target torso/head volume
                 gunHitRadius: 4.6,
                 lungeProgress: 0,
