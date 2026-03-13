@@ -4420,6 +4420,10 @@
 
         // Campfire shield linger countdown — pie arc depletes over 10 s
         const _CAMPFIRE_ARC_CIRC = 81.68; // 2pi x r13
+        function isCampfireShieldActive() {
+            return demonApocalypse && (!roundMode || currentRound >= 3);
+        }
+
         function updateCampfireLingerUI(nearFire, timerVal) {
             const wrap = document.getElementById('campfire-linger-wrap');
             const arc  = document.getElementById('campfire-timer-arc');
@@ -4521,18 +4525,24 @@
 
             const targetPos = mountedOnDragon ? dragon.position : player.position;
             const now = performance.now() / 1000;
+            const campfireShieldActive = isCampfireShieldActive();
 
-            // Campfire proximity check — shield lingers for 10 s after leaving
             let nearFire = false;
-            for (const cp of campfirePositions) {
-                if (targetPos.distanceTo(cp) < 22) { nearFire = true; break; }
-            }
-            if (nearFire) {
-                campfireShieldTimer = 10;
+            if (campfireShieldActive) {
+                // Campfire proximity check — shield lingers for 10 s after leaving
+                for (const cp of campfirePositions) {
+                    if (targetPos.distanceTo(cp) < 22) { nearFire = true; break; }
+                }
+                if (nearFire) {
+                    campfireShieldTimer = 10;
+                } else {
+                    campfireShieldTimer = Math.max(0, campfireShieldTimer - delta);
+                }
+                nearCampfireFlag = nearFire || campfireShieldTimer > 0;
             } else {
-                campfireShieldTimer = Math.max(0, campfireShieldTimer - delta);
+                campfireShieldTimer = 0;
+                nearCampfireFlag = false;
             }
-            nearCampfireFlag = nearFire || campfireShieldTimer > 0;
             document.getElementById('campfire-shield').style.display =
                 nearCampfireFlag ? 'block' : 'none';
             updateCampfireLingerUI(nearFire, campfireShieldTimer);
@@ -5760,7 +5770,7 @@
             shrineActive = true;
         }
 
-        function showRoundBanner(title, subtitle, titleColor = '#ff2200') {
+        function showRoundBanner(title, subtitle, titleColor = '#ff2200', subtitleColor = '#ff6644') {
             const shadow = titleColor === '#ffdd00' ? '0 0 20px #ffaa00,0 0 40px #cc7700' : '0 0 20px #ff0000,0 0 40px #880000';
             const banner = document.createElement('div');
             banner.style.cssText = `
@@ -5772,9 +5782,9 @@
                 <div style="font-size:64px;font-weight:bold;color:${titleColor};
                     text-shadow:${shadow};
                     font-family:'Segoe UI',Arial,sans-serif;letter-spacing:4px;">${title}</div>
-                ${subtitle ? `<div style="font-size:22px;color:#ff6644;margin-top:14px;
+                ${subtitle ? `<div style="font-size:18px;font-weight:bold;color:${subtitleColor};margin-top:20px;
                     font-family:'Segoe UI',Arial,sans-serif;
-                    text-shadow:0 0 10px #880000;">${subtitle}</div>` : ''}`;
+                    text-shadow:${titleColor === '#ffdd00' ? '0 0 10px #ffaa00' : '0 0 10px #880000'};">${subtitle}</div>` : ''}`;
             document.body.appendChild(banner);
             setTimeout(() => { banner.style.opacity = '0'; }, 2000);
             setTimeout(() => banner.remove(), 2600);
@@ -5783,7 +5793,7 @@
         function startDemonRound(roundNumber) {
             // Demons per round: 50, 100, 200, 300, 400, 500, ...
             currentRound       = roundNumber;
-            roundDemonsTotal   = getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
+            roundDemonsTotal   = roundNumber;//getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
             roundDemonsSpawned = 0;
             roundSpawnTimer    = 0;
             roundBetweenActive = false;
@@ -5960,7 +5970,8 @@
             setTimeout(() => { f.style.opacity = '0'; }, 100);
             setTimeout(() => f.remove(), 600);
 
-            showRoundBanner(`ROUND ${currentRound} COMPLETE`, '', '#ffdd00');
+            const subtitle = currentRound === 2 ? '🔥 CAMPFIRE SHIELD ACTIVATED 🔥' : '';
+            showRoundBanner(`ROUND ${currentRound} COMPLETE`, subtitle, '#ffdd00', '#ffdd00');
         }
 
         function updateBetweenRound(delta) {
