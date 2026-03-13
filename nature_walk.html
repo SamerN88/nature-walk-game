@@ -4297,6 +4297,7 @@
         function triggerDemonApocalypse() {
             if (demonApocalypse) return;
             demonApocalypse = true;
+            updateTopCornerHudVisibility();
 
             // ── Blood-red apocalypse sky ──
             scene.background = new THREE.Color(0x6B0000);
@@ -4635,6 +4636,7 @@
         function demonVictory() {
             if (roundMode) { endRound(); return; }
             demonApocalypse = false;
+            updateTopCornerHudVisibility();
             document.getElementById('demon-counter').style.display   = 'none';
             document.getElementById('campfire-shield').style.display  = 'none';
             nearCampfireFlag = false;
@@ -5163,6 +5165,12 @@
             });
         }
 
+        function updateTopCornerHudVisibility() {
+            const showHud = timeMenuOpen || !demonApocalypse;
+            document.getElementById('ui').style.display = showHud ? 'block' : 'none';
+            document.getElementById('stats').style.display = showHud ? 'block' : 'none';
+        }
+
         function updateStats() {
             document.getElementById('alive-count').textContent = npcs.length;
             document.getElementById('kill-count').textContent = killCount;
@@ -5174,6 +5182,7 @@
             timeMenuOpen = true;
             const menu = document.getElementById('game-menu');
             menu.style.display = 'block';
+            updateTopCornerHudVisibility();
             document.getElementById('respawn-rate').value = respawnRate;
             updateMenuPanels();
             document.exitPointerLock();
@@ -5183,6 +5192,7 @@
             if (timeMenuOpen) {
                 timeMenuOpen = false;
                 document.getElementById('game-menu').style.display = 'none';
+                updateTopCornerHudVisibility();
                 if (!playerDead) {
                     renderer.domElement.requestPointerLock();
                 }
@@ -5731,6 +5741,7 @@
             roundBetweenTimer  = 0;
             roundMode          = true;
             demonApocalypse    = true;
+            updateTopCornerHudVisibility();
             playerDead         = false;
             playerHealth       = 100;
             dragonHealth       = 100;
@@ -5967,6 +5978,7 @@
         function exitRoundMode() {
             roundMode = false;
             demonApocalypse = false;
+            updateTopCornerHudVisibility();
             roundBetweenActive = false;
 
             demons.forEach(d => scene.remove(d.mesh));
