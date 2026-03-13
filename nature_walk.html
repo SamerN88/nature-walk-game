@@ -468,7 +468,7 @@
     </div>
     <div id="campfire-shield">
         <strong>🔥 CAMPFIRE SHIELD 🔥</strong><br>
-        50% less damage &nbsp; &bull; &nbsp; 2x health regen
+        50% less damage &nbsp; &bull; &nbsp; 6x health regen
         <div id="campfire-linger-wrap" style="display:none; margin-top:7px; align-items:center; justify-content:center; gap:7px;">
             <svg id="campfire-timer-svg" viewBox="0 0 36 36" width="36" height="36" style="filter:drop-shadow(0 0 5px #ff8800);">
                 <!-- track -->
@@ -4614,10 +4614,11 @@
                 }
             }
 
-            const HEALTH_REGEN_RATE = 15;
-            // Passive health regen — 15% per second (double near campfire)
+            const HEALTH_REGEN_RATE = 5;
+            const CAMPFIRE_HEALTH_REGEN_RATE = 6 * HEALTH_REGEN_RATE
+            // Passive health regen
             if (!playerDead) {
-                const regenRate = nearCampfireFlag ? 2*HEALTH_REGEN_RATE : HEALTH_REGEN_RATE; // doubled in campfire shield
+                const regenRate = nearCampfireFlag ? CAMPFIRE_HEALTH_REGEN_RATE : HEALTH_REGEN_RATE;
 
                 playerHealth = Math.min(100, playerHealth + regenRate * delta);
                 dragonHealth = Math.min(100, dragonHealth + regenRate * delta);
