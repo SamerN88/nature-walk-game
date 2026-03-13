@@ -127,6 +127,24 @@
             justify-content: space-between;
             gap: 20px;
         }
+        #best-hell-run-section {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0,0,0,0.22);
+            border: none; /*1px solid rgba(255,255,255,0.08);*/
+            border-radius: 8px;
+        }
+        #best-hell-run-section h4 {
+            margin-bottom: 4px;
+            font-size: 14px;
+            color: #ddd;
+        }
+        #best-hell-run-section .kill-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            font-size: 12px;
+        }
         #game-menu input[type="number"] {
             width: 80px;
             padding: 8px;
@@ -461,7 +479,7 @@
     <div id="punch-ring"></div>
 
     <!-- Demon Apocalypse UI -->
-    <div id="demon-counter"><span id="round-label" style="display:none;font-size:13px;letter-spacing:2px;opacity:0.8;"></span>☠ DEMONS: <span id="demon-count">0</span> ☠</div>
+    <div id="demon-counter"><span id="round-label" style="display:none;font-size:13px;letter-spacing:2px;opacity:0.8;"></span>&#x2620;&#xFE0E; DEMONS: <span id="demon-count">0</span> &#x2620;&#xFE0E;</div>
     <div id="health-bar-container">
         <div id="health-label">❤ HEALTH</div>
         <div id="health-bar-bg"><div id="health-bar-fill"></div></div>
@@ -501,7 +519,7 @@
         font-size:14px; font-weight:bold;
         text-shadow:0 0 10px #ff0000, 0 0 20px #880000;
         pointer-events:none; z-index:100;">
-        ✦ ENTER THE DEMON ROUNDS ✦<br>
+        &#x2726; HELL RUN &#x2726;<br>
         <span style="font-size:11px;font-weight:normal;color:#ff6644;">(punch to begin)</span>
     </div>
 
@@ -536,6 +554,11 @@
                 <div class="kill-row"><span>Birds</span><span id="kills-bird">0</span></div>
                 <div class="kill-row"><span>Humans</span><span id="kills-human">0</span></div>
                 <div class="kill-row"><span>Demons</span><span id="kills-demon">0</span></div>
+                <div id="best-hell-run-section" style="display:none;">
+                    <h4>Best Hell Run</h4>
+                    <div class="kill-row"><span>Round Reached</span><span id="best-demon-round">0</span></div>
+                    <div class="kill-row"><span>Demons Killed</span><span id="best-demon-kills">0</span></div>
+                </div>
             </div>
         </div>
 
@@ -551,7 +574,7 @@
         </div>
 
         <div class="section">
-            <h3>NPC Control</h3>
+            <h3>NPC Life</h3>
             <div class="control-row">
                 <input type="number" id="spawn-count" value="10" min="1" max="500">
                 <button class="small-btn btn-spawn" onclick="godSpawnNPCs()">Spawn NPCs</button>
@@ -563,7 +586,7 @@
         </div>
 
         <div class="section">
-            <h3>Respawn Rate</h3>
+            <h3>NPC Respawn Rate</h3>
             <p style="font-size: 12px; color: #aaa; margin-bottom: 10px;">NPCs spawned per kill</p>
             <div class="control-row">
                 <input type="number" id="respawn-rate" value="0" min="0" max="10">
@@ -676,7 +699,7 @@
         let demons = [];
         let campfirePositions = [];
 
-        // ── Demon Rounds system ──────────────────────────────
+        // ── Hell Run system (Demon Rounds) ──────────────────────────────
         let roundKillCount   = 0;       // kills accumulated across all rounds this session
         let deathPosition    = null;    // player position at time of death
         let roundMode        = false;
@@ -690,6 +713,9 @@
         let shrine           = null;
         let shrineActive     = false;
         const SHRINE_INTERACT_DIST = 5;
+        let bestDemonRoundsReached = 0;
+        let bestDemonRoundsKills = 0;
+        let hasPlayedDemonRounds = false;
 
         // Dragon system
         let dragonGem;
@@ -3653,7 +3679,7 @@
             dragon.visible = false;
             scene.add(dragon);
 
-            // triggerDemonApocalypse(); //DEBUG - uncomment this for quick dev access to demon apocalypse
+            triggerDemonApocalypse(); //DEBUG - uncomment this for quick dev access to demon apocalypse
         }
 
         function updateDragonGem(delta, time) {
@@ -4069,7 +4095,7 @@
         //  DEMON APOCALYPSE SYSTEM
         // ─────────────────────────────────────────────────────────────
 
-        const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
+        const DEMON_SPAWN_COUNT = 1; //DEBUG - originally 150, change it to examine demons more closely
         const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 
         function createDemon(biasedSpeed = false) {
@@ -4466,6 +4492,7 @@
             demons.splice(index, 1);
             recordKill('demon');
             if (roundMode) roundKillCount++;
+            if (roundMode) updateBestDemonRoundsRun();
             updateStats();
             updateDemonCounter();
 
@@ -4918,7 +4945,7 @@
                 return;
             }
 
-            // Shrine interaction — start demon rounds
+            // Shrine interaction — start hell run (demon rounds)
             if (shrineActive && shrine) {
                 const sd = player.position.distanceTo(shrine.position);
                 if (sd < SHRINE_INTERACT_DIST) {
@@ -5161,6 +5188,30 @@
                 const el = document.getElementById(`kills-${type}`);
                 if (el) el.textContent = killBreakdown[type];
             });
+
+            const bestSection = document.getElementById('best-hell-run-section');
+            if (bestSection) {
+                bestSection.style.display = hasPlayedDemonRounds ? 'block' : 'none';
+            }
+
+            const bestRoundEl = document.getElementById('best-demon-round');
+            if (bestRoundEl) bestRoundEl.textContent = bestDemonRoundsReached;
+
+            const bestKillsEl = document.getElementById('best-demon-kills');
+            if (bestKillsEl) bestKillsEl.textContent = bestDemonRoundsKills;
+        }
+
+        function updateBestDemonRoundsRun() {
+            if (!hasPlayedDemonRounds) return;
+
+            if (
+                currentRound > bestDemonRoundsReached ||
+                (currentRound === bestDemonRoundsReached && roundKillCount > bestDemonRoundsKills)
+            ) {
+                bestDemonRoundsReached = currentRound;
+                bestDemonRoundsKills = roundKillCount;
+                updateMenuPanels();
+            }
         }
 
         function updateTopCornerHudVisibility() {
@@ -5637,7 +5688,7 @@
         });
 
         // ─────────────────────────────────────────────────────────────
-        // DEMON ROUNDS SYSTEM
+        // HELL RUN SYSTEM (DEMON ROUNDS)
         // ─────────────────────────────────────────────────────────────
 
         function createShrine() {
@@ -5743,12 +5794,14 @@
             playerDead         = false;
             playerHealth       = 100;
             dragonHealth       = 100;
+            hasPlayedDemonRounds = true;
 
             // Round 3+: batch size based on second half only (so we still get ~6 batches)
             const batchBase = roundNumber >= 3 ? Math.floor(roundDemonsTotal / 2) : roundDemonsTotal;
             const numBatches = getRoundNumBatches(roundNumber);
             roundBatchSize = Math.max(5, Math.ceil(batchBase / numBatches));
             if (roundNumber === 1) roundKillCount = 0;
+            updateBestDemonRoundsRun();
 
             // Strip gem powers for round mode
             speedMultiplier = 1;
