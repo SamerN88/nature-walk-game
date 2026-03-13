@@ -578,7 +578,8 @@
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script>
         // Dev mode: spawns both gems within 60 units of origin for easy testing
-        const DEV = true;
+        const DEBUG_GEMS = true;
+        const DEBUG_COLLISIONS = false;
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -688,6 +689,7 @@
         let roundBetweenTimer  = 0;
         let shrine           = null;
         let shrineActive     = false;
+        const SHRINE_INTERACT_DIST = 5;
 
         // Dragon system
         let dragonGem;
@@ -1008,7 +1010,7 @@
 
             // Build height grid and displace vertices
             // PlaneGeometry lies in local XY plane. After rotation.x = -PI/2:
-            //   local X → world X, local Y → world -Z, local Z (displacement) → world Y
+            //   local X -> world X, local Y -> world -Z, local Z (displacement) -> world Y
             const n = TERRAIN_SEGS + 1;
             terrainHeights = new Float32Array(n * n);
 
@@ -1722,7 +1724,7 @@
         }
 
         function createCollisionDebugVisuals() {
-            if (!DEV || collisionDebugGroup) return;
+            if (!DEBUG_COLLISIONS || collisionDebugGroup) return;
 
             collisionDebugGroup = new THREE.Group();
             collisionDebugGroup.name = 'collision-debug';
@@ -2958,7 +2960,7 @@
             const h01 = terrainHeights[iy1 * n + ix0]; // TL
             const h11 = terrainHeights[iy1 * n + ix1]; // TR
 
-            // Three.js PlaneGeometry splits each quad along the BL→TR diagonal (ty == tx).
+            // Three.js PlaneGeometry splits each quad along the BL->TR diagonal (ty == tx).
             // Use exact barycentric interpolation to match the rendered mesh precisely.
             if (ty >= tx) {
                 // Upper-left triangle: TL(h01), BL(h00), TR(h11)
@@ -3414,7 +3416,7 @@
 
             // Place the gem at a random hidden location
             const angle = Math.random() * Math.PI * 2;
-            const distance = DEV ? (10 + Math.random() * 50) : (600 + Math.random() * 900); //DEBUG - change gem distance to test things
+            const distance = DEBUG_GEMS ? (10 + Math.random() * 50) : (600 + Math.random() * 900); //DEBUG - change gem distance to test things
             const x = Math.cos(angle) * distance;
             const z = Math.sin(angle) * distance;
             const terrainY = getGroundHeight(x, z);
@@ -3494,7 +3496,7 @@
 
             // Place at random location (different from blue gem)
             const angle = Math.random() * Math.PI * 2;
-            const distance = DEV ? (10 + Math.random() * 50) : backgroundDist();; //DEBUG - change gem distance to test things
+            const distance = DEBUG_GEMS ? (10 + Math.random() * 50) : backgroundDist();; //DEBUG - change gem distance to test things
             const x = Math.cos(angle) * distance;
             const z = Math.sin(angle) * distance;
             const terrainY = getGroundHeight(x, z);
@@ -3651,7 +3653,7 @@
             dragon.visible = false;
             scene.add(dragon);
 
-            // triggerDemonApocalypse() // DEBUG - uncomment this for quick dev access to demon apocalypse
+            triggerDemonApocalypse() // DEBUG - uncomment this for quick dev access to demon apocalypse
         }
 
         function updateDragonGem(delta, time) {
@@ -3862,7 +3864,7 @@
             const solidHits = raycaster.intersectObjects(scene.children, true)
                 .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam);
 
-            // Check if we hit the magenta gem → trigger demon apocalypse
+            // Check if we hit the magenta gem -> trigger demon apocalypse
             if (solidHits.length > 0 && solidHits[0].object.userData.isSecretGem) {
                 triggerDemonApocalypse();
                 return;
@@ -3894,7 +3896,7 @@
             beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamDir);
             scene.add(beam);
 
-            // Kill NPCs in beam path — ray from camera, range capped at camera→endpoint dist
+            // Kill NPCs in beam path — ray from camera, range capped at camera->endpoint dist
             const killList = [];
             npcs.forEach((npc, index) => {
                 const toNPC = npc.mesh.position.clone().sub(camera.position);
@@ -4067,7 +4069,7 @@
         //  DEMON APOCALYPSE SYSTEM
         // ─────────────────────────────────────────────────────────────
 
-        const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
+        const DEMON_SPAWN_COUNT = 1; //DEBUG - originally 150, change it to examine demons more closely
         const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 
         function createDemon(biasedSpeed = false) {
@@ -4268,7 +4270,7 @@
             const t = biasedSpeed ? 1 - Math.pow(Math.random(), 2) : Math.random();
             const speed  = minSpd + t * (maxSpd - minSpd);
             const normalizedSpd = (speed - minSpd) / (maxSpd - minSpd);
-            // Hit cooldown: slowest → 1 hit/sec (1.0s), fastest → 2 hits/sec (0.5s)
+            // Hit cooldown: slowest -> 1 hit/sec (1.0s), fastest -> 2 hits/sec (0.5s)
             const hitCooldown = 1.0 - normalizedSpd * 0.5;
 
             demon.children.forEach(part => {
@@ -4390,7 +4392,7 @@
         }
 
         // Campfire shield linger countdown — pie arc depletes over 10 s
-        const _CAMPFIRE_ARC_CIRC = 81.68; // 2π × r13
+        const _CAMPFIRE_ARC_CIRC = 81.68; // 2pi x r13
         function updateCampfireLingerUI(nearFire, timerVal) {
             const wrap = document.getElementById('campfire-linger-wrap');
             const arc  = document.getElementById('campfire-timer-arc');
@@ -4400,7 +4402,7 @@
                 wrap.style.display = 'flex';
                 const frac = timerVal / 10;
                 arc.setAttribute('stroke-dashoffset', (_CAMPFIRE_ARC_CIRC * (1 - frac)).toFixed(2));
-                // Fade from orange → red as time runs low
+                // Fade from orange -> red as time runs low
                 const g = Math.round(100 * frac);
                 arc.setAttribute('stroke', `rgb(255,${g + 50},0)`);
                 txt.textContent = Math.ceil(timerVal) + 's';
@@ -4919,7 +4921,7 @@
             // Shrine interaction — start demon rounds
             if (shrineActive && shrine) {
                 const sd = player.position.distanceTo(shrine.position);
-                if (sd < 10) {
+                if (sd < SHRINE_INTERACT_DIST) {
                     startDemonRound(1);
                     return;
                 }
@@ -5720,8 +5722,9 @@
         }
 
         function startDemonRound(roundNumber) {
+            // Demons per round: 50, 100, 200, 300, 400, 500, ...
             currentRound       = roundNumber;
-            roundDemonsTotal   = roundNumber * 50; //DEBUG - change to get through rounds quickly
+            roundDemonsTotal   = roundNumber < 3? 1 : getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
             roundDemonsSpawned = 0;
             roundSpawnTimer    = 0;
             roundBetweenActive = false;
@@ -5734,7 +5737,8 @@
 
             // Round 3+: batch size based on second half only (so we still get ~6 batches)
             const batchBase = roundNumber >= 3 ? Math.floor(roundDemonsTotal / 2) : roundDemonsTotal;
-            roundBatchSize = Math.max(5, Math.ceil(batchBase / 6));
+            const numBatches = getRoundNumBatches(roundNumber);
+            roundBatchSize = Math.max(5, Math.ceil(batchBase / numBatches));
             if (roundNumber === 1) roundKillCount = 0;
 
             // Strip gem powers for round mode
@@ -5795,12 +5799,13 @@
             // Round 3+: spawn first half immediately, then delay first batch by 15s
             if (roundNumber >= 3) {
                 const immediateCount = Math.floor(roundDemonsTotal / 2);
+                const minDist = getRoundMinDist(roundNumber);
                 const maxDist = getRoundMaxDist(roundNumber);
                 const bound = WORLD_SIZE - 20;
                 for (let i = 0; i < immediateCount; i++) {
                     const dData = createDemon(true);
                     const angle = Math.random() * Math.PI * 2;
-                    const dist  = 200 + Math.random() * (maxDist - 200);
+                    const dist  = minDist + Math.random() * (maxDist - minDist);
                     const sx = player.position.x + Math.cos(angle) * dist;
                     const sz = player.position.z + Math.sin(angle) * dist;
                     const cx = Math.max(-bound, Math.min(bound, sx));
@@ -5819,10 +5824,35 @@
         }
 
         function getRoundMaxDist(round) {
-            if (round <= 1) return 400;
-            if (round === 2) return 500;
-            if (round === 3) return 600;
-            return 700; // round 4+
+            if (round <= 1) return 300;
+            if (round === 2) return 400;
+            if (round === 3) return 500;
+            if (round >= 4 && round <= 6) return 600;
+            return 750; // round 7+
+        }
+
+        function getRoundMinDist(round) {
+            if (round <= 1) return 200;
+            if (round === 2) return 150;
+            if (round >= 3 && round <= 5) return 100;
+            return 120; // round 6+
+        }
+
+        function getRoundDemonCount(round) {
+            if (round <= 1) return 50;
+            if (round === 2) return 100;
+            if (round === 3) return 200;
+            if (round === 4) return 300;
+            if (round === 5) return 400;
+            if (round === 6) return 500;
+            return 500 + 50*(round - 6); // round 7+ (increment by 50 per round)
+        }
+
+        function getRoundNumBatches(round) {
+            if (round <= 5) return 6;
+            if (round >= 6 && round <= 8) return 8;
+            if (round >= 9 && round <= 10) return 10;
+            return 12; // round 11+
         }
 
         function updateRoundSpawning(delta) {
@@ -5835,13 +5865,14 @@
             roundSpawnTimer = 15;
             const remaining  = roundDemonsTotal - roundDemonsSpawned;
             const batchCount = Math.min(roundBatchSize, remaining);
+            const minDist    = getRoundMinDist(currentRound);
             const maxDist    = getRoundMaxDist(currentRound);
             const biased     = currentRound >= 3;
 
             for (let i = 0; i < batchCount; i++) {
                 const dData = createDemon(biased);
                 const angle = Math.random() * Math.PI * 2;
-                const dist  = 200 + Math.random() * (maxDist - 200);
+                const dist  = minDist + Math.random() * (maxDist - minDist);
                 const sx    = player.position.x + Math.cos(angle) * dist;
                 const sz    = player.position.z + Math.sin(angle) * dist;
                 const bound = WORLD_SIZE - 20;
@@ -5916,7 +5947,7 @@
 
             const dist = player.position.distanceTo(shrine.position);
             document.getElementById('shrine-prompt').style.display =
-                (shrineActive && dist < 10) ? 'block' : 'none';
+                (shrineActive && dist < SHRINE_INTERACT_DIST) ? 'block' : 'none';
         }
 
         function restartCurrentRound() {
