@@ -922,7 +922,22 @@
             return camera.position.clone().addScaledVector(aimDir, 1.5);
         }
 
-        function triggerAk47ShotFX(aimDir, hits, blockDistance = AK47_BEAM_MAX_VISUAL_RANGE) {
+        function getAk47CrosshairHitPoint(maxRange = AK47_BEAM_MAX_VISUAL_RANGE) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.far = maxRange;
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+            const excludeUUIDs = new Set();
+            if (player) player.traverse(obj => excludeUUIDs.add(obj.uuid));
+
+            const hits = raycaster.intersectObjects(scene.children, true)
+                .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam);
+
+            if (hits.length > 0) return hits[0].point.clone();
+            return camera.position.clone().addScaledVector(raycaster.ray.direction, maxRange);
+        }
+
+        function triggerAk47ShotFX(aimDir, hits, beamEndPoint = null) {
             if (!ak47Collected || !ak47Equipped) return;
 
 
@@ -933,14 +948,18 @@
             const beamStart = getAk47MuzzleWorldPosition(aimDir);
 
             const firstHitDistance = hits.length > 0 ? hits[0].projected : AK47_BEAM_MAX_VISUAL_RANGE;
-            const visualStopDistance = Math.min(firstHitDistance, blockDistance);
+            const crosshairDistance = beamEndPoint
+                ? camera.position.distanceTo(beamEndPoint)
+                : AK47_BEAM_MAX_VISUAL_RANGE;
+            const visualStopDistance = Math.min(firstHitDistance, crosshairDistance);
 
-            const beamDistance = Math.min(
-                AK47_BEAM_MAX_VISUAL_RANGE,
-                Math.max(0.8, visualStopDistance)
-            );
-
-            const beamEnd = beamStart.clone().addScaledVector(aimDir, beamDistance);
+            const beamDistance = Math.min(AK47_BEAM_MAX_VISUAL_RANGE, Math.max(0.8, visualStopDistance));
+            const beamEnd = (beamEndPoint && crosshairDistance <= beamDistance + 0.001)
+                ? beamEndPoint.clone()
+                : camera.position.clone().addScaledVector(aimDir, beamDistance);
+            const beamVector = beamEnd.clone().sub(beamStart);
+            const visualBeamLength = beamVector.length();
+            const visualBeamDir = beamVector.clone().normalize();
 
 
             // thickness of beam
@@ -949,7 +968,7 @@
             const beamGeometry = new THREE.CylinderGeometry(
                 beamRadius,
                 beamRadius,
-                beamDistance,
+                visualBeamLength,
                 6,
                 1,
                 false
@@ -975,7 +994,7 @@
             // orient beam to match direction
             beam.quaternion.setFromUnitVectors(
                 new THREE.Vector3(0, 1, 0),
-                aimDir.clone().normalize()
+                visualBeamDir
             );
 
             beam.frustumCulled = false;
@@ -4988,8 +5007,12 @@
             if (now - lastAk47ShotAt < AK47_SHOT_INTERVAL_MS) return;
             lastAk47ShotAt = now;
 
+            scene.updateMatrixWorld(true);
+            camera.updateMatrixWorld(true);
+
             const aimDir = new THREE.Vector3();
             camera.getWorldDirection(aimDir);
+            const beamEndPoint = getAk47CrosshairHitPoint();
 
             const hits = [];
 
@@ -5018,7 +5041,7 @@
             });
 
             hits.sort((a, b) => a.projected - b.projected);
-            triggerAk47ShotFX(aimDir, hits);
+            triggerAk47ShotFX(aimDir, hits, beamEndPoint);
 
             let penetratedDemons = 0;
             for (const hit of hits) {
@@ -5494,8 +5517,8 @@
             cameraYaw -= event.movementX * sensitivity;
             cameraPitch += event.movementY * sensitivity;
 
-            // Clamp vertical rotation (allow looking up to ~72 degrees up and down)
-            cameraPitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, cameraPitch));
+            // Clamp vertical rotation (allow looking up to ~87.8 degrees up and down)
+            cameraPitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, cameraPitch));
         }
 
         function onWindowResize() {
@@ -5726,17 +5749,22 @@
 
             // Update camera position (third person) - only if not on dragon (dragon handles its own camera)
             if (!mountedOnDragon) {
+                const pitchCos = Math.cos(cameraPitch);
+                const pitchSin = Math.sin(cameraPitch);
+                const pitchHeight = cameraPitch > 0
+                    ? pitchSin * cameraDistance * 0.65
+                    : pitchSin * cameraDistance * 1.8;
                 const cameraOffset = new THREE.Vector3(
-                    -Math.sin(cameraYaw) * cameraDistance,
-                    cameraHeight + Math.sin(cameraPitch) * cameraDistance * 1.2,
-                    -Math.cos(cameraYaw) * cameraDistance
+                    -Math.sin(cameraYaw) * cameraDistance * pitchCos,
+                    cameraHeight + pitchHeight,
+                    -Math.cos(cameraYaw) * cameraDistance * pitchCos
                 );
 
                 camera.position.copy(player.position).add(cameraOffset);
                 camera.position.y += 2;
 
                 const lookTarget = player.position.clone();
-                lookTarget.y += 2.5;
+                lookTarget.y += 4.25;
                 camera.lookAt(lookTarget);
             }
 
