@@ -944,7 +944,7 @@
 
 
             // thickness of beam
-            const beamRadius = 0.02;
+            const beamRadius = 0.025;
 
             const beamGeometry = new THREE.CylinderGeometry(
                 beamRadius,
@@ -1012,12 +1012,11 @@
 
             if (ak47MuzzleFlashTimer > 0) {
                 ak47MuzzleFlashTimer = Math.max(0, ak47MuzzleFlashTimer - delta);
-                const fade = ak47MuzzleFlashTimer / AK47_MUZZLE_FLASH_LIFETIME;
                 if (ak47MuzzleFlash) {
-                    ak47MuzzleFlash.visible = fade > 0;
-                    ak47MuzzleFlash.material.opacity = fade;
+                    ak47MuzzleFlash.visible = true;
+                    ak47MuzzleFlash.material.opacity = 1;
                 }
-                if (ak47MuzzleLight) ak47MuzzleLight.intensity = 8 * fade;
+                if (ak47MuzzleLight) ak47MuzzleLight.intensity = 8;
             } else {
                 if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
                 if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
@@ -1033,7 +1032,7 @@
                     ak47Beams.splice(i, 1);
                     continue;
                 }
-                beamData.mesh.material.opacity = Math.max(0, beamData.life / AK47_BEAM_LIFETIME);
+                beamData.mesh.material.opacity = 1;
             }
         }
 
@@ -1122,7 +1121,7 @@
             const flashMat = new THREE.MeshBasicMaterial({
                 color: AK47_BEAM_COLOR,
                 transparent: true,
-                opacity: 0.98,
+                opacity: 1,
                 side: THREE.DoubleSide,
                 fog: false,
                 toneMapped: false,
