@@ -3298,6 +3298,7 @@
             const bird = new THREE.Group();
             const bodyColor = [0x4444FF, 0xFF4444, 0xFFFF00, 0x44FF44, 0xFF8800][Math.floor(Math.random() * 5)];
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: bodyColor });
+            const wings = [];
 
             // Body
             const body = new THREE.Mesh(
@@ -3332,6 +3333,7 @@
                 );
                 wing.position.set(0, 0, side * 0.18);
                 bird.add(wing);
+                wings.push(wing);
             });
 
             // Tail
@@ -3341,6 +3343,7 @@
             );
             tail.position.set(-0.2, 0, 0);
             bird.add(tail);
+            bird.userData.wings = wings;
 
             bird.scale.set(birdScale, birdScale, birdScale);
 
@@ -3500,6 +3503,8 @@
             const gemLight = new THREE.PointLight(0x00FFFF, 0, 20); // set intensity to 0 but it immediately gets overridden in updateGem
             gemLight.position.y = 0;
             gemGroup.add(gemLight);
+            gemGroup.userData.outerGlow = outerGlow;
+            gemGroup.userData.pointLight = gemLight;
 
             // Place the gem at a random hidden location
             const angle = Math.random() * Math.PI * 2;
@@ -3580,6 +3585,8 @@
             // Point light
             const gemLight = new THREE.PointLight(0xFF0000, 0, 20); // set intensity to 0 but it immediately gets overridden in updateDragonGem
             gemGroup.add(gemLight);
+            gemGroup.userData.outerGlow = outerGlow;
+            gemGroup.userData.pointLight = gemLight;
 
             // Place at random location (different from blue gem)
             const angle = Math.random() * Math.PI * 2;
@@ -3782,8 +3789,8 @@
 
             // Pulsing glow
             const pulse = 0.3 + Math.sin(time * 3) * 0.2;
-            dragonGem.mesh.children[2].material.opacity = pulse;
-            dragonGem.mesh.children[3].intensity = 10 + 3*Math.sin(time * 3);
+            dragonGem.mesh.userData.outerGlow.material.opacity = pulse;
+            dragonGem.mesh.userData.pointLight.intensity = 10 + 3*Math.sin(time * 3);
 
             // Check collision with player
             const dx = player.position.x - dragonGem.x;
@@ -4084,10 +4091,8 @@
                     const baseY = getGroundHeight(npc.mesh.position.x, npc.mesh.position.z);
                     npc.mesh.position.y = baseY + npc.flyHeight + Math.sin(npc.wingPhase * 0.5) * 2;
                     // Wing flapping animation
-                    npc.mesh.children.forEach((child, i) => {
-                        if (i === 3 || i === 4) { // Wings
-                            child.rotation.x = Math.sin(npc.wingPhase) * 0.5;
-                        }
+                    (npc.mesh.userData.wings || []).forEach(wing => {
+                        wing.rotation.x = Math.sin(npc.wingPhase) * 0.5;
                     });
                 } else if (npc.type === 'rabbit') {
                     npc.hopTimer += delta * 8;
@@ -4114,8 +4119,8 @@
 
             // Pulsing glow effect
             const pulse = 0.3 + Math.sin(time * 3) * 0.2;
-            secretGem.mesh.children[2].material.opacity = pulse;
-            secretGem.mesh.children[3].intensity = 5 + 3*Math.sin(time * 3);
+            secretGem.mesh.userData.outerGlow.material.opacity = pulse;
+            secretGem.mesh.userData.pointLight.intensity = 5 + 3*Math.sin(time * 3);
 
             // Check collision with player
             const dx = player.position.x - secretGem.x;
@@ -4199,30 +4204,27 @@
             const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xff0000 });
             const boneMat  = new THREE.MeshLambertMaterial({ color: 0xc8b88a });
 
-            // children[0]: Torso
             const torso = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.8, 0.9), clothMat); 
             torso.position.y = 3.9; 
             demon.add(torso);
 
-            // children[1]: Neck
             const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.65, 6), skinMat); 
             neck.position.y = 5.025; 
             demon.add(neck);
 
-            // children[2]: Head — large, menacing
             const head = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.1), skinMat);
             head.position.y = 5.825; 
             demon.add(head);
+            const faceAnimatedParts = [head];
 
-            // children[3,4]: Red glowing eyes
             const eyeGeo = new THREE.SphereGeometry(0.18, 6, 6);
             [-0.32, 0.32].forEach(ex => {
                 const eye = new THREE.Mesh(eyeGeo, eyeMat);
                 eye.position.set(ex, 5.875, 0.56); 
                 demon.add(eye);
+                faceAnimatedParts.push(eye);
             });
 
-            // children[5]: Exposed jaw (animated)
             const jawGroup = new THREE.Group();
             // bottom bone (black)
             const jawBottom = new THREE.Mesh(
@@ -4258,6 +4260,7 @@
             // jawGroup.add(mouthBack);
 
             demon.add(jawGroup);
+            faceAnimatedParts.push(jawGroup);
 
             // children[6,7,8,9]: Arms + hands (animated)
             const DEMON_TYPE = Math.floor(Math.random() * 4);  // we have 4 different styles for the arms
@@ -4369,9 +4372,6 @@
                     demon.add(arm3);
                 });
             }
-
-
-            // children[10,11]: Legs
             const legGeo = new THREE.CylinderGeometry(0.25, 0.1, 3.6, 6);
             [-0.32, 0.32].forEach((lx, li) => {
                 const leg = new THREE.Mesh(legGeo, clothMat);
@@ -4397,6 +4397,7 @@
                 part.userData.baseY = part.position.y;
                 part.userData.baseZ = part.position.z;
             });
+            demon.userData.faceAnimatedParts = faceAnimatedParts;
 
             return {
                 mesh: demon,
@@ -4714,23 +4715,12 @@
                     zp.z += (sepZ / sepLen) * capped * delta; // MODIFIED: apply capped separation
                 }
 
-                // children[0]: Torso
-                // children[1]: Neck
-                // children[2]: Head 
-                // children[3,4]: Red glowing eyes
-                // children[5]: Exposed jaw (animated)
-                // children[6,7,8,9]: Arms + hands (animated)
-                // children[10,11]: Legs
-
                 // ── Idle animation: super-fast menacing head shift ──
                 const phase = now * 90 + z.animPhase; // fast oscillation
-                [2,3,4,5].forEach(i => {
-                    const part = z.mesh.children[i];
-                    if (part) {
-                        const baseX = part.userData.baseX; // part's original X position
-                        const shiftAmount = 0.06; // how far it slides left-right
-                        part.position.x = baseX + Math.sin(phase) * shiftAmount;
-                    }
+                z.mesh.userData.faceAnimatedParts.forEach(part => {
+                    const baseX = part.userData.baseX; // part's original X position
+                    const shiftAmount = 0.06; // how far it slides left-right
+                    part.position.x = baseX + Math.sin(phase) * shiftAmount;
                 });
 
                 // ── Hit player when in 3D range ──
