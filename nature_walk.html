@@ -2409,16 +2409,7 @@
                 });
 
                 const tableWorld = localToWorldXZ(placement.x, placement.z, 0, -2, placement.rotation);
-                addSolidWallRect(
-                    tableWorld.x,
-                    tableWorld.z,
-                    1.5,
-                    1.0,
-                    groundY,
-                    groundY + 2.2,
-                    placement.rotation,
-                    { isEnclosed: true, bulletPass: true }
-                );
+                // Treat house tables like simple climbable primitives: tabletop only, no separate wall blocker.
                 addStructureBox(
                     tableWorld.x,
                     tableWorld.z,
