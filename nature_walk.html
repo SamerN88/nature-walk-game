@@ -600,9 +600,11 @@
 
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script>
-        // Dev mode: spawns both gems within 60 units of origin for easy testing
-        const DEBUG_GEMS = true;
-        const DEBUG_COLLISIONS = false;
+        // Debug modes (for easy testing)
+        const DEBUG_GEMS = true;  // makes gems spawn very close to origin
+        const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
+        const DEBUG_CHEST = true;  // for quick access to chest
+        const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -748,7 +750,7 @@
         const AK47_BEAM_MAX_VISUAL_RANGE = 900;
         const AK47_BEAM_MIN_VISUAL_RANGE = 80;
         const AK47_BEAM_COLOR = 0xffe438;
-        const BIRD_KILLS_FOR_AK47 = 2; //DEBUG - change this for testing without needing 50 bird kills
+        const BIRD_KILLS_FOR_AK47 = 50;
 
         function init() {
             // Scene
@@ -2466,8 +2468,8 @@
 
                 const chestAk47Model = createAK47Mesh(0.92);
                 akChestGun = chestAk47Model.mesh;
-                akChestGun.position.set(0.42, chestBaseH * 0.9, 0.18);
-                akChestGun.rotation.set(-0.08, Math.PI * 0.28, 0.02);
+                akChestGun.position.set(0.15, chestBaseH + 0.08, 0.02);
+                akChestGun.rotation.set(0, -Math.PI / 2, Math.PI / 2);
                 akChestGun.visible = false;
                 chest.add(akChestGun);
 
@@ -2485,22 +2487,12 @@
                     halfD: chestD / 2
                 };
 
-                addSolidWallRect(
-                    chestWorld.x,
-                    chestWorld.z,
-                    chestW / 2,
-                    chestD / 2,
-                    groundY,
-                    groundY + chestBaseH + chestLidH,
-                    placement.rotation,
-                    { isEnclosed: true }
-                );
                 addStructureBox(
                     chestWorld.x,
                     chestWorld.z,
-                    groundY + chestBaseH,
+                    groundY,
                     chestW,
-                    chestLidH,
+                    chestBaseH + 0.12,
                     chestD,
                     placement.rotation
                 );
@@ -3694,7 +3686,9 @@
             dragon.visible = false;
             scene.add(dragon);
 
-            triggerDemonApocalypse(); //DEBUG - uncomment this for quick dev access to demon apocalypse
+            if (DEBUG_APOCALYPSE) {
+                triggerDemonApocalypse();
+            }
         }
 
         function updateDragonGem(delta, time) {
@@ -4110,7 +4104,7 @@
         //  DEMON APOCALYPSE SYSTEM
         // ─────────────────────────────────────────────────────────────
 
-        const DEMON_SPAWN_COUNT = 1; //DEBUG - originally 150, change it to examine demons more closely
+        const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
         const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 
         function createDemon(biasedSpeed = false) {
@@ -4876,7 +4870,7 @@
             if (perp > 2.2) return false;
 
             if (!akChest.opened) {
-                if (killBreakdown.bird >= BIRD_KILLS_FOR_AK47) {
+                if (DEBUG_CHEST || killBreakdown.bird >= BIRD_KILLS_FOR_AK47) {
                     akChest.opened = true;
                     akChest.lidPivot.rotation.x = -Math.PI * 0.65;
                     updateAK47VisualState();
