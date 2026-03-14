@@ -605,6 +605,7 @@
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = true;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
+        const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -801,6 +802,10 @@
             createSecretGem();
             createDragonGem();
             createDragon();
+            if (DEBUG_AK47) {
+                ak47Collected = true;
+                ak47Equipped = true;
+            }
             updateAK47VisualState();
             updateStats();
             updateMenuPanels();
