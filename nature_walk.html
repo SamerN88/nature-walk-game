@@ -3497,7 +3497,7 @@
             gemGroup.add(outerGlow);
 
             // Point light for the gem
-            const gemLight = new THREE.PointLight(0x00FFFF, 2, 15);
+            const gemLight = new THREE.PointLight(0x00FFFF, 0, 20); // set intensity to 0 but it immediately gets overridden in updateGem
             gemLight.position.y = 0;
             gemGroup.add(gemLight);
 
@@ -3578,7 +3578,7 @@
             gemGroup.add(outerGlow);
 
             // Point light
-            const gemLight = new THREE.PointLight(0xFF0000, 2, 15);
+            const gemLight = new THREE.PointLight(0xFF0000, 0, 20); // set intensity to 0 but it immediately gets overridden in updateDragonGem
             gemGroup.add(gemLight);
 
             // Place at random location (different from blue gem)
@@ -3781,9 +3781,9 @@
             dragonGem.mesh.position.y = dragonGem.baseY + Math.sin(time * dragonGem.bobSpeed) * dragonGem.bobAmount;
 
             // Pulsing glow
-            const pulse = 0.15 + Math.sin(time * 4) * 0.1;
+            const pulse = 0.3 + Math.sin(time * 3) * 0.2;
             dragonGem.mesh.children[2].material.opacity = pulse;
-            dragonGem.mesh.children[3].intensity = 1.5 + Math.sin(time * 5) * 0.8;
+            dragonGem.mesh.children[3].intensity = 10 + 3*Math.sin(time * 3);
 
             // Check collision with player
             const dx = player.position.x - dragonGem.x;
@@ -4115,7 +4115,7 @@
             // Pulsing glow effect
             const pulse = 0.3 + Math.sin(time * 3) * 0.2;
             secretGem.mesh.children[2].material.opacity = pulse;
-            secretGem.mesh.children[3].intensity = 1.5 + Math.sin(time * 4) * 0.5;
+            secretGem.mesh.children[3].intensity = 5 + 3*Math.sin(time * 3);
 
             // Check collision with player
             const dx = player.position.x - secretGem.x;
@@ -5824,8 +5824,8 @@
             cap.position.y = 8;
             group.add(cap);
 
-            // Red point light
-            const pLight = new THREE.PointLight(0xFF0000, 3, 30);
+            // Cap glow light
+            const pLight = new THREE.PointLight(0xFF0000, 5, 1);
             pLight.position.y = 8;
             group.add(pLight);
 
@@ -5837,6 +5837,8 @@
                 const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), crystalMat.clone());
                 const a = (i / 3) * Math.PI * 2;
                 c.position.set(Math.cos(a) * 2.5, crystalHeights[i], Math.sin(a) * 2.5);
+                const crystalLight = new THREE.PointLight(0xFF2200, 10, 50);
+                c.add(crystalLight);
                 group.add(c);
                 crystals.push(c);
             }
