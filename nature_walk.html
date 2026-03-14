@@ -598,7 +598,7 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="vendor/three.min.js"></script>
     <script>
         // Debug modes (for easy testing)
         const DEBUG_GEMS = true;  // makes gems spawn very close to origin
@@ -3552,6 +3552,7 @@
 
         function createDragon() {
             dragon = new THREE.Group();
+            const wings = [];
 
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
             const redMaterial = new THREE.MeshLambertMaterial({ color: 0x8B0000 });
@@ -3607,16 +3608,32 @@
                     redMaterial
                 );
                 horn.position.set(10, 6.5, side * 1);
-                horn.rotation.z = side * 0.3;
+                horn.rotation.z = 0.3;
                 dragon.add(horn);
             });
 
             // Wings
             [-1, 1].forEach(side => {
                 const wing = new THREE.Group();
+                const wingBoneLength = 7.6;
+                const wingBoneRotY = side * 1;
+                const wingBoneRotZ = Math.PI / 2.1;
+                const wingBoneCenter = new THREE.Vector3(2.2, 2.4, side * 4.7);
+                const wingRoot = wingBoneCenter.clone().sub(
+                    new THREE.Vector3(0, wingBoneLength / 2, 0).applyEuler(
+                        new THREE.Euler(0, wingBoneRotY, wingBoneRotZ)
+                    )
+                );
+                wing.position.copy(wingRoot);
+
+                const wingMembraneShape = new THREE.Shape();
+                wingMembraneShape.moveTo(4, 4);
+                wingMembraneShape.lineTo(4, -4);
+                wingMembraneShape.lineTo(-8, 0);
+                wingMembraneShape.closePath();
 
                 const wingMembrane = new THREE.Mesh(
-                    new THREE.PlaneGeometry(12, 8),
+                    new THREE.ShapeGeometry(wingMembraneShape),
                     new THREE.MeshLambertMaterial({
                         color: 0x2a0a0a,
                         side: THREE.DoubleSide,
@@ -3624,40 +3641,48 @@
                         opacity: 0.9
                     })
                 );
-                wingMembrane.position.set(-2, 3, side * 8);
+                wingMembrane.position.set(-2, 3, side * 8).sub(wingRoot);
                 wingMembrane.rotation.x = side * 0.3;
                 wing.add(wingMembrane);
 
+                const wingBonePivot = new THREE.Group();
+                wingBonePivot.rotation.z = wingBoneRotZ;
+                wingBonePivot.rotation.y = wingBoneRotY;
+
                 const wingBone = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.3, 0.15, 10, 6),
+                    new THREE.CylinderGeometry(0.45, 0.3, wingBoneLength, 6),
                     bodyMaterial
                 );
-                wingBone.position.set(-2, 3, side * 4);
-                wingBone.rotation.z = Math.PI / 2;
-                wingBone.rotation.y = side * 0.4;
-                wing.add(wingBone);
+                wingBone.position.y = wingBoneLength / 2;
+                wingBonePivot.add(wingBone);
+                wing.add(wingBonePivot);
 
                 dragon.add(wing);
+                wings.push(wing);
             });
 
             // Tail
+            const tailPivot = new THREE.Group();
+            tailPivot.position.set(-5, 0, 0);
+            dragon.add(tailPivot);
+
             const tail = new THREE.Mesh(
                 new THREE.ConeGeometry(2, 12, 8),
                 bodyMaterial
             );
-            tail.position.set(-11, 0, 0);
+            tail.position.set(-6, 0, 0);
             tail.rotation.z = Math.PI / 2;
-            dragon.add(tail);
+            tailPivot.add(tail);
 
             // Tail spikes
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 3; i++) {
                 const spike = new THREE.Mesh(
                     new THREE.ConeGeometry(0.3, 1.5, 4),
                     redMaterial
                 );
-                spike.position.set(-7 - i * 2, 1.5, 0);
-                spike.rotation.z = -Math.PI / 4;
-                dragon.add(spike);
+                spike.position.set(-3.2 - i * 2.7, 1.45 - i * 0.35, 0);
+                spike.rotation.z = Math.PI / 4;
+                tailPivot.add(spike);
             }
 
             // Legs
@@ -3675,7 +3700,7 @@
                         new THREE.ConeGeometry(0.2, 0.8, 4),
                         redMaterial
                     );
-                    claw.position.set(pos[0] + (c - 1) * 0.4, -5.5, pos[1] * 2);
+                    claw.position.set(pos[0] + (c - 1) * 0.5, -5.5, pos[1] * 2.35);
                     claw.rotation.x = Math.PI;
                     dragon.add(claw);
                 }
@@ -3684,8 +3709,11 @@
             // Start high in sky, will descend
             dragon.position.set(player.position.x, 200, player.position.z);
             dragon.visible = false;
+            dragon.userData.wings = wings;
+            dragon.userData.tailPivot = tailPivot;
             scene.add(dragon);
 
+            // Just for debugging; trigger the apocalypse immediately when the dragon is created
             if (DEBUG_APOCALYPSE) {
                 triggerDemonApocalypse();
             }
@@ -3829,11 +3857,13 @@
             // Wing animation
             if (dragon.visible) {
                 const wingFlap = Math.sin(performance.now() / 200) * 0.3;
-                dragon.children.forEach((child, i) => {
-                    if (i === 10 || i === 11) {
-                        child.rotation.z = wingFlap;
-                    }
+                const tailSwing = Math.sin(performance.now() / 350) * 0.22;
+                (dragon.userData.wings || []).forEach(wing => {
+                    wing.rotation.z = wingFlap;
                 });
+                if (dragon.userData.tailPivot) {
+                    dragon.userData.tailPivot.rotation.y = tailSwing;
+                }
             }
         }
 
@@ -4104,7 +4134,7 @@
         //  DEMON APOCALYPSE SYSTEM
         // ─────────────────────────────────────────────────────────────
 
-        const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
+        const DEMON_SPAWN_COUNT = 1; //DEBUG - originally 150, change it to examine demons more closely
         const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 
         function createDemon(biasedSpeed = false) {
