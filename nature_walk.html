@@ -1682,6 +1682,60 @@
             return wall.minY === undefined || (y >= wall.minY && y <= wall.maxY);
         }
 
+        function getCircularWallSurfaceDistance(position, radius, wall) {
+            const rotation = wall.rotation || 0;
+            const local = worldToLocalXZ(position.x, position.z, wall.x, wall.z, rotation);
+            const limitX = wall.halfW + radius;
+            const limitZ = wall.halfD + radius;
+            const outsideX = Math.max(0, Math.abs(local.x) - limitX);
+            const outsideZ = Math.max(0, Math.abs(local.z) - limitZ);
+
+            if (outsideX > 0 || outsideZ > 0) {
+                return Math.hypot(outsideX, outsideZ);
+            }
+
+            return Math.min(limitX - Math.abs(local.x), limitZ - Math.abs(local.z));
+        }
+
+        function isDemonNearWallPhaseMargin(position, y, radius, wall, epsilon) {
+            if (!isWallActiveForY(wall, y)) return false;
+            return getCircularWallSurfaceDistance(position, radius, wall) <= epsilon;
+        }
+
+        function updateDemonWallPhaseState(demon, position, y, radius, delta, farFromPlayer) {
+            const epsilon = 0.45;
+            const phaseDelay = 3;
+            const trackedWall = demon.wallPhaseWall;
+
+            if (trackedWall) {
+                const trackedWallActive = !(farFromPlayer && trackedWall.isEnclosed);
+                if (!trackedWallActive || !isDemonNearWallPhaseMargin(position, y, radius, trackedWall, epsilon)) {
+                    demon.wallPhaseWall = null;
+                    demon.wallPhaseTimer = 0;
+                    demon.wallPhaseActive = false;
+                }
+            }
+
+            if (!demon.wallPhaseWall) {
+                for (const wall of solidWalls) {
+                    if (farFromPlayer && wall.isEnclosed) continue;
+                    if (!isDemonNearWallPhaseMargin(position, y, radius, wall, epsilon)) continue;
+
+                    demon.wallPhaseWall = wall;
+                    demon.wallPhaseTimer = 0;
+                    demon.wallPhaseActive = false;
+                    break;
+                }
+            }
+
+            if (!demon.wallPhaseWall) return;
+
+            demon.wallPhaseTimer += delta;
+            if (demon.wallPhaseTimer >= phaseDelay) {
+                demon.wallPhaseActive = true;
+            }
+        }
+
         function resolvePlayerWallOverlaps(radius, resolvePasses = 3, previousPosition = null) {
             let blockedX = false;
             let blockedZ = false;
@@ -4355,7 +4409,10 @@
                 gunHitRadius: 4.6,
                 lungeProgress: 0,
                 lunging: false,
-                animPhase: Math.random() * Math.PI * 2  // randomise animation start
+                animPhase: Math.random() * Math.PI * 2,  // randomise animation start
+                wallPhaseTimer: 0,
+                wallPhaseWall: null,
+                wallPhaseActive: false
             };
         }
 
@@ -4618,6 +4675,7 @@
                 const farFromPlayer = distXZ >= 50;
                 for (const wall of solidWalls) {
                     if (farFromPlayer && wall.isEnclosed) continue;
+                    if (z.wallPhaseActive && z.wallPhaseWall === wall) continue;
                     if (wall.minY !== undefined && (zp.y < wall.minY || zp.y > wall.maxY)) continue;
                     const push = resolveCircularWallCollision(zp, demonRadius, wall, previousXZ);
                     if (push) {
@@ -4625,6 +4683,8 @@
                         zp.z += push.z;
                     }
                 }
+
+                updateDemonWallPhaseState(z, zp, zp.y, demonRadius, delta, farFromPlayer);
 
                 // ── Separation: accumulate and clamp so demons don't slingshot each other ──
                 const SEPARATION_STRENGTH = 10; // MODIFIED: fixed separation tuning
