@@ -486,7 +486,7 @@
     </div>
     <div id="campfire-shield">
         <strong>🔥 CAMPFIRE SHIELD 🔥</strong><br>
-        50% less damage &nbsp; &bull; &nbsp; 6x health regen
+        50% less damage &nbsp; &bull; &nbsp; Fast health regen
         <div id="campfire-linger-wrap" style="display:none; margin-top:7px; align-items:center; justify-content:center; gap:7px;">
             <svg id="campfire-timer-svg" viewBox="0 0 36 36" width="36" height="36" style="filter:drop-shadow(0 0 5px #ff8800);">
                 <!-- track -->
@@ -1627,20 +1627,42 @@
             addEnclosedBoundRect(world.x, world.z, halfW, halfD, rotation);
         }
 
-        function resolveCircularWallCollision(position, radius, wall) {
-            const local = worldToLocalXZ(position.x, position.z, wall.x, wall.z, wall.rotation || 0);
-            const overlapX = (wall.halfW + radius) - Math.abs(local.x);
-            const overlapZ = (wall.halfD + radius) - Math.abs(local.z);
+        function getCollisionPushSign(currentCoord, previousCoord, limit) {
+            if (previousCoord !== null && previousCoord !== undefined && Math.abs(previousCoord) > limit + 1e-5) {
+                return previousCoord >= 0 ? 1 : -1;
+            }
+
+            if (Math.abs(currentCoord) > 1e-5) {
+                return currentCoord >= 0 ? 1 : -1;
+            }
+
+            if (previousCoord !== null && previousCoord !== undefined && Math.abs(previousCoord) > 1e-5) {
+                return previousCoord >= 0 ? 1 : -1;
+            }
+
+            return 1;
+        }
+
+        function resolveCircularWallCollision(position, radius, wall, previousPosition = null) {
+            const rotation = wall.rotation || 0;
+            const local = worldToLocalXZ(position.x, position.z, wall.x, wall.z, rotation);
+            const previousLocal = previousPosition
+                ? worldToLocalXZ(previousPosition.x, previousPosition.z, wall.x, wall.z, rotation)
+                : null;
+            const limitX = wall.halfW + radius;
+            const limitZ = wall.halfD + radius;
+            const overlapX = limitX - Math.abs(local.x);
+            const overlapZ = limitZ - Math.abs(local.z);
 
             if (overlapX <= 0 || overlapZ <= 0) return null;
 
             if (overlapX < overlapZ) {
-                const pushX = overlapX * (local.x >= 0 ? 1 : -1);
-                return rotateXZ(pushX, 0, wall.rotation || 0);
+                const pushX = overlapX * getCollisionPushSign(local.x, previousLocal?.x, limitX);
+                return rotateXZ(pushX, 0, rotation);
             }
 
-            const pushZ = overlapZ * (local.z >= 0 ? 1 : -1);
-            return rotateXZ(0, pushZ, wall.rotation || 0);
+            const pushZ = overlapZ * getCollisionPushSign(local.z, previousLocal?.z, limitZ);
+            return rotateXZ(0, pushZ, rotation);
         }
 
         function clampPlayerToWorldBounds() {
@@ -1658,16 +1680,17 @@
             return wall.minY === undefined || (y >= wall.minY && y <= wall.maxY);
         }
 
-        function resolvePlayerWallOverlaps(radius, resolvePasses = 3) {
+        function resolvePlayerWallOverlaps(radius, resolvePasses = 3, previousPosition = null) {
             let blockedX = false;
             let blockedZ = false;
 
             for (let pass = 0; pass < resolvePasses; pass++) {
                 let hadOverlap = false;
+                const passPreviousPosition = pass === 0 ? previousPosition : null;
 
                 for (const wall of solidWalls) {
                     if (!isWallActiveForY(wall, player.position.y)) continue;
-                    const push = resolveCircularWallCollision(player.position, radius, wall);
+                    const push = resolveCircularWallCollision(player.position, radius, wall, passPreviousPosition);
                     if (!push) continue;
 
                     player.position.x += push.x;
@@ -1695,9 +1718,10 @@
         function movePlayerAxisWithCollisions(axis, amount, radius) {
             if (Math.abs(amount) <= 1e-8) return false;
 
+            const previousPosition = { x: player.position.x, z: player.position.z };
             player.position[axis] += amount;
             const bounded = clampPlayerToWorldBounds();
-            const overlaps = resolvePlayerWallOverlaps(radius);
+            const overlaps = resolvePlayerWallOverlaps(radius, 3, previousPosition);
 
             return axis === 'x'
                 ? (bounded.hitX || overlaps.blockedX)
@@ -4102,8 +4126,8 @@
             const demon = new THREE.Group();
             const skinMat  = new THREE.MeshLambertMaterial({ color: 0x220000 });
             const darkMat  = new THREE.MeshLambertMaterial({ color: 0x220000 });
-            const clothMat = new THREE.MeshLambertMaterial({ color: 0x2e1e0e });
-            const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+            const clothMat = new THREE.MeshLambertMaterial({ color: 0x220000 }); // used to be 0x2e1e0e
+            const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xff0000 });
             const boneMat  = new THREE.MeshLambertMaterial({ color: 0xc8b88a });
 
             // children[0]: Torso
@@ -4558,6 +4582,7 @@
                 const dz = targetPos.z - zp.z;
                 const distXZ  = Math.sqrt(dx * dx + dz * dz);
                 const dist3D  = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                const previousXZ = { x: zp.x, z: zp.z };
 
                 // Face player
                 if (distXZ > 0.01) z.mesh.rotation.y = Math.atan2(dx, dz);
@@ -4579,7 +4604,7 @@
                 for (const wall of solidWalls) {
                     if (farFromPlayer && wall.isEnclosed) continue;
                     if (wall.minY !== undefined && (zp.y < wall.minY || zp.y > wall.maxY)) continue;
-                    const push = resolveCircularWallCollision(zp, demonRadius, wall);
+                    const push = resolveCircularWallCollision(zp, demonRadius, wall, previousXZ);
                     if (push) {
                         zp.x += push.x;
                         zp.z += push.z;
@@ -4658,7 +4683,7 @@
             }
 
             const HEALTH_REGEN_RATE = 5;
-            const CAMPFIRE_HEALTH_REGEN_RATE = 6 * HEALTH_REGEN_RATE
+            const CAMPFIRE_HEALTH_REGEN_RATE = 5 * HEALTH_REGEN_RATE
             // Passive health regen
             if (!playerDead) {
                 const regenRate = nearCampfireFlag ? CAMPFIRE_HEALTH_REGEN_RATE : HEALTH_REGEN_RATE;
@@ -5793,7 +5818,7 @@
         function startDemonRound(roundNumber) {
             // Demons per round: 50, 100, 200, 300, 400, 500, ...
             currentRound       = roundNumber;
-            roundDemonsTotal   = roundNumber;//getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
+            roundDemonsTotal   = getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
             roundDemonsSpawned = 0;
             roundSpawnTimer    = 0;
             roundBetweenActive = false;
