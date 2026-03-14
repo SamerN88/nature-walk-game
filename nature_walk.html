@@ -460,7 +460,7 @@
 <body>
     <div id="start-screen">
         <h1>Nature Walk</h1>
-        <p>A peaceful exploration experience</p>
+        <p>A peaceful experience</p>
         <button id="start-btn">Start</button>
         <div id="start-menu-hint">Press M to toggle menu in game</div>
     </div>
@@ -634,6 +634,9 @@
         let cameraHeight = 4;
         let cameraPitch = 0;
         let cameraYaw = 0;
+        const CAMERA_OCCLUSION_BUFFER = 0.35;
+        const CAMERA_OCCLUSION_MIN_DISTANCE = 1.5;
+        const cameraOcclusionRaycaster = new THREE.Raycaster();
 
         // Environment
         let sun, ambientLight;
@@ -1088,6 +1091,7 @@
 
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
+            ground.userData.ignoreCameraOcclusion = true;
             ground.receiveShadow = true;
             scene.add(ground);
             groundMesh = ground;
@@ -1098,6 +1102,7 @@
             const path = new THREE.Mesh(pathGeometry, pathMaterial);
             path.rotation.x = -Math.PI / 2;
             path.position.y = 0.05;
+            path.userData.ignoreCameraOcclusion = true;
             path.receiveShadow = true;
             scene.add(path);
         }
@@ -1165,6 +1170,7 @@
 
         function createTree(x, z, scale = 1) {
             const tree = new THREE.Group();
+            tree.userData.ignoreCameraOcclusion = true;
 
             // Trunk
             const trunkGeometry = new THREE.CylinderGeometry(0.3 * scale, 0.5 * scale, 3 * scale, 8);
@@ -1250,6 +1256,7 @@
                 const z = (Math.random() - 0.5) * WORLD_SIZE;
 
                 const flower = new THREE.Group();
+                flower.userData.ignoreCameraOcclusion = true;
 
                 // Stem
                 const stemGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.3, 4);
@@ -1282,6 +1289,7 @@
                 const z = (Math.random() - 0.5) * WORLD_SIZE * 1.5;
 
                 const grass = new THREE.Group();
+                grass.userData.ignoreCameraOcclusion = true;
 
                 for (let j = 0; j < 3; j++) {
                     const blade = new THREE.Mesh(
@@ -2609,6 +2617,7 @@
                     floorMaterial
                 );
                 floor.position.y = 0.25;
+                floor.userData.ignoreCameraOcclusion = true;
                 house.add(floor);
 
                 // Back wall
@@ -2792,6 +2801,7 @@
                 );
                 caveFloor.rotation.x = -Math.PI / 2;
                 caveFloor.position.set(0, 0.1, -cD / 2);
+                caveFloor.userData.ignoreCameraOcclusion = true;
                 cave.add(caveFloor);
 
                 for (let r = 0; r < 5; r++) {
@@ -2921,6 +2931,7 @@
                 );
                 tentFloor.rotation.x = -Math.PI / 2;
                 tentFloor.position.y = 0.05;
+                tentFloor.userData.ignoreCameraOcclusion = true;
                 tent.add(tentFloor);
 
                 // Bedroll inside
@@ -3162,6 +3173,7 @@
 
         function createDeer() {
             const deer = new THREE.Group();
+            deer.userData.ignoreCameraOcclusion = true;
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
             const legMaterial = new THREE.MeshLambertMaterial({ color: 0x6B4912 });
 
@@ -3255,6 +3267,7 @@
 
         function createRabbit() {
             const rabbit = new THREE.Group();
+            rabbit.userData.ignoreCameraOcclusion = true;
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xAAAAAA });
             const innerEarMaterial = new THREE.MeshLambertMaterial({ color: 0xFFCCCC });
 
@@ -3319,6 +3332,7 @@
 
         function createBird(birdScale = 1) {
             const bird = new THREE.Group();
+            bird.userData.ignoreCameraOcclusion = true;
             const bodyColor = [0x4444FF, 0xFF4444, 0xFFFF00, 0x44FF44, 0xFF8800][Math.floor(Math.random() * 5)];
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: bodyColor });
             const wings = [];
@@ -3399,6 +3413,7 @@
 
         function createHuman() {
             const human = new THREE.Group();
+            human.userData.ignoreCameraOcclusion = true;
             const skinColor = [0xFFDBAC, 0xD2A06F, 0x8D5524, 0xC68642][Math.floor(Math.random() * 4)];
             const clothesColor = [0x3366CC, 0xCC3333, 0x33AA33, 0x9933CC, 0xCC9933][Math.floor(Math.random() * 5)];
             const skinMaterial = new THREE.MeshLambertMaterial({ color: skinColor });
@@ -3486,6 +3501,7 @@
 
         function createSecretGem() {
             const gemGroup = new THREE.Group();
+            gemGroup.userData.ignoreCameraOcclusion = true;
 
             // Main gem crystal
             const gemGeometry = new THREE.OctahedronGeometry(0.8, 0);
@@ -3557,6 +3573,7 @@
 
         function createDragonGem() {
             const gemGroup = new THREE.Group();
+            gemGroup.userData.ignoreCameraOcclusion = true;
 
             // Main gem crystal - red and black
             const gemGeometry = new THREE.OctahedronGeometry(0.8, 0);
@@ -3636,6 +3653,7 @@
 
         function createDragon() {
             dragon = new THREE.Group();
+            dragon.userData.ignoreCameraOcclusion = true;
             const wings = [];
 
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
@@ -4163,6 +4181,7 @@
 
             // Visual feedback - gem explodes into particles
             const particles = new THREE.Group();
+            particles.userData.ignoreCameraOcclusion = true;
             for (let i = 0; i < 30; i++) {
                 const particle = new THREE.Mesh(
                     new THREE.OctahedronGeometry(0.2, 0),
@@ -4221,6 +4240,7 @@
 
         function createDemon(biasedSpeed = false) {
             const demon = new THREE.Group();
+            demon.userData.ignoreCameraOcclusion = true;
             const skinMat  = new THREE.MeshLambertMaterial({ color: 0x220000 });
             const darkMat  = new THREE.MeshLambertMaterial({ color: 0x220000 });
             const clothMat = new THREE.MeshLambertMaterial({ color: 0x220000 }); // used to be 0x2e1e0e
@@ -4470,6 +4490,7 @@
                 if (mountedOnDragon) unmountDragon();
                 const poofPos = dragon.position.clone();
                 const poofGroup = new THREE.Group();
+                poofGroup.userData.ignoreCameraOcclusion = true;
                 for (let i = 0; i < 30; i++) {
                     const p = new THREE.Mesh(
                         new THREE.SphereGeometry(0.4 + Math.random() * 0.8, 5, 5),
@@ -4583,6 +4604,7 @@
             const colors = [0x3d5c2a, 0xff2200, 0x2e1e0e, 0xc8b88a, 0x000000, 0xff6600];
 
             const particles = new THREE.Group();
+            particles.userData.ignoreCameraOcclusion = true;
             // 60 particles, bigger sizes, faster velocities
             for (let i = 0; i < 60; i++) {
                 const size = 0.3 + Math.random() * 0.9;
@@ -4607,6 +4629,7 @@
             const ringGeo = new THREE.RingGeometry(0.2, 1, 20);
             const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
                 color: 0xff2200, transparent: true, opacity: 1, side: THREE.DoubleSide }));
+            ring.userData.ignoreCameraOcclusion = true;
             ring.position.copy(pos).add(new THREE.Vector3(0, 1.5, 0));
             ring.rotation.x = -Math.PI / 2;
             scene.add(ring);
@@ -5154,6 +5177,7 @@
             // Create explosion particles
             const particleCount = 25;
             const particles = new THREE.Group();
+            particles.userData.ignoreCameraOcclusion = true;
 
             // Get colors based on NPC type
             let colors;
@@ -5202,6 +5226,7 @@
                 side: THREE.DoubleSide
             });
             const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.userData.ignoreCameraOcclusion = true;
             ring.position.copy(position);
             ring.position.y += 1;
             ring.rotation.x = -Math.PI / 2;
@@ -5640,6 +5665,39 @@
             return groundedOnRoof;
         }
 
+        function shouldIgnoreCameraOcclusion(object) {
+            for (let current = object; current; current = current.parent) {
+                if (current === player) return true;
+                if (current.userData.ignoreCameraOcclusion || current.userData.isBeam) return true;
+            }
+            return false;
+        }
+
+        function resolveThirdPersonCameraPosition(targetPoint, desiredPosition) {
+            const toCamera = desiredPosition.clone().sub(targetPoint);
+            const desiredDistance = toCamera.length();
+            if (desiredDistance <= 0.001) return desiredPosition;
+
+            toCamera.normalize();
+            cameraOcclusionRaycaster.set(targetPoint, toCamera);
+            cameraOcclusionRaycaster.far = desiredDistance;
+
+            const hit = cameraOcclusionRaycaster.intersectObjects(scene.children, true)
+                .find(result => !shouldIgnoreCameraOcclusion(result.object));
+
+            if (!hit) return desiredPosition;
+
+            const safeDistance = Math.max(
+                CAMERA_OCCLUSION_MIN_DISTANCE,
+                hit.distance - CAMERA_OCCLUSION_BUFFER
+            );
+
+            return targetPoint.clone().addScaledVector(
+                toCamera,
+                Math.min(desiredDistance, safeDistance)
+            );
+        }
+
         const WALK_SPEED = 20;
         const RUN_SPEED = WALK_SPEED*2;
         const ACCEL = 14;  // MODIFIED: accel controls how quickly you reach full speed while holding movement
@@ -5760,11 +5818,13 @@
                     -Math.cos(cameraYaw) * cameraDistance * pitchCos
                 );
 
-                camera.position.copy(player.position).add(cameraOffset);
-                camera.position.y += 2;
-
                 const lookTarget = player.position.clone();
                 lookTarget.y += 4.25;
+
+                const desiredCameraPosition = player.position.clone().add(cameraOffset);
+                desiredCameraPosition.y += 2;
+                scene.updateMatrixWorld();
+                camera.position.copy(resolveThirdPersonCameraPosition(lookTarget, desiredCameraPosition));
                 camera.lookAt(lookTarget);
             }
 
@@ -5965,6 +6025,7 @@
                 if (mountedOnDragon) unmountDragon();
                 const poofPos = dragon.position.clone();
                 const poofGroup = new THREE.Group();
+                poofGroup.userData.ignoreCameraOcclusion = true;
                 for (let i = 0; i < 30; i++) {
                     const p = new THREE.Mesh(
                         new THREE.SphereGeometry(0.4 + Math.random() * 0.8, 5, 5),
