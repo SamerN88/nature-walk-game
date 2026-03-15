@@ -618,6 +618,7 @@
         const DEBUG_CHEST = true;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
         const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
+        const DEBUG_DISTANCE = true;  // spawns a single large red stake 250 units from origin along +X
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -832,14 +833,11 @@
             createClimbableStructures();
             createEnterableStructures();
             createCollisionDebugVisuals();
+            createDistanceDebugStake();
             createNPCs();
             createSecretGem();
             createDragonGem();
             createDragon();
-            if (DEBUG_AK47) {
-                ak47Collected = true;
-                ak47Equipped = true;
-            }
             updateAK47VisualState();
             updateStats();
             updateMenuPanels();
@@ -932,6 +930,11 @@
         }
 
         function updateAK47VisualState() {
+            if (DEBUG_AK47) {
+                ak47Collected = true;
+                ak47Equipped = true;
+            }
+
             if (akChest && akChest.gunMesh) {
                 akChest.gunMesh.visible = !!(akChest.opened && !akChest.collected);
             } else if (akChestGun) {
@@ -2056,6 +2059,25 @@
                 mesh.rotation.y = roof.rotation || 0;
                 addDebugMesh(mesh);
             }
+        }
+
+        function createDistanceDebugStake() {
+            if (!DEBUG_DISTANCE) return;
+
+            const DISTANCE = 200;
+
+            const x = 0;
+            const z = DISTANCE;
+            const baseY = getGroundHeight(x, z);
+
+            const stakeHeight = 8.4;
+            const stake = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.75, 1.1, stakeHeight, 12),
+                new THREE.MeshLambertMaterial({ color: 0xff2222 })
+            );
+            stake.position.set(x, baseY + stakeHeight / 2, z);
+            stake.userData.ignoreCameraOcclusion = true;
+            scene.add(stake);
         }
 
         function createMountains() {
