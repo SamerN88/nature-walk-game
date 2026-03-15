@@ -210,6 +210,15 @@
             pointer-events: none;
             z-index: 100;
         }
+        #underwater-tint {
+            position: fixed;
+            inset: 0;
+            background: rgba(36, 103, 168, 0.32);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.03s linear;
+            z-index: 90;
+        }
         #crosshair::before, #crosshair::after {
             content: '';
             position: absolute;
@@ -465,6 +474,7 @@
         <div id="start-menu-hint">Press M to toggle menu in game</div>
     </div>
 
+    <div id="underwater-tint"></div>
     <div id="ui">
         <div id="time-display">
             <div id="time-of-day">Time: 12:00 PM</div>
@@ -600,11 +610,13 @@
 
     <script src="vendor/three.min.js"></script>
     <script>
+        const underwaterTintEl = document.getElementById('underwater-tint');
+
         // Debug modes (for easy testing)
         const DEBUG_GEMS = true;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = true;  // for quick access to chest
-        const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
+        const DEBUG_APOCALYPSE = true;  // for quick access to demon apocalypse
         const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
 
         // Game constants
@@ -3232,6 +3244,27 @@
 
         function isPointInWater(x, z) {
             return !!getWaterBodyAt(x, z);
+        }
+
+        function getWaterVisualRadius(water) {
+            return water.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
+        }
+
+        function isPointInsideWaterCylinder(x, y, z) {
+            for (const water of waterBodies) {
+                const dx = x - water.x;
+                const dz = z - water.z;
+                const radius = getWaterVisualRadius(water);
+                if (dx * dx + dz * dz > radius * radius) continue;
+
+                const cylinderTopY = water.surfaceY + WATER_VISUAL_Y_OFFSET;
+                const cylinderBottomY = water.floorY + WATER_VISUAL_Y_OFFSET;
+                if (y <= cylinderTopY && y >= cylinderBottomY) {
+                    return water;
+                }
+            }
+
+            return null;
         }
 
         function getWaterSurfaceHeight(x, z) {
@@ -5990,6 +6023,11 @@
                 fireAK47();
             }
             updateAK47Effects(delta);
+            underwaterTintEl.style.opacity = isPointInsideWaterCylinder(
+                camera.position.x,
+                camera.position.y,
+                camera.position.z
+            ) ? '1' : '0';
 
             renderer.render(scene, camera);
         }
