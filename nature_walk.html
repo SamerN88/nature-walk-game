@@ -670,6 +670,10 @@
         let terrainHeights = null;
         let groundMesh = null; // terrain mesh, stored for raycasting
         const TERRAIN_SEGS = 200; // must match PlaneGeometry segments
+        const LAKE_CRATER_FLOOR_Y = -22;
+        const POND_CRATER_FLOOR_Y = -16;
+        const WATER_VISUAL_Y_OFFSET = -3;
+        const WATER_VISUAL_RADIUS_BONUS = 5;
 
         // NPCs
         let npcs = [];
@@ -792,7 +796,9 @@
             scene.add(sun);
 
             // Create world
+            planWaterBodies();
             createGround();
+            createWater();
             createPlayer();
             createTrees();
             createRocks();
@@ -801,7 +807,6 @@
             createMountains();
             createClimbableStructures();
             createEnterableStructures();
-            createWater();
             createCollisionDebugVisuals();
             createNPCs();
             createSecretGem();
@@ -1084,8 +1089,8 @@
             for (let i = 0; i < vertices.length; i += 3) {
                 const lx = vertices[i];
                 const ly = vertices[i + 1];
-                const h = Math.sin(lx * 0.02) * Math.cos(ly * 0.02) * 5 +
-                          Math.sin(lx * 0.05) * Math.cos(ly * 0.03) * 2;
+                const baseHeight = getBaseTerrainHeight(lx, -ly);
+                const h = carveTerrainHeightForWater(lx, -ly, baseHeight);
                 vertices[i + 2] = h;
 
                 // Store height in grid indexed by local coords
@@ -1117,6 +1122,65 @@
             path.userData.ignoreCameraOcclusion = true;
             path.receiveShadow = true;
             scene.add(path);
+        }
+
+        function smoothstep01(t) {
+            const clamped = Math.max(0, Math.min(1, t));
+            return clamped * clamped * (3 - 2 * clamped);
+        }
+
+        function getBaseTerrainHeight(worldX, worldZ) {
+            return Math.sin(worldX * 0.02) * Math.cos(worldZ * 0.02) * 5 +
+                   Math.sin(worldX * 0.05) * Math.cos(worldZ * 0.03) * 2;
+        }
+
+        function sampleTerrainRingStats(x, z, radius, samples = 32) {
+            let min = Infinity;
+            let max = -Infinity;
+            let sum = 0;
+
+            for (let i = 0; i < samples; i++) {
+                const angle = (i / samples) * Math.PI * 2;
+                const sampleX = x + Math.cos(angle) * radius;
+                const sampleZ = z + Math.sin(angle) * radius;
+                const h = getBaseTerrainHeight(sampleX, sampleZ);
+                min = Math.min(min, h);
+                max = Math.max(max, h);
+                sum += h;
+            }
+
+            return {
+                min,
+                max,
+                avg: sum / Math.max(1, samples),
+                range: max - min
+            };
+        }
+
+        function carveTerrainHeightForWater(worldX, worldZ, baseHeight) {
+            let carvedHeight = baseHeight;
+
+            for (const water of waterBodies) {
+                const dx = worldX - water.x;
+                const dz = worldZ - water.z;
+                const dist = Math.hypot(dx, dz);
+                if (dist > water.bankOuterRadius) continue;
+
+                let targetHeight;
+                if (dist <= water.floorRadius) {
+                    targetHeight = water.floorY;
+                } else if (dist <= water.radius) {
+                    const t = smoothstep01((dist - water.floorRadius) / (water.radius - water.floorRadius));
+                    targetHeight = water.floorY + (water.surfaceY - water.floorY) * t;
+                } else {
+                    const t = smoothstep01((dist - water.radius) / (water.bankOuterRadius - water.radius));
+                    targetHeight = water.surfaceY + (baseHeight - water.surfaceY) * t;
+                }
+
+                carvedHeight = Math.min(carvedHeight, targetHeight);
+            }
+
+            return carvedHeight;
         }
 
         function createPlayer() {
@@ -1234,6 +1298,7 @@
                 // Don't place trees on the path or too close to spawn
                 if (Math.abs(x) < 5 && Math.abs(z) < 60) continue;
                 if (Math.sqrt(x*x + z*z) < 10) continue;
+                if (isPointInWater(x, z)) continue;
 
                 const scale = 0.7 + Math.random() * 0.6;
                 createTree(x, z, scale);
@@ -1248,6 +1313,7 @@
                 const z = (Math.random() - 0.5) * WORLD_SIZE * 1.5;
 
                 if (Math.sqrt(x*x + z*z) < 5) continue;
+                if (isPointInWater(x, z)) continue;
 
                 const rockGeometry = new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.7, 0);
                 const rock = new THREE.Mesh(rockGeometry, rockMaterial);
@@ -1266,6 +1332,7 @@
             for (let i = 0; i < 1000; i++) {
                 const x = (Math.random() - 0.5) * WORLD_SIZE;
                 const z = (Math.random() - 0.5) * WORLD_SIZE;
+                if (isPointInWater(x, z)) continue;
 
                 const flower = new THREE.Group();
                 flower.userData.ignoreCameraOcclusion = true;
@@ -1299,6 +1366,7 @@
             for (let i = 0; i < 2000; i++) {
                 const x = (Math.random() - 0.5) * WORLD_SIZE * 1.5;
                 const z = (Math.random() - 0.5) * WORLD_SIZE * 1.5;
+                if (isPointInWater(x, z)) continue;
 
                 const grass = new THREE.Group();
                 grass.userData.ignoreCameraOcclusion = true;
@@ -2972,7 +3040,7 @@
             });
         }
 
-        function createWater() {
+        function planWaterBodies() {
             const waterConfigs = [
                 {
                     kind: 'lake',
@@ -3012,6 +3080,7 @@
                 }
             ];
 
+            waterBodies = [];
             waterConfigs.forEach(config => {
                 let placement = null;
                 const flatnessPasses = [config.flatness, config.flatness + 2, Infinity];
@@ -3022,12 +3091,24 @@
                         const point = samplePointInRegion(config.region);
                         const stats = sampleTerrainStats(point.x, point.z, radius, config.kind === 'lake' ? 4 : 3, config.kind === 'lake' ? 14 : 10);
                         if (stats.range > allowedRange) return null;
+                        const edgeStats = sampleTerrainRingStats(point.x, point.z, radius, config.kind === 'lake' ? 48 : 36);
+                        const surfaceY = edgeStats.min - 0.03;
+                        const craterFloorY = config.kind === 'lake' ? LAKE_CRATER_FLOOR_Y : POND_CRATER_FLOOR_Y;
+                        const floorY = Math.min(
+                            surfaceY - (config.kind === 'lake' ? 10 : 6),
+                            craterFloorY
+                        );
                         return {
                             kind: config.kind,
                             x: point.x,
                             z: point.z,
                             radius,
-                            surfaceY: stats.avg + 0.12,
+                            surfaceY,
+                            floorY,
+                            floorRadius: radius * (config.kind === 'lake' ? 0.52 : 0.48),
+                            bankOuterRadius: radius * (config.kind === 'lake' ? 1.08 : 1.12),
+                            segments: config.segments,
+                            opacity: config.opacity,
                             footprint: makePlacementFootprint(point.x, point.z, radius + 18)
                         };
                     }, 260);
@@ -3036,39 +3117,72 @@
 
                 if (!placement) return;
 
-                const water = new THREE.Mesh(
-                    new THREE.CircleGeometry(placement.radius, config.segments),
-                    new THREE.MeshPhongMaterial({
-                        color: placement.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
-                        emissive: 0x10365a,
-                        shininess: 70,
-                        transparent: true,
-                        opacity: config.opacity,
-                        side: THREE.DoubleSide
-                    })
-                );
-                water.rotation.x = -Math.PI / 2;
-                water.position.set(placement.x, placement.surfaceY, placement.z);
-                water.userData.ignoreCameraOcclusion = true;
-                water.receiveShadow = true;
-                scene.add(water);
-
                 waterBodies.push({
                     kind: placement.kind,
                     x: placement.x,
                     z: placement.z,
                     radius: placement.radius,
                     surfaceY: placement.surfaceY,
-                    mesh: water
+                    floorY: placement.floorY,
+                    floorRadius: placement.floorRadius,
+                    bankOuterRadius: placement.bankOuterRadius,
+                    segments: placement.segments,
+                    opacity: placement.opacity,
+                    mesh: null
                 });
+            });
+        }
+
+        function createWater() {
+            waterBodies.forEach(waterBody => {
+                if (waterBody.mesh) return;
+
+                const waterGroup = new THREE.Group();
+                waterGroup.userData.ignoreCameraOcclusion = true;
+                const waterVisualRadius = waterBody.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
+
+                const waterSurface = new THREE.Mesh(
+                    new THREE.CircleGeometry(waterVisualRadius, waterBody.segments),
+                    new THREE.MeshPhongMaterial({
+                        color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
+                        emissive: 0x10365a,
+                        shininess: 70,
+                        transparent: true,
+                        opacity: waterBody.opacity,
+                        side: THREE.DoubleSide
+                    })
+                );
+                waterSurface.rotation.x = -Math.PI / 2;
+                waterSurface.position.y = waterBody.surfaceY;
+                waterSurface.receiveShadow = true;
+                waterGroup.add(waterSurface);
+
+                const waterDepth = Math.max(0.5, waterBody.surfaceY - waterBody.floorY);
+                const waterVolume = new THREE.Mesh(
+                    new THREE.CylinderGeometry(waterVisualRadius, waterVisualRadius, waterDepth, waterBody.segments, 1, true),
+                    new THREE.MeshPhongMaterial({
+                        color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
+                        emissive: 0x10365a,
+                        shininess: 30,
+                        transparent: true,
+                        opacity: Math.max(0.22, waterBody.opacity * 0.52),
+                        side: THREE.DoubleSide
+                    })
+                );
+                waterVolume.position.y = waterBody.surfaceY - waterDepth / 2 + WATER_VISUAL_Y_OFFSET;
+                waterGroup.add(waterVolume);
+
+                waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
+                scene.add(waterGroup);
+
+                waterBody.mesh = waterGroup;
             });
         }
 
         function getGroundHeight(worldX, worldZ) {
             if (!terrainHeights) {
                 // Fallback before terrain is built
-                return Math.sin(worldX * 0.02) * Math.cos(worldZ * 0.02) * 5 +
-                       Math.sin(worldX * 0.05) * Math.cos(worldZ * 0.03) * 2;
+                return getBaseTerrainHeight(worldX, worldZ);
             }
             const n = TERRAIN_SEGS + 1;
 
