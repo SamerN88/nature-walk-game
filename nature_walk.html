@@ -619,7 +619,7 @@
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
-        const DEBUG_SHADOW_MAN = true;  // spawns shadow man immediately at game start
+        const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
 
         // Game constants
@@ -716,11 +716,13 @@
         const SHADOW_MAN_DESPAWN_DISTANCE_BUFFER = 300;
         const SHADOW_MAN_MIN_DESPAWN_DISTANCE = 150;
         const SHADOW_MAN_MAX_DESPAWN_DISTANCE = 250;
+        const SHADOW_MAN_DAY_COLOR = 0x050505;
+        const SHADOW_MAN_NIGHT_COLOR = 0xe0e0e0;
         const SHADOW_MAN_CAMERA_ANGLE_RANGE = THREE.MathUtils.degToRad(50);
-        const SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS = 30 * 1000;  // 60 * 1000
+        const SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS = 30 * 1000;  // 30 * 1000
         const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = 5;  // 5;
-        const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.1;  // 0.01
-        const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;  // 0.10
+        const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.1;  // 0.1
+        const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;  // 0
 
         // NPCs
         let npcs = [];
@@ -2167,8 +2169,10 @@
             const shadowGroup = new THREE.Group();
             shadowGroup.userData.ignoreCameraOcclusion = true;
 
-            const shadowMat = new THREE.MeshLambertMaterial({ color: 0x050505 });
+            const shadowMat = new THREE.MeshLambertMaterial({ color: SHADOW_MAN_DAY_COLOR });
+            const shadowNightMat = new THREE.MeshBasicMaterial({ color: SHADOW_MAN_NIGHT_COLOR });
             const parts = [];
+            const partMeshes = [];
 
             // Torso
             const torso = {
@@ -2192,14 +2196,14 @@
             [-1, 1].forEach(side => {
                 const arm = { 
                     geometry: new THREE.BoxGeometry(0.28, 4.6, 0.28),
-                    position: [side * 1.1, 5.1, 0]
+                    position: [side * 1.2, 5.1, 0]
                 };
                 parts.push(arm);
             });
 
             // Shoulders
             const arm = { 
-                geometry: new THREE.BoxGeometry(2.2, 0.7, 0.28),
+                geometry: new THREE.BoxGeometry(2.4, 0.7, 0.28),
                 position: [0, 7, 0]
             };
             parts.push(arm);
@@ -2221,13 +2225,37 @@
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 shadowGroup.add(mesh);
+                partMeshes.push(mesh);
             });
+            shadowGroup.userData.dayMaterial = shadowMat;
+            shadowGroup.userData.nightMaterial = shadowNightMat;
+            shadowGroup.userData.partMeshes = partMeshes;
+            shadowGroup.userData.usingNightMaterial = false;
 
-            const glow = new THREE.PointLight(0xffdd88, 1.1, 65, 2);
-            glow.position.set(0, 4.8, 0);
-            shadowGroup.add(glow);
+            // const glow = new THREE.PointLight(0xff9900, 20, 20);
+            // glow.position.set(0, 5, 0);
+            // shadowGroup.add(glow);
 
             return shadowGroup;
+        }
+
+        function updateShadowManColor() {
+            if (!shadowMan) return;
+
+            const partMeshes = shadowMan.mesh.userData.partMeshes;
+            const dayMaterial = shadowMan.mesh.userData.dayMaterial;
+            const nightMaterial = shadowMan.mesh.userData.nightMaterial;
+            if (!partMeshes || !dayMaterial || !nightMaterial) return;
+
+            const cycleProgress = gameTime / FULL_CYCLE;
+            const useNightMaterial = cycleProgress >= 0.625;
+            if (shadowMan.mesh.userData.usingNightMaterial === useNightMaterial) return;
+
+            const nextMaterial = useNightMaterial ? nightMaterial : dayMaterial;
+            partMeshes.forEach(mesh => {
+                mesh.material = nextMaterial;
+            });
+            shadowMan.mesh.userData.usingNightMaterial = useNightMaterial;
         }
 
         function spawnShadowManDebugBeacon(x, y, z) {
@@ -2338,6 +2366,7 @@
             }
 
             if (!shadowMan || playerDead) return;
+            updateShadowManColor();
 
             const dx = player.position.x - shadowMan.mesh.position.x;
             const dz = player.position.z - shadowMan.mesh.position.z;
