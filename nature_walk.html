@@ -2294,6 +2294,42 @@
             animateBeaconFade();
         }
 
+        function spawnShrineBeacon(x, y, z) {
+            const beaconHeight = 600;
+            const beacon = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 8, beaconHeight, 18, 1, true),
+                new THREE.MeshBasicMaterial({
+                    color: 0xff0000,
+                    transparent: true,
+                    opacity: 0.65,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                })
+            );
+            beacon.position.set(x, y + beaconHeight / 2, z);
+            beacon.renderOrder = 930;
+            beacon.userData.ignoreCameraOcclusion = true;
+            scene.add(beacon);
+
+            const startTime = performance.now();
+            const durationMs = 3000;
+            const animateBeaconFade = () => {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(1, elapsed / durationMs);
+                beacon.material.opacity = 0.65 * (1 - t);
+
+                if (t < 1) {
+                    requestAnimationFrame(animateBeaconFade);
+                    return;
+                }
+
+                scene.remove(beacon);
+                beacon.geometry.dispose();
+                beacon.material.dispose();
+            };
+            animateBeaconFade();
+        }
+
         function removeShadowMan() {
             if (!shadowMan || DEBUG_FREEZE_SHADOW_MAN) return;
             scene.remove(shadowMan.mesh);
@@ -6727,6 +6763,7 @@
             shrine = group;
             scene.add(shrine);
             shrineActive = true;
+            spawnShrineBeacon(group.position.x, group.position.y, group.position.z);
         }
 
         function showRoundBanner(title, subtitle, titleColor = '#ff2200', subtitleColor = '#ff6644') {
