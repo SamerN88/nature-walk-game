@@ -674,7 +674,7 @@
         const STRUCTURE_WORLD_LIMIT = WORLD_SIZE - 120;
         const MOUNTAIN_EDGE_SAMPLE_COUNT = 50;
         const MOUNTAIN_EXTRA_SINK = 1;
-        const BOULDER_Y_SINK = 5;
+        const BOULDER_Y_SINK = 6;
         const PORTAL_FRAME_Y_SINK = 2;
         const STAIRCASE_Y_SINK = 1;
         const TOWER_Y_SINK = 3;
@@ -697,7 +697,8 @@
         const LAKE_CRATER_FLOOR_Y = -22;
         const POND_CRATER_FLOOR_Y = -16;
         const WATER_VISUAL_Y_OFFSET = -3;
-        const WATER_VISUAL_RADIUS_BONUS = 5;
+        const WATER_VISUAL_EXTRA_BOTTOM_DEPTH = 100;
+        const WATER_VISUAL_RADIUS_BONUS = 20;
         const WATER_SURFACE_STRUCTURE_CLEARANCE = 0.25;
         const PLAYER_WATER_HEIGHT = 2.25;
         const PLAYER_WATER_SURFACE_EMERGENCE = 0.3;
@@ -3495,6 +3496,7 @@
                 waterGroup.add(waterSurface);
 
                 const waterDepth = Math.max(0.5, waterBody.surfaceY - waterBody.floorY);
+                const waterVolumeDepth = waterDepth + WATER_VISUAL_EXTRA_BOTTOM_DEPTH;
                 const waterVolumeMaterial = new THREE.MeshPhongMaterial({
                     color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
                     emissive: 0x10365a,
@@ -3505,10 +3507,10 @@
                     side: THREE.DoubleSide
                 });
                 const waterVolume = new THREE.Mesh(
-                    new THREE.CylinderGeometry(waterVisualRadius, waterVisualRadius, waterDepth, waterBody.segments, 1, true),
+                    new THREE.CylinderGeometry(waterVisualRadius, waterVisualRadius, waterVolumeDepth, waterBody.segments, 1, true),
                     waterVolumeMaterial
                 );
-                waterVolume.position.y = waterBody.surfaceY - waterDepth / 2;
+                waterVolume.position.y = waterBody.surfaceY - waterVolumeDepth / 2;
                 waterGroup.add(waterVolume);
 
                 waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
