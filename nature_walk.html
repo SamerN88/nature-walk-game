@@ -617,8 +617,10 @@
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = true;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
-        const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
-        const DEBUG_DISTANCE = true;  // spawns a single large red stake 250 units from origin along +X
+        const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
+        const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
+        const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start
+        const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -663,6 +665,7 @@
         // Time tracking
         let gameTime = 0;
         let lastTime = performance.now();
+        let gameStartRealTimeMs = performance.now();
 
         // World bounds
         const WORLD_SIZE = 3000;
@@ -699,6 +702,15 @@
         const NPC_WATER_MIN_SUBMERSION = 0.3;
         const NPC_WATER_MAX_SUBMERSION = 0.7;
         const DEMON_WATER_PLAYER_RISE_RANGE = 10;
+        const SHADOW_MAN_MIN_SPAWN_DISTANCE = 300;
+        const SHADOW_MAN_MAX_SPAWN_DISTANCE = 700;
+        const SHADOW_MAN_MIN_DESPAWN_DISTANCE = 150;
+        const SHADOW_MAN_MAX_DESPAWN_DISTANCE = 250;
+        const SHADOW_MAN_CAMERA_ANGLE_RANGE = THREE.MathUtils.degToRad(50);
+        const SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS = 30 * 1000;//60 * 1000
+        const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = 5//5;
+        const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.1;//0.01
+        const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;//0.10
 
         // NPCs
         let npcs = [];
@@ -733,6 +745,9 @@
         let playerDead = false;
         let demons = [];
         let campfirePositions = [];
+        let shadowMan = null;
+        let shadowManLastMinuteChecked = -1;
+        let shadowManPostApocalypseUnlocked = false;
 
         // ── Hell Run system (Demon Rounds) ──────────────────────────────
         let roundKillCount   = 0;       // kills accumulated across all rounds this session
@@ -792,6 +807,10 @@
             scene = new THREE.Scene();
             scene.background = skyColors.day.clone();
             scene.fog = new THREE.Fog(0x87CEEB, 100, 800);
+            gameStartRealTimeMs = performance.now();
+            shadowManLastMinuteChecked = -1;
+            shadowManPostApocalypseUnlocked = false;
+            shadowMan = null;
 
             // Camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -1269,6 +1288,8 @@
 
             player.position.set(0, 0, 0);
             scene.add(player);
+
+            if (DEBUG_SHADOW_MAN) trySpawnShadowMan();
         }
 
         function createTree(x, z, scale = 1) {
@@ -2078,6 +2099,190 @@
             stake.position.set(x, baseY + stakeHeight / 2, z);
             stake.userData.ignoreCameraOcclusion = true;
             scene.add(stake);
+        }
+
+        function createShadowManMesh() {
+            const shadowGroup = new THREE.Group();
+            shadowGroup.userData.ignoreCameraOcclusion = true;
+
+            const shadowMat = new THREE.MeshLambertMaterial({ color: 0x050505 });
+            const parts = [];
+
+            // Torso
+            const torso = {
+                geometry: new THREE.BoxGeometry(1.5, 3.6, 0.7),
+                position: [0, 5.4, 0]
+            };
+            parts.push(torso);
+
+            // Head
+            const head = {
+                // geometry: new THREE.BoxGeometry(0.9, 1.3, 0.9),
+                // position: [0, 8, 0]
+
+                geometry: new THREE.SphereGeometry(0.52, 14, 14),
+                position: [0, 8.1, 0],
+                scale: [0.85, 1.4, 0.85]
+            };
+            parts.push(head);
+
+            // Arms
+            [-1, 1].forEach(side => {
+                const arm = { 
+                    geometry: new THREE.BoxGeometry(0.28, 4.6, 0.28),
+                    position: [side * 1.1, 5.1, 0]
+                };
+                parts.push(arm);
+            });
+
+            // Shoulders
+            const arm = { 
+                geometry: new THREE.BoxGeometry(2.2, 0.7, 0.28),
+                position: [0, 7, 0]
+            };
+            parts.push(arm);
+
+            // Legs
+            [-1, 1].forEach(side => {
+                const leg = {
+                    // geometry: new THREE.BoxGeometry(0.45, 4.6, 0.45),
+                    geometry: new THREE.CylinderGeometry(0.24, 0.15, 4.6),
+                    position: [side * 0.4, 2.3, 0]
+                };
+                parts.push(leg);
+            });
+
+            parts.forEach(part => {
+                const mesh = new THREE.Mesh(part.geometry, shadowMat);
+                mesh.position.set(part.position[0], part.position[1], part.position[2]);
+                if (part.scale) mesh.scale.set(part.scale[0], part.scale[1], part.scale[2]);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                shadowGroup.add(mesh);
+            });
+
+            const glow = new THREE.PointLight(0xffdd88, 1.1, 65, 2);
+            glow.position.set(0, 4.8, 0);
+            shadowGroup.add(glow);
+
+            return shadowGroup;
+        }
+
+        function spawnShadowManDebugBeacon(x, y, z) {
+            const beaconHeight = 600;
+            const beacon = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 8, beaconHeight, 18, 1, true),
+                new THREE.MeshBasicMaterial({
+                    color: 0xff2222,
+                    transparent: true,
+                    opacity: 0.65,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                })
+            );
+            beacon.position.set(x, y + beaconHeight / 2, z);
+            beacon.renderOrder = 930;
+            beacon.userData.ignoreCameraOcclusion = true;
+            scene.add(beacon);
+
+            const startTime = performance.now();
+            const durationMs = 3000;
+            const animateBeaconFade = () => {
+                const elapsed = performance.now() - startTime;
+                const t = Math.min(1, elapsed / durationMs);
+                beacon.material.opacity = 0.65 * (1 - t);
+
+                if (t < 1) {
+                    requestAnimationFrame(animateBeaconFade);
+                    return;
+                }
+
+                scene.remove(beacon);
+                beacon.geometry.dispose();
+                beacon.material.dispose();
+            };
+            animateBeaconFade();
+        }
+
+        function removeShadowMan() {
+            if (!shadowMan || DEBUG_FREEZE_SHADOW_MAN) return;
+            scene.remove(shadowMan.mesh);
+            shadowMan = null;
+        }
+
+        function trySpawnShadowMan() {
+            if (shadowMan || !player) return false;
+
+            const spawnDistance = DEBUG_FREEZE_SHADOW_MAN ? 50 : randRange(SHADOW_MAN_MIN_SPAWN_DISTANCE, SHADOW_MAN_MAX_SPAWN_DISTANCE);
+            const disappearDistance = randRange(SHADOW_MAN_MIN_DESPAWN_DISTANCE, SHADOW_MAN_MAX_DESPAWN_DISTANCE);
+            const baseAngle = cameraYaw;
+            const maxCoord = WORLD_SIZE - 40;
+
+            for (let attempt = 0; attempt < 18; attempt++) {
+                const angle = baseAngle + randRange(-SHADOW_MAN_CAMERA_ANGLE_RANGE, SHADOW_MAN_CAMERA_ANGLE_RANGE);
+                const x = player.position.x + Math.sin(angle) * spawnDistance;
+                const z = player.position.z + Math.cos(angle) * spawnDistance;
+
+                if (Math.abs(x) > maxCoord || Math.abs(z) > maxCoord) continue;
+                if (isPointInWater(x, z)) continue;
+
+                const groundY = getGroundHeight(x, z);
+                const structureY = getStructureHeight(x, z);
+                if (structureY > groundY + 1) continue;
+
+                const mesh = createShadowManMesh();
+                mesh.position.set(x, groundY, z);
+                mesh.rotation.y = Math.atan2(player.position.x - x, player.position.z - z);
+                scene.add(mesh);
+
+                if (DEBUG_SHADOW_MAN) spawnShadowManDebugBeacon(x, groundY, z);
+
+                shadowMan = {
+                    mesh,
+                    spawnDistance,
+                    disappearDistance
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        function updateShadowMan(currentTimeMs) {
+            const elapsedMs = currentTimeMs - gameStartRealTimeMs;
+            const minuteIndex = Math.floor(elapsedMs / SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS);
+
+            if (minuteIndex > shadowManLastMinuteChecked) {
+                for (let minute = shadowManLastMinuteChecked + 1; minute <= minuteIndex; minute++) {
+                    if (minute < SHADOW_MAN_SPAWN_UNLOCK_MINUTE) continue;
+                    if (shadowMan) break;
+
+                    const spawnChance = shadowManPostApocalypseUnlocked
+                        ? SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE
+                        : SHADOW_MAN_BASE_SPAWN_CHANCE;
+
+                    if (Math.random() < spawnChance) {
+                        trySpawnShadowMan();
+                        break;
+                    }
+                }
+                shadowManLastMinuteChecked = minuteIndex;
+            }
+
+            if (!shadowMan || playerDead) return;
+
+            const dx = player.position.x - shadowMan.mesh.position.x;
+            const dz = player.position.z - shadowMan.mesh.position.z;
+            const distXZ = Math.hypot(dx, dz);
+
+            if (distXZ <= shadowMan.disappearDistance) {
+                removeShadowMan();
+                return;
+            }
+
+            if (distXZ > 0.01) {
+                shadowMan.mesh.rotation.y = Math.atan2(dx, dz);
+            }
         }
 
         function createMountains() {
@@ -5142,6 +5347,7 @@
 
         function demonVictory() {
             if (roundMode) { endRound(); return; }
+            shadowManPostApocalypseUnlocked = true;
             demonApocalypse = false;
             updateTopCornerHudVisibility();
             document.getElementById('demon-counter').style.display   = 'none';
@@ -5490,13 +5696,17 @@
             // Also check demons
             let hitDemon = null, hitZIdx = -1;
             let minZProj = Infinity;
+            const demonPunchPoint = new THREE.Vector3();
             for (let i = 0; i < demons.length; i++) {
                 const z = demons[i];
-                const toZ = new THREE.Vector3().subVectors(z.mesh.position, camera.position);
+                const toZ = new THREE.Vector3().subVectors(
+                    getDemonGunHitPoint(z, demonPunchPoint),
+                    camera.position
+                );
                 const proj = toZ.dot(aimDir);
                 if (proj > 0 && proj < punchRange) {
                     const perp = toZ.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-                    if (perp < 3.5 && proj < minZProj) {
+                    if (perp <= (z.gunHitRadius ?? 4.6) && proj < minZProj) {
                         minZProj = proj; hitDemon = z; hitZIdx = i;
                     }
                 }
@@ -6252,6 +6462,7 @@
             updateRoundSpawning(delta);
             updateBetweenRound(delta);
             updateShrine(delta, performance.now() / 1000);
+            updateShadowMan(currentTime);
             if (ak47TriggerHeld && isLocked && ak47Collected && ak47Equipped && !playerDead && !mountedOnDragon) {
                 fireAK47();
             }
