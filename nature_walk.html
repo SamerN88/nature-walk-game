@@ -746,11 +746,13 @@
         let ak47MuzzleFlash = null;
         let ak47MuzzleLight = null;
         let ak47MuzzleFlashTimer = 0;
+        let ak47MuzzleLightTimer = 0;
         let ak47Beams = [];
         let ak47TriggerHeld = false;
         const AK47_SHOT_INTERVAL_MS = 100; // 600 RPM
-        const AK47_BEAM_LIFETIME = 0.07;
-        const AK47_MUZZLE_FLASH_LIFETIME = 0.06;
+        const AK47_BEAM_LIFETIME = 0.03;
+        const AK47_MUZZLE_FLASH_LIFETIME = 0.03;
+        const AK47_MUZZLE_LIGHT_LIFETIME = 0.03;
         const AK47_BEAM_MAX_VISUAL_RANGE = 900;
         const AK47_BEAM_MIN_VISUAL_RANGE = 80;
         const AK47_BEAM_COLOR = 0xffe438;
@@ -913,6 +915,7 @@
             if (!showPlayerGun) {
                 ak47TriggerHeld = false;
                 ak47MuzzleFlashTimer = 0;
+                ak47MuzzleLightTimer = 0;
                 if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
                 if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
             }
@@ -1016,6 +1019,7 @@
 
 
             ak47MuzzleFlashTimer = AK47_MUZZLE_FLASH_LIFETIME;
+            ak47MuzzleLightTimer = AK47_MUZZLE_LIGHT_LIFETIME;
             if (ak47MuzzleFlash) {
                 ak47MuzzleFlash.visible = true;
                 ak47MuzzleFlash.material.opacity = 1;
@@ -1038,23 +1042,31 @@
                     ak47MuzzleFlash.visible = true;
                     ak47MuzzleFlash.material.opacity = 1;
                 }
-                if (ak47MuzzleLight) ak47MuzzleLight.intensity = 8;
             } else {
                 if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
+            }
+
+            if (ak47MuzzleLightTimer > 0) {
+                ak47MuzzleLightTimer = Math.max(0, ak47MuzzleLightTimer - delta);
+                if (ak47MuzzleLight) ak47MuzzleLight.intensity = 8;
+            } else {
                 if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
             }
 
             for (let i = ak47Beams.length - 1; i >= 0; i--) {
                 const beamData = ak47Beams[i];
-                beamData.life -= delta;
+                if (beamData.life > 0) {
+                    beamData.life = Math.max(0, beamData.life - delta);
+                    beamData.mesh.material.opacity = 1;
+                    continue;
+                }
+
                 if (beamData.life <= 0) {
                     scene.remove(beamData.mesh);
                     beamData.mesh.geometry.dispose();
                     beamData.mesh.material.dispose();
                     ak47Beams.splice(i, 1);
-                    continue;
                 }
-                beamData.mesh.material.opacity = 1;
             }
         }
 
@@ -3037,6 +3049,7 @@
                 );
                 water.rotation.x = -Math.PI / 2;
                 water.position.set(placement.x, placement.surfaceY, placement.z);
+                water.userData.ignoreCameraOcclusion = true;
                 water.receiveShadow = true;
                 scene.add(water);
 
