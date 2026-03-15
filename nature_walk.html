@@ -686,6 +686,18 @@
         const POND_CRATER_FLOOR_Y = -16;
         const WATER_VISUAL_Y_OFFSET = -3;
         const WATER_VISUAL_RADIUS_BONUS = 5;
+        const WATER_SURFACE_STRUCTURE_CLEARANCE = 0.25;
+        const PLAYER_WATER_HEIGHT = 2.25;
+        const PLAYER_WATER_SURFACE_EMERGENCE = 0.3;
+        const PLAYER_WATER_SINK_SPEED = 9;
+        const PLAYER_WATER_RISE_SPEED = 11;
+        const PLAYER_WATER_SINK_RESPONSE = 8;
+        const PLAYER_WATER_RISE_RESPONSE = 8;
+        const PLAYER_WATER_ENTRY_DAMPING = 0.45;
+        const NPC_WATER_BOB_SPEED = 10;
+        const NPC_WATER_MIN_SUBMERSION = 0.3;
+        const NPC_WATER_MAX_SUBMERSION = 0.7;
+        const DEMON_WATER_PLAYER_RISE_RANGE = 10;
 
         // NPCs
         let npcs = [];
@@ -3185,7 +3197,7 @@
                     new THREE.CylinderGeometry(waterVisualRadius, waterVisualRadius, waterDepth, waterBody.segments, 1, true),
                     waterVolumeMaterial
                 );
-                waterVolume.position.y = waterBody.surfaceY - waterDepth / 2 + WATER_VISUAL_Y_OFFSET;
+                waterVolume.position.y = waterBody.surfaceY - waterDepth / 2;
                 waterGroup.add(waterVolume);
 
                 waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
@@ -3275,6 +3287,14 @@
             return water.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
         }
 
+        function getWaterLogicalSurfaceY(water) {
+            return water.surfaceY + WATER_VISUAL_Y_OFFSET;
+        }
+
+        function getWaterLogicalBottomY(water) {
+            return water.floorY + WATER_VISUAL_Y_OFFSET;
+        }
+
         function isPointInsideWaterCylinder(x, y, z) {
             for (const water of waterBodies) {
                 const dx = x - water.x;
@@ -3282,8 +3302,8 @@
                 const radius = getWaterVisualRadius(water);
                 if (dx * dx + dz * dz > radius * radius) continue;
 
-                const cylinderTopY = water.surfaceY + WATER_VISUAL_Y_OFFSET;
-                const cylinderBottomY = water.floorY + WATER_VISUAL_Y_OFFSET;
+                const cylinderTopY = getWaterLogicalSurfaceY(water);
+                const cylinderBottomY = getWaterLogicalBottomY(water);
                 if (y <= cylinderTopY && y >= cylinderBottomY) {
                     return water;
                 }
@@ -3294,7 +3314,7 @@
 
         function getWaterSurfaceHeight(x, z) {
             const water = getWaterBodyAt(x, z);
-            return water ? water.surfaceY : -Infinity;
+            return water ? getWaterLogicalSurfaceY(water) : -Infinity;
         }
 
         function getLandSurfaceHeight(x, z) {
@@ -3310,8 +3330,57 @@
 
             const water = getWaterBodyAt(x, z);
             if (!water) return landY;
-            if (structureY > water.surfaceY + 0.25) return structureY;
-            return water.surfaceY;
+            const logicalSurfaceY = getWaterLogicalSurfaceY(water);
+            if (structureY > logicalSurfaceY + WATER_SURFACE_STRUCTURE_CLEARANCE) return structureY;
+            return logicalSurfaceY;
+        }
+
+        function getWaterTraversalState(x, z, y, entityHeight = 0) {
+            const terrainY = getGroundHeight(x, z);
+            const structureY = getStructureHeight(x, z);
+            const landY = Math.max(terrainY, structureY);
+            const water = getWaterBodyAt(x, z);
+
+            if (!water) {
+                return {
+                    water: null,
+                    terrainY,
+                    structureY,
+                    landY,
+                    floorY: landY,
+                    surfaceY: -Infinity,
+                    structureAboveWater: false,
+                    maxFloatY: landY,
+                    isSwimming: false
+                };
+            }
+
+            const logicalSurfaceY = getWaterLogicalSurfaceY(water);
+            const structureAboveWater = structureY > logicalSurfaceY + WATER_SURFACE_STRUCTURE_CLEARANCE;
+            const floorY = structureAboveWater ? structureY : terrainY;
+            const maxFloatY = Math.max(
+                floorY,
+                logicalSurfaceY - entityHeight * (1 - PLAYER_WATER_SURFACE_EMERGENCE)
+            );
+            const isSwimming = !structureAboveWater && y < logicalSurfaceY - 0.02 && floorY < logicalSurfaceY - 0.05;
+
+            return {
+                water,
+                terrainY,
+                structureY,
+                landY,
+                floorY,
+                surfaceY: logicalSurfaceY,
+                structureAboveWater,
+                maxFloatY,
+                isSwimming
+            };
+        }
+
+        function moveScalarToward(current, target, maxStep) {
+            const delta = target - current;
+            if (Math.abs(delta) <= maxStep) return target;
+            return current + Math.sign(delta) * maxStep;
         }
 
         function findNPCSpawnPosition(region, attempts = 80) {
@@ -3443,10 +3512,12 @@
             npcs.push({
                 mesh: deer,
                 type: 'deer',
+                waterHeight: 2.15,
                 speed: 2 + Math.random() * 2,
                 direction: Math.random() * Math.PI * 2,
                 changeTimer: 0,
-                changeInterval: 2 + Math.random() * 4
+                changeInterval: 2 + Math.random() * 4,
+                waterBobPhase: Math.random() * Math.PI * 2
             });
         }
 
@@ -3507,11 +3578,13 @@
             npcs.push({
                 mesh: rabbit,
                 type: 'rabbit',
+                waterHeight: 0.72,
                 speed: 3 + Math.random() * 3,
                 direction: Math.random() * Math.PI * 2,
                 changeTimer: 0,
                 changeInterval: 0.5 + Math.random() * 2,
-                hopTimer: 0
+                hopTimer: 0,
+                waterBobPhase: Math.random() * Math.PI * 2
             });
         }
 
@@ -3587,12 +3660,14 @@
             npcs.push({
                 mesh: bird,
                 type: 'bird',
+                waterHeight: 0.35 * birdScale,
                 speed: birdScale > 1 ? (3 + Math.random() * 3) : (8 + Math.random() * 6),
                 direction: Math.random() * Math.PI * 2,
                 changeTimer: 0,
                 changeInterval: 3 + Math.random() * 5,
                 flyHeight: flyHeight,
-                wingPhase: Math.random() * Math.PI * 2
+                wingPhase: Math.random() * Math.PI * 2,
+                waterBobPhase: Math.random() * Math.PI * 2
             });
         }
 
@@ -3676,11 +3751,13 @@
             npcs.push({
                 mesh: human,
                 type: 'human',
+                waterHeight: 1.96,
                 speed: 1.5 + Math.random() * 1.5,
                 direction: Math.random() * Math.PI * 2,
                 changeTimer: 0,
                 changeInterval: 3 + Math.random() * 5,
-                walkPhase: Math.random() * Math.PI * 2
+                walkPhase: Math.random() * Math.PI * 2,
+                waterBobPhase: Math.random() * Math.PI * 2
             });
         }
 
@@ -4322,13 +4399,39 @@
                     });
                 } else if (npc.type === 'rabbit') {
                     npc.hopTimer += delta * 8;
-                    const water = getWaterBodyAt(npc.mesh.position.x, npc.mesh.position.z);
-                    const baseY = getMoverSurfaceHeight(npc.mesh.position.x, npc.mesh.position.z, true);
-                    npc.mesh.position.y = water
-                        ? baseY + Math.sin(npc.hopTimer * 0.4) * 0.05
-                        : baseY + Math.abs(Math.sin(npc.hopTimer)) * 0.3;
+                    const waterState = getWaterTraversalState(
+                        npc.mesh.position.x,
+                        npc.mesh.position.z,
+                        npc.mesh.position.y,
+                        npc.waterHeight || 1
+                    );
+                    if (waterState.water && !waterState.structureAboveWater) {
+                        npc.waterBobPhase += delta * NPC_WATER_BOB_SPEED;
+                        const bobMid = (NPC_WATER_MIN_SUBMERSION + NPC_WATER_MAX_SUBMERSION) * 0.5;
+                        const bobAmp = (NPC_WATER_MAX_SUBMERSION - NPC_WATER_MIN_SUBMERSION) * 0.5;
+                        const submersion = bobMid + Math.sin(npc.waterBobPhase) * bobAmp;
+                        const bobY = waterState.surfaceY - (npc.waterHeight || 1) * submersion;
+                        npc.mesh.position.y = Math.max(waterState.floorY, bobY);
+                    } else {
+                        npc.mesh.position.y = waterState.landY + Math.abs(Math.sin(npc.hopTimer)) * 0.3;
+                    }
                 } else {
-                    npc.mesh.position.y = getMoverSurfaceHeight(npc.mesh.position.x, npc.mesh.position.z, true);
+                    const waterState = getWaterTraversalState(
+                        npc.mesh.position.x,
+                        npc.mesh.position.z,
+                        npc.mesh.position.y,
+                        npc.waterHeight || 1
+                    );
+                    if (waterState.water && !waterState.structureAboveWater) {
+                        npc.waterBobPhase += delta * NPC_WATER_BOB_SPEED;
+                        const bobMid = (NPC_WATER_MIN_SUBMERSION + NPC_WATER_MAX_SUBMERSION) * 0.5;
+                        const bobAmp = (NPC_WATER_MAX_SUBMERSION - NPC_WATER_MIN_SUBMERSION) * 0.5;
+                        const submersion = bobMid + Math.sin(npc.waterBobPhase) * bobAmp;
+                        const bobY = waterState.surfaceY - (npc.waterHeight || 1) * submersion;
+                        npc.mesh.position.y = Math.max(waterState.floorY, bobY);
+                    } else {
+                        npc.mesh.position.y = waterState.landY;
+                    }
                 }
 
                 // Face movement direction
@@ -4855,6 +4958,14 @@
             const targetPos = mountedOnDragon ? dragon.position : player.position;
             const now = performance.now() / 1000;
             const campfireShieldActive = isCampfireShieldActive();
+            const playerWaterState = mountedOnDragon
+                ? null
+                : getWaterTraversalState(
+                    player.position.x,
+                    player.position.z,
+                    player.position.y,
+                    PLAYER_WATER_HEIGHT
+                );
 
             let nearFire = false;
             if (campfireShieldActive) {
@@ -4883,10 +4994,8 @@
                 const z  = demons[i];
                 const zp = z.mesh.position;
                 const dx = targetPos.x - zp.x;
-                const dy = targetPos.y - zp.y;
                 const dz = targetPos.z - zp.z;
                 const distXZ  = Math.sqrt(dx * dx + dz * dz);
-                const dist3D  = Math.sqrt(dx * dx + dy * dy + dz * dz);
                 const previousXZ = { x: zp.x, z: zp.z };
 
                 // Face player
@@ -4898,8 +5007,23 @@
                     zp.z += (dz / distXZ) * z.speed * delta;
                 }
 
-                // ── Demon climbs structures just like ground NPCs ──
-                zp.y = getMoverSurfaceHeight(zp.x, zp.z, true);
+                // ── Water handling: demons stay on submerged ground unless a nearby submerged player pulls them up ──
+                const demonWaterState = getWaterTraversalState(zp.x, zp.z, zp.y);
+                if (demonWaterState.water && !demonWaterState.structureAboveWater) {
+                    const playerCanPullDemonUp =
+                        playerWaterState &&
+                        playerWaterState.isSwimming &&
+                        distXZ <= DEMON_WATER_PLAYER_RISE_RANGE;
+
+                    if (playerCanPullDemonUp) {
+                        const targetY = Math.max(demonWaterState.floorY, player.position.y);
+                        zp.y = moveScalarToward(zp.y, targetY, z.speed * delta);
+                    } else {
+                        zp.y = demonWaterState.floorY;
+                    }
+                } else {
+                    zp.y = demonWaterState.landY;
+                }
 
                 // ── Solid wall collision ──
                 // Enclosed structure walls (tent/house/cave) are skipped when the player is >50 units
@@ -4956,6 +5080,8 @@
                 });
 
                 // ── Hit player when in 3D range ──
+                const hitDy = targetPos.y - zp.y;
+                const dist3D = Math.sqrt(dx * dx + hitDy * hitDy + dz * dz);
                 z.hitTimer -= delta;
                 if (dist3D < 5.5 && z.hitTimer <= 0) {
                     z.hitTimer = z.hitCooldown;
@@ -5667,6 +5793,15 @@
                 case 'ShiftRight': isRunning = true; break;
                 case 'Space':
                     spaceHeld = true;
+                    if (!mountedOnDragon) {
+                        const waterState = getWaterTraversalState(
+                            player.position.x,
+                            player.position.z,
+                            player.position.y,
+                            PLAYER_WATER_HEIGHT
+                        );
+                        if (waterState.isSwimming) break;
+                    }
                     if (!mountedOnDragon && (isGrounded || infiniteJump)) {
                         velocity.y = 15 * jumpMultiplier;
                         isGrounded = false;
@@ -5953,23 +6088,70 @@
 
                 movePlayerHorizontallyWithCollisions(delta, PLAYER_RADIUS);
                 const previousY = player.position.y;
+                const startingWaterState = getWaterTraversalState(
+                    player.position.x,
+                    player.position.z,
+                    player.position.y,
+                    PLAYER_WATER_HEIGHT
+                );
+
+                if (startingWaterState.isSwimming) {
+                    if (velocity.y < 0) {
+                        velocity.y = Math.max(
+                            velocity.y * PLAYER_WATER_ENTRY_DAMPING,
+                            -PLAYER_WATER_SINK_SPEED
+                        );
+                    }
+
+                    const targetWaterVelocity = spaceHeld
+                        ? PLAYER_WATER_RISE_SPEED
+                        : -PLAYER_WATER_SINK_SPEED;
+                    const waterResponse = spaceHeld
+                        ? PLAYER_WATER_RISE_RESPONSE
+                        : PLAYER_WATER_SINK_RESPONSE;
+                    const waterLerpFactor = 1 - Math.exp(-waterResponse * delta);
+                    velocity.y += (targetWaterVelocity - velocity.y) * waterLerpFactor;
+                } else {
+                    velocity.y -= 35 * delta;
+                }
+
                 player.position.y += velocity.y * delta;
 
-                // Gravity and ground collision at new position
-                const terrainHeight = getGroundHeight(player.position.x, player.position.z);
-                const structureHeight = getStructureHeight(player.position.x, player.position.z);
-                const groundHeight = Math.max(terrainHeight, structureHeight);
+                const waterState = getWaterTraversalState(
+                    player.position.x,
+                    player.position.z,
+                    player.position.y,
+                    PLAYER_WATER_HEIGHT
+                );
 
-                velocity.y -= 35 * delta; // Gravity always
-                if (player.position.y <= groundHeight) {
-                    player.position.y = groundHeight;
-                    if (velocity.y < 0) velocity.y = 0;
+                if (waterState.isSwimming) {
+                    if (!startingWaterState.isSwimming && velocity.y < 0) {
+                        velocity.y = Math.max(
+                            velocity.y * PLAYER_WATER_ENTRY_DAMPING,
+                            -PLAYER_WATER_SINK_SPEED
+                        );
+                    }
+
+                    if (player.position.y <= waterState.floorY) {
+                        player.position.y = waterState.floorY;
+                        if (velocity.y < 0) velocity.y = 0;
+                    } else if (player.position.y > waterState.maxFloatY) {
+                        player.position.y = waterState.maxFloatY;
+                        if (velocity.y > 0) velocity.y = 0;
+                    }
+                } else {
+                    const groundHeight = waterState.landY;
+                    if (player.position.y <= groundHeight) {
+                        player.position.y = groundHeight;
+                        if (velocity.y < 0) velocity.y = 0;
+                    }
                 }
 
                 const groundedOnRoof = resolveRoofCollision(previousY);
+                const supportBaseHeight = getLandSurfaceHeight(player.position.x, player.position.z);
                 const supportHeight = groundedOnRoof
-                    ? Math.max(groundHeight, player.position.y)
-                    : groundHeight;
+                    ? Math.max(supportBaseHeight, player.position.y)
+                    : supportBaseHeight;
                 isGrounded = (player.position.y <= supportHeight + 0.2 && velocity.y <= 0);
 
                 const finalOverlap = resolvePlayerWallOverlaps(PLAYER_RADIUS);
