@@ -847,6 +847,7 @@
             sun.shadow.camera.top = 200;
             sun.shadow.camera.bottom = -200;
             scene.add(sun);
+            scene.add(sun.target);
 
             // Create world
             planWaterBodies();
@@ -892,6 +893,14 @@
 
             // Start at noon
             gameTime = FULL_CYCLE * 0.25;
+        }
+
+        function enableMeshShadows(root) {
+            root.traverse(obj => {
+                if (!obj.isMesh) return;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+            });
         }
 
         function createAK47Mesh(scale = 1) {
@@ -943,12 +952,7 @@
             rifle.add(magazine);
 
             rifle.scale.setScalar(scale);
-            rifle.traverse(obj => {
-                if (obj.isMesh) {
-                    obj.castShadow = true;
-                    obj.receiveShadow = true;
-                }
-            });
+            enableMeshShadows(rifle);
 
             const muzzle = new THREE.Object3D();
             muzzle.position.set(0, 0.02, 1.22);
@@ -2372,6 +2376,8 @@
                     mountainMaterial
                 );
                 mountain.position.y = placement.height / 2;
+                mountain.castShadow = true;
+                mountain.receiveShadow = true;
                 mountainGroup.add(mountain);
                 const mountainDrop = getStructureBoundaryDrop(
                     0,
@@ -2397,6 +2403,8 @@
                     snowMaterial
                 );
                 snowCap.position.y = placement.height * 0.85;
+                snowCap.castShadow = true;
+                snowCap.receiveShadow = true;
                 mountainGroup.add(snowCap);
 
                 mountainGroup.position.set(placement.x, -mountainDrop, placement.z);
@@ -3819,7 +3827,7 @@
             const x = spawn.x;
             const z = spawn.z;
             deer.position.set(x, getGroundHeight(x, z), z);
-            deer.castShadow = true;
+            enableMeshShadows(deer);
             scene.add(deer);
 
             npcs.push({
@@ -3886,6 +3894,7 @@
             const x = spawn.x;
             const z = spawn.z;
             rabbit.position.set(x, getGroundHeight(x, z), z);
+            enableMeshShadows(rabbit);
             scene.add(rabbit);
 
             npcs.push({
@@ -3968,6 +3977,7 @@
                 ? (30 + Math.random() * 30)   // big birds fly higher
                 : (10 + Math.random() * 20);  // small birds fly lower
             bird.position.set(x, getGroundHeight(x, z) + flyHeight, z);
+            enableMeshShadows(bird);
             scene.add(bird);
 
             npcs.push({
@@ -4058,7 +4068,7 @@
             const x = spawn.x;
             const z = spawn.z;
             human.position.set(x, getGroundHeight(x, z), z);
-            human.castShadow = true;
+            enableMeshShadows(human);
             scene.add(human);
 
             npcs.push({
@@ -4388,6 +4398,7 @@
             dragon.visible = false;
             dragon.userData.wings = wings;
             dragon.userData.tailPivot = tailPivot;
+            enableMeshShadows(dragon);
             scene.add(dragon);
 
             // Just for debugging; trigger the apocalypse immediately when the dragon is created
@@ -4836,7 +4847,7 @@
         //  DEMON APOCALYPSE SYSTEM
         // ─────────────────────────────────────────────────────────────
 
-        const DEMON_SPAWN_COUNT = 1; //DEBUG - originally 150, change it to examine demons more closely
+        const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
         const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 
         function createDemon(biasedSpeed = false) {
@@ -5042,6 +5053,7 @@
                 part.userData.baseZ = part.position.z;
             });
             demon.userData.faceAnimatedParts = faceAnimatedParts;
+            enableMeshShadows(demon);
 
             return {
                 mesh: demon,
@@ -6192,6 +6204,22 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        function updateSunShadowFocus() {
+            if (!sun) return;
+
+            const focus = mountedOnDragon && dragon && dragon.visible
+                ? dragon.position
+                : (player ? player.position : camera.position);
+            const cycleProgress = gameTime / FULL_CYCLE;
+            const sunAngle = cycleProgress * Math.PI * 2 - Math.PI / 2;
+
+            sun.target.position.set(focus.x, focus.y, focus.z);
+            sun.position.x = focus.x + Math.cos(sunAngle) * 500;
+            sun.position.y = focus.y + Math.sin(sunAngle) * 500 + 200;
+            sun.position.z = focus.z + 200;
+            sun.target.updateMatrixWorld();
+        }
+
         function updateDayNightCycle(delta) {
             if (demonApocalypse) return; // time is frozen during apocalypse
             gameTime = (gameTime + delta) % FULL_CYCLE;
@@ -6246,11 +6274,7 @@
             scene.fog.color = skyColor;
             sun.intensity = sunIntensity;
             ambientLight.intensity = ambientIntensity;
-
-            // Move sun
-            sun.position.x = Math.cos(sunAngle) * 500;
-            sun.position.y = Math.sin(sunAngle) * 500 + 200;
-            sun.position.z = 200;
+            updateSunShadowFocus();
 
             // Update sun color
             if (cycleProgress > 0.375 && cycleProgress < 0.625) {
@@ -6559,6 +6583,7 @@
                 camera.position.z
             ) ? '1' : '0';
 
+            updateSunShadowFocus();
             renderer.render(scene, camera);
         }
 
