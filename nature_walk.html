@@ -672,6 +672,14 @@
         const ORIGIN_CLEAR_RADIUS = 50;
         const STRUCTURE_PLACEMENT_GAP = 10;
         const STRUCTURE_WORLD_LIMIT = WORLD_SIZE - 120;
+        const MOUNTAIN_EDGE_SAMPLE_COUNT = 50;
+        const MOUNTAIN_EXTRA_SINK = 1;
+        const BOULDER_Y_SINK = 5;
+        const PORTAL_FRAME_Y_SINK = 2;
+        const STAIRCASE_Y_SINK = 1;
+        const TOWER_Y_SINK = 3;
+        const PRIMITIVE_BLOCK_EDGE_SAMPLE_COUNT = 50;
+        const PRIMITIVE_BLOCK_EXTRA_SINK = 1;
 
         // Climbable structures
         let structures = [];
@@ -1593,6 +1601,53 @@
             };
         }
 
+        function sampleCircleBoundaryMinGroundHeight(x, z, radius, samples) {
+            let min = Infinity;
+
+            for (let i = 0; i < samples; i++) {
+                const angle = (i / samples) * Math.PI * 2;
+                const sampleX = x + Math.cos(angle) * radius;
+                const sampleZ = z + Math.sin(angle) * radius;
+                min = Math.min(min, getGroundHeight(sampleX, sampleZ));
+            }
+
+            return min;
+        }
+
+        function sampleRectBoundaryMinGroundHeight(x, z, width, depth, rotation = 0, samples = PRIMITIVE_BLOCK_EDGE_SAMPLE_COUNT) {
+            let min = Infinity;
+            const perimeter = width * 2 + depth * 2;
+
+            for (let i = 0; i < samples; i++) {
+                const t = (i / samples) * perimeter;
+                let localX = 0;
+                let localZ = 0;
+
+                if (t < width) {
+                    localX = -width / 2 + t;
+                    localZ = -depth / 2;
+                } else if (t < width + depth) {
+                    localX = width / 2;
+                    localZ = -depth / 2 + (t - width);
+                } else if (t < width * 2 + depth) {
+                    localX = width / 2 - (t - width - depth);
+                    localZ = depth / 2;
+                } else {
+                    localX = -width / 2;
+                    localZ = depth / 2 - (t - width * 2 - depth);
+                }
+
+                const world = localToWorldXZ(x, z, localX, localZ, rotation);
+                min = Math.min(min, getGroundHeight(world.x, world.z));
+            }
+
+            return min;
+        }
+
+        function getStructureBoundaryDrop(baseY, minBoundaryGroundY) {
+            return Math.max(0, baseY - minBoundaryGroundY);
+        }
+
         function addStructureBox(x, z, y, width, height, depth, rotation = 0, extra = {}) {
             const structure = {
                 type: 'box',
@@ -2317,12 +2372,21 @@
                 );
                 mountain.position.y = placement.height / 2;
                 mountainGroup.add(mountain);
+                const mountainDrop = getStructureBoundaryDrop(
+                    0,
+                    sampleCircleBoundaryMinGroundHeight(
+                        placement.x,
+                        placement.z,
+                        placement.radius,
+                        MOUNTAIN_EDGE_SAMPLE_COUNT
+                    )
+                ) + MOUNTAIN_EXTRA_SINK;
 
                 structures.push({
                     type: 'cone',
                     x: placement.x,
                     z: placement.z,
-                    y: 0,
+                    y: -mountainDrop,
                     radius: placement.radius,
                     height: placement.height
                 });
@@ -2334,7 +2398,7 @@
                 snowCap.position.y = placement.height * 0.85;
                 mountainGroup.add(snowCap);
 
-                mountainGroup.position.set(placement.x, 0, placement.z);
+                mountainGroup.position.set(placement.x, -mountainDrop, placement.z);
                 mountainGroup.rotation.y = placement.rotation;
                 scene.add(mountainGroup);
             }
@@ -2369,7 +2433,7 @@
                 );
                 const groundY = getGroundHeight(placement.x, placement.z);
                 const radiusY = placement.size * 0.7;
-                const centerY = groundY + radiusY;
+                const centerY = groundY + radiusY - BOULDER_Y_SINK;
                 boulder.position.set(placement.x, centerY, placement.z);
                 boulder.rotation.y = placement.rotation;
                 boulder.scale.y = 0.7;
@@ -2411,7 +2475,16 @@
                     darkRockMaterial
                 );
                 const groundY = getGroundHeight(placement.x, placement.z);
-                hill.position.set(placement.x, groundY + placement.height / 2, placement.z);
+                const hillDrop = getStructureBoundaryDrop(
+                    groundY,
+                    sampleCircleBoundaryMinGroundHeight(
+                        placement.x,
+                        placement.z,
+                        placement.radius,
+                        MOUNTAIN_EDGE_SAMPLE_COUNT
+                    )
+                ) + MOUNTAIN_EXTRA_SINK;
+                hill.position.set(placement.x, groundY + placement.height / 2 - hillDrop, placement.z);
                 hill.rotation.y = placement.rotation;
                 hill.castShadow = true;
                 hill.receiveShadow = true;
@@ -2421,7 +2494,7 @@
                     type: 'cone',
                     x: placement.x,
                     z: placement.z,
-                    y: groundY,
+                    y: groundY - hillDrop,
                     radius: placement.radius,
                     height: placement.height
                 });
@@ -2454,7 +2527,18 @@
                     stoneMaterial
                 );
                 const groundY = getGroundHeight(placement.x, placement.z);
-                platform.position.set(placement.x, groundY + placement.height / 2, placement.z);
+                const platformDrop = getStructureBoundaryDrop(
+                    groundY,
+                    sampleRectBoundaryMinGroundHeight(
+                        placement.x,
+                        placement.z,
+                        placement.width,
+                        placement.depth,
+                        placement.rotation,
+                        PRIMITIVE_BLOCK_EDGE_SAMPLE_COUNT
+                    )
+                ) + PRIMITIVE_BLOCK_EXTRA_SINK;
+                platform.position.set(placement.x, groundY + placement.height / 2 - platformDrop, placement.z);
                 platform.rotation.y = placement.rotation;
                 platform.castShadow = true;
                 platform.receiveShadow = true;
@@ -2463,7 +2547,7 @@
                 addStructureBox(
                     placement.x,
                     placement.z,
-                    groundY,
+                    groundY - platformDrop,
                     placement.width,
                     placement.height,
                     placement.depth,
@@ -2502,13 +2586,13 @@
                         new THREE.BoxGeometry(8, 3, 8),
                         stoneMaterial
                     );
-                    platform.position.set(world.x, stackGroundY + 1.5 + i * 3, world.z);
+                    platform.position.set(world.x, stackGroundY + 1.5 + i * 3 - STAIRCASE_Y_SINK, world.z);
                     platform.rotation.y = placement.rotation;
                     platform.castShadow = true;
                     platform.receiveShadow = true;
                     scene.add(platform);
 
-                    addStructureBox(world.x, world.z, stackGroundY + i * 3, 8, 3, 8, placement.rotation);
+                    addStructureBox(world.x, world.z, stackGroundY + i * 3 - STAIRCASE_Y_SINK, 8, 3, 8, placement.rotation);
                 }
             }
 
@@ -2585,7 +2669,7 @@
                     archParts
                 );
 
-                archGroup.position.set(placement.x, archGroundY, placement.z);
+                archGroup.position.set(placement.x, archGroundY - PORTAL_FRAME_Y_SINK, placement.z);
                 archGroup.rotation.y = placement.rotation;
                 scene.add(archGroup);
                 archGroup.updateMatrixWorld(true);
@@ -2619,7 +2703,7 @@
                 tower.position.y = placement.towerHeight / 2;
                 tower.castShadow = true;
                 towerGroup.add(tower);
-                structures.push({ type: 'cylinder', x: placement.x, z: placement.z, y: towerGroundY, radius: 8, height: placement.towerHeight });
+                structures.push({ type: 'cylinder', x: placement.x, z: placement.z, y: towerGroundY - TOWER_Y_SINK, radius: 8, height: placement.towerHeight });
 
                 const towerTop = new THREE.Mesh(
                     new THREE.CylinderGeometry(10, 10, 2, 8),
@@ -2628,9 +2712,9 @@
                 towerTop.position.y = placement.towerHeight + 1;
                 towerTop.castShadow = true;
                 towerGroup.add(towerTop);
-                structures.push({ type: 'cylinder', x: placement.x, z: placement.z, y: towerGroundY + placement.towerHeight, radius: 10, height: 2 });
+                structures.push({ type: 'cylinder', x: placement.x, z: placement.z, y: towerGroundY + placement.towerHeight - TOWER_Y_SINK, radius: 10, height: 2 });
 
-                towerGroup.position.set(placement.x, towerGroundY, placement.z);
+                towerGroup.position.set(placement.x, towerGroundY - TOWER_Y_SINK, placement.z);
                 towerGroup.rotation.y = placement.rotation;
                 scene.add(towerGroup);
             }
