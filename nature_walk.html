@@ -616,7 +616,7 @@
         const DEBUG_GEMS = true;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = true;  // for quick access to chest
-        const DEBUG_APOCALYPSE = true;  // for quick access to demon apocalypse
+        const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
         const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
 
         // Game constants
@@ -3152,17 +3152,19 @@
                 const waterGroup = new THREE.Group();
                 waterGroup.userData.ignoreCameraOcclusion = true;
                 const waterVisualRadius = waterBody.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
+                const waterSurfaceMaterial = new THREE.MeshPhongMaterial({
+                    color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
+                    emissive: 0x10365a,
+                    emissiveIntensity: 0.12,
+                    shininess: 70,
+                    transparent: true,
+                    opacity: waterBody.opacity,
+                    side: THREE.DoubleSide
+                });
 
                 const waterSurface = new THREE.Mesh(
                     new THREE.CircleGeometry(waterVisualRadius, waterBody.segments),
-                    new THREE.MeshPhongMaterial({
-                        color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
-                        emissive: 0x10365a,
-                        shininess: 70,
-                        transparent: true,
-                        opacity: waterBody.opacity,
-                        side: THREE.DoubleSide
-                    })
+                    waterSurfaceMaterial
                 );
                 waterSurface.rotation.x = -Math.PI / 2;
                 waterSurface.position.y = waterBody.surfaceY;
@@ -3170,16 +3172,18 @@
                 waterGroup.add(waterSurface);
 
                 const waterDepth = Math.max(0.5, waterBody.surfaceY - waterBody.floorY);
+                const waterVolumeMaterial = new THREE.MeshPhongMaterial({
+                    color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
+                    emissive: 0x10365a,
+                    emissiveIntensity: 0.08,
+                    shininess: 30,
+                    transparent: true,
+                    opacity: Math.max(0.22, waterBody.opacity * 0.52),
+                    side: THREE.DoubleSide
+                });
                 const waterVolume = new THREE.Mesh(
                     new THREE.CylinderGeometry(waterVisualRadius, waterVisualRadius, waterDepth, waterBody.segments, 1, true),
-                    new THREE.MeshPhongMaterial({
-                        color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
-                        emissive: 0x10365a,
-                        shininess: 30,
-                        transparent: true,
-                        opacity: Math.max(0.22, waterBody.opacity * 0.52),
-                        side: THREE.DoubleSide
-                    })
+                    waterVolumeMaterial
                 );
                 waterVolume.position.y = waterBody.surfaceY - waterDepth / 2 + WATER_VISUAL_Y_OFFSET;
                 waterGroup.add(waterVolume);
@@ -3187,7 +3191,28 @@
                 waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
                 scene.add(waterGroup);
 
+                waterBody.surfaceMaterial = waterSurfaceMaterial;
+                waterBody.volumeMaterial = waterVolumeMaterial;
                 waterBody.mesh = waterGroup;
+            });
+
+            updateWaterLighting();
+        }
+
+        function updateWaterLighting() {
+            if (!ambientLight || !sun) return;
+
+            const lightLevel = THREE.MathUtils.clamp(ambientLight.intensity * 0.9 + sun.intensity * 0.45, 0, 1);
+            const surfaceEmissiveIntensity = THREE.MathUtils.lerp(0.02, 0.12, lightLevel);
+            const volumeEmissiveIntensity = THREE.MathUtils.lerp(0.01, 0.08, lightLevel);
+
+            waterBodies.forEach(waterBody => {
+                if (waterBody.surfaceMaterial) {
+                    waterBody.surfaceMaterial.emissiveIntensity = surfaceEmissiveIntensity;
+                }
+                if (waterBody.volumeMaterial) {
+                    waterBody.volumeMaterial.emissiveIntensity = volumeEmissiveIntensity;
+                }
             });
         }
 
@@ -4634,6 +4659,7 @@
             sun.intensity    = 0.45;
             ambientLight.color.setHex(0x550000);
             ambientLight.intensity = 0.35;
+            updateWaterLighting();
 
             // Show UI (counter + health bar — no banner)
             document.getElementById('demon-counter').style.display      = 'block';
@@ -4981,6 +5007,7 @@
             scene.fog.far  = 800;
             ambientLight.color.setHex(0x404040);
             sun.color.setHex(0xffffff);
+            updateWaterLighting();
 
             // ── Grant gem powers to player (and white dragon, not original dragon) ──
             speedMultiplier = 10;
@@ -5781,6 +5808,8 @@
                 sun.color.setHex(0xffffff);
             }
 
+            updateWaterLighting();
+
             // Update UI
             const gameHours = (cycleProgress * 24 + 6) % 24; // Start at 6 AM
             const hours = Math.floor(gameHours);
@@ -6180,6 +6209,7 @@
             sun.intensity  = 0.45;
             ambientLight.color.setHex(0x550000);
             ambientLight.intensity = 0.35;
+            updateWaterLighting();
 
             // Show UI
             document.getElementById('demon-counter').style.display = 'block';
