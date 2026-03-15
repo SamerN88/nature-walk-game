@@ -615,11 +615,11 @@
         // Debug modes (for easy testing)
         const DEBUG_GEMS = true;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
-        const DEBUG_CHEST = true;  // for quick access to chest
+        const DEBUG_CHEST = false;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
-        const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start
+        const DEBUG_SHADOW_MAN = true;  // spawns shadow man immediately at game start
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
 
         // Game constants
@@ -713,6 +713,7 @@
         const DEMON_WATER_PLAYER_RISE_RANGE = 10;
         const SHADOW_MAN_MIN_SPAWN_DISTANCE = 300;
         const SHADOW_MAN_MAX_SPAWN_DISTANCE = 700;
+        const SHADOW_MAN_DESPAWN_DISTANCE_BUFFER = 300;
         const SHADOW_MAN_MIN_DESPAWN_DISTANCE = 150;
         const SHADOW_MAN_MAX_DESPAWN_DISTANCE = 250;
         const SHADOW_MAN_CAMERA_ANGLE_RANGE = THREE.MathUtils.degToRad(50);
@@ -2296,12 +2297,18 @@
                 mesh.rotation.y = Math.atan2(player.position.x - x, player.position.z - z);
                 scene.add(mesh);
 
+                const initialPlayerDistance = Math.hypot(
+                    player.position.x - x,
+                    player.position.z - z
+                );
+
                 if (DEBUG_SHADOW_MAN) spawnShadowManDebugBeacon(x, groundY, z);
 
                 shadowMan = {
                     mesh,
                     spawnDistance,
-                    disappearDistance
+                    disappearDistance,
+                    maxPlayerDistance: initialPlayerDistance + SHADOW_MAN_DESPAWN_DISTANCE_BUFFER
                 };
                 return true;
             }
@@ -2337,6 +2344,11 @@
             const distXZ = Math.hypot(dx, dz);
 
             if (distXZ <= shadowMan.disappearDistance) {
+                removeShadowMan();
+                return;
+            }
+
+            if (distXZ >= shadowMan.maxPlayerDistance) {
                 removeShadowMan();
                 return;
             }
