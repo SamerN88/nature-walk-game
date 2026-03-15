@@ -783,6 +783,7 @@
         let dragonDescending = false;
         let mountedOnDragon = false;
         let dragonVelocity = new THREE.Vector3();
+        const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
         let dragonIsWhite = false;
         let isGrounded = false;
         let infiniteJump = false;
@@ -4466,6 +4467,14 @@
             return { x: prefX, z: prefZ }; // fallback — no clear spot found
         }
 
+        function updateMountedPlayerPose() {
+            if (!mountedOnDragon || !dragon || !player) return;
+
+            const riderOffset = mountedPlayerLocalOffset.clone().applyQuaternion(dragon.quaternion);
+            player.position.copy(dragon.position).add(riderOffset);
+            player.rotation.set(0, dragon.rotation.y + Math.PI / 2, 0);
+        }
+
         function updateDragon(delta) {
             if (!dragon) return;
 
@@ -4542,6 +4551,10 @@
                 camera.lookAt(lookTarget);
             }
 
+            if (mountedOnDragon) {
+                updateMountedPlayerPose();
+            }
+
             // Wing animation
             if (dragon.visible) {
                 const wingFlap = Math.sin(performance.now() / 200) * 0.3;
@@ -4565,8 +4578,9 @@
 
             if (dist < 25) {
                 mountedOnDragon = true;
-                player.visible = false;
+                player.visible = true;
                 dragonVelocity.set(0, 0, 0);
+                updateMountedPlayerPose();
                 updateAK47VisualState();
             }
         }
