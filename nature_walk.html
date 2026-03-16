@@ -613,7 +613,7 @@
         const underwaterTintEl = document.getElementById('underwater-tint');
 
         // Debug modes (for easy testing)
-        const DEBUG_GEMS = false;  // makes gems spawn very close to origin
+        const DEBUG_GEMS = true;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = false;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
@@ -621,7 +621,7 @@
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
-        const DEBUG_VOLCANO = true;  // spawns the player near the volcano for dragon gem testing
+        const DEBUG_VOLCANO = false;  // spawns the player near the volcano for dragon gem testing
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -701,7 +701,7 @@
         const POND_CRATER_FLOOR_Y = -16;
         const WATER_VISUAL_Y_OFFSET = -3;
         const WATER_VISUAL_EXTRA_BOTTOM_DEPTH = 100;
-        const WATER_VISUAL_RADIUS_BONUS = 20;
+        const WATER_VISUAL_RADIUS_BONUS = 5;
         const WATER_SURFACE_STRUCTURE_CLEARANCE = 0.25;
         const PLAYER_WATER_HEIGHT = 2.25;
         const PLAYER_WATER_SURFACE_EMERGENCE = 0.3;
@@ -791,6 +791,7 @@
         let dragonDescending = false;
         let dragonDescendTracksPlayer = false;  // currently unused, but leaving it in for posterity
         let mountedOnDragon = false;
+        let dragonLavaTimer = 0;  // seconds the unmounted dragon has spent continuously in lava
         let dragonVelocity = new THREE.Vector3();
         const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
         let dragonIsWhite = false;
@@ -3895,6 +3896,33 @@
                             surfaceY - (config.kind === 'lake' ? 10 : 6),
                             craterFloorY
                         );
+                        // Compute bankOuterRadius as the largest circle whose full
+                        // circumference sits inside the natural terrain bank: scan outward
+                        // in 36 directions from the water edge and find the first radius
+                        // where the base terrain has risen >= 0.5 units above surfaceY.
+                        // The minimum across all directions gives the inscribed circle.
+                        const BANK_SCAN_DIRS    = 36;
+                        const BANK_RISE_TARGET  = surfaceY + 0.5;
+                        const BANK_SCAN_MAX     = radius * 3.0;
+                        const BANK_SCAN_STEP    = 2.0;
+                        // We want the LARGEST crater radius across all directions so the
+                        // water cylinder is guaranteed to cover the full irregular crater
+                        // boundary.  For each direction find where terrain first rises to
+                        // surfaceY level; take the max of those distances.
+                        let bankOuterRadius = radius * 1.05;  // grows to the farthest edge
+                        for (let di = 0; di < BANK_SCAN_DIRS; di++) {
+                            const angle = (di / BANK_SCAN_DIRS) * Math.PI * 2;
+                            let dirOuter = radius * 1.05;  // fallback: terrain never rises
+                            for (let r = radius + BANK_SCAN_STEP; r <= BANK_SCAN_MAX; r += BANK_SCAN_STEP) {
+                                const h = getBaseTerrainHeight(
+                                    point.x + Math.cos(angle) * r,
+                                    point.z + Math.sin(angle) * r
+                                );
+                                if (h >= BANK_RISE_TARGET) { dirOuter = r; break; }
+                            }
+                            bankOuterRadius = Math.max(bankOuterRadius, dirOuter);
+                        }
+
                         return {
                             kind: config.kind,
                             x: point.x,
@@ -3903,7 +3931,7 @@
                             surfaceY,
                             floorY,
                             floorRadius: radius * (config.kind === 'lake' ? 0.52 : 0.48),
-                            bankOuterRadius: radius * (config.kind === 'lake' ? 1.08 : 1.12),
+                            bankOuterRadius,
                             segments: config.segments,
                             opacity: config.opacity,
                             footprint: makePlacementFootprint(point.x, point.z, radius + 18)
@@ -5107,6 +5135,27 @@
                 });
                 if (dragon.userData.tailPivot) {
                     dragon.userData.tailPivot.rotation.y = tailSwing;
+                }
+            }
+
+            // Lava rescue: if the unmounted dragon sits in lava for >3 s, teleport it
+            // back to its initial spawn point above the volcano platform.
+            if (!mountedOnDragon && dragonVolcano) {
+                const inLava = isInsideDragonVolcanoCore(dragon.position.x, dragon.position.z)
+                    && dragon.position.y <= dragonVolcano.lavaTopY;
+                if (inLava) {
+                    dragonLavaTimer += delta;
+                    if (dragonLavaTimer >= 3) {
+                        dragonLavaTimer = 0;
+                        dragon.position.set(
+                            dragonVolcano.x,
+                            dragonVolcano.platformTopY + 150,
+                            dragonVolcano.z
+                        );
+                        dragonDescending = true;
+                    }
+                } else {
+                    dragonLavaTimer = 0;
                 }
             }
         }
