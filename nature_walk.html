@@ -1716,6 +1716,16 @@
             return Math.max(getLandSurfaceHeight(x, z), getDragonVolcanoPlatformTopHeight(x, z));
         }
 
+        // Like getDragonSupportHeight but only counts surfaces that are strictly below
+        // `aboveY`.  This prevents the platform (or any raised surface) from being used
+        // as a landing target when the dragon is already below it.
+        function getDragonSupportHeightBelow(x, z, aboveY) {
+            const land     = getLandSurfaceHeight(x, z);
+            const platform = getDragonVolcanoPlatformTopHeight(x, z);
+            const effectivePlatform = (platform < aboveY) ? platform : -Infinity;
+            return Math.max(land, effectivePlatform);
+        }
+
         function respawnPlayerAtOrigin() {
             player.position.set(0, getGroundHeight(0, 0), 0);
             velocity.set(0, 0, 0);
@@ -2680,8 +2690,8 @@
 
         function createDragonVolcano() {
             const rawVolcanoHeight = tallestSnowyMountainHeight || DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
-            const volcanoHeight    = rawVolcanoHeight * 0.75;                    // 25% shorter
-            const outerBaseRadius  = Math.max(215, rawVolcanoHeight * 0.715);   // 30% wider than original (165*1.3, 0.55*1.3)
+            const volcanoHeight    = rawVolcanoHeight * 0.7125;                  // 25% + 5% shorter (×0.75×0.95)
+            const outerBaseRadius  = Math.max(226, rawVolcanoHeight * 0.751);   // 30% + 5% wider than original (×1.3×1.05)
             const outerTopRadius   = Math.max(62,  rawVolcanoHeight * 0.22);    // unchanged
             const coreRadius       = Math.max(48,  volcanoHeight * 0.16);
             const lavaHeight = volcanoHeight * 0.3;
@@ -3944,6 +3954,7 @@
                 waterSurface.rotation.x = -Math.PI / 2;
                 waterSurface.position.y = waterBody.surfaceY;
                 waterSurface.receiveShadow = true;
+                waterSurface.userData.isWater = true;
                 waterGroup.add(waterSurface);
 
                 const waterDepth = Math.max(0.5, waterBody.surfaceY - waterBody.floorY);
@@ -3962,6 +3973,7 @@
                     waterVolumeMaterial
                 );
                 waterVolume.position.y = waterBody.surfaceY - waterVolumeDepth / 2;
+                waterVolume.userData.isWater = true;
                 waterGroup.add(waterVolume);
 
                 waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
@@ -4985,7 +4997,7 @@
                 // decelerating when it crosses the threshold — smooth halt, no crawl.
                 const DRAGON_HOVER_HEIGHT = 6;  // tunable: units above ground at landing
                 const targetDist = 3;            // easing aim point below DRAGON_HOVER_HEIGHT
-                const groundY = getDragonSupportHeight(dragon.position.x, dragon.position.z);
+                const groundY = getDragonSupportHeightBelow(dragon.position.x, dragon.position.z, dragon.position.y);
                 const targetY = groundY + targetDist;
 
                 const descentRate = 1 - Math.exp(-0.75 * delta);
@@ -5160,7 +5172,7 @@
             npcs.forEach(npc => npc.mesh.traverse(obj => excludeUUIDs.add(obj.uuid)));
 
             const solidHits = raycaster.intersectObjects(scene.children, true)
-                .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam);
+                .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam && !h.object.userData.isWater);
 
             // Check if we hit the magenta gem -> trigger demon apocalypse
             if (solidHits.length > 0 && solidHits[0].object.userData.isSecretGem) {
