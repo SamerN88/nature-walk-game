@@ -688,7 +688,7 @@
         let structures = [];
         let solidWalls = [];
         let ceilings = []; // {x, z, halfW, halfD, y} — blocks player from going above y
-        let roofColliders = []; // {x, z, halfW, halfD, topY, bottomY}
+        let roofColliders = []; // rect: {x, z, halfW, halfD, topY, bottomY} or circle: {x, z, radius, topY, bottomY}
         let placementFootprints = [];
         let waterBodies = [];
         let collisionDebugGroup = null;
@@ -789,7 +789,7 @@
         let tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
         let dragon;
         let dragonDescending = false;
-        let dragonDescendTracksPlayer = false;
+        let dragonDescendTracksPlayer = false;  // currently unused, but leaving it in for posterity
         let mountedOnDragon = false;
         let dragonVelocity = new THREE.Vector3();
         const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
@@ -1700,6 +1700,22 @@
             return dragonVolcano.baseY;
         }
 
+        function getDragonVolcanoPlatformTopHeight(x, z) {
+            if (!dragonVolcano) return -Infinity;
+
+            const dx = x - dragonVolcano.x;
+            const dz = z - dragonVolcano.z;
+            if (dx * dx + dz * dz > dragonVolcano.platformRadius * dragonVolcano.platformRadius) {
+                return -Infinity;
+            }
+
+            return dragonVolcano.platformTopY;
+        }
+
+        function getDragonSupportHeight(x, z) {
+            return Math.max(getLandSurfaceHeight(x, z), getDragonVolcanoPlatformTopHeight(x, z));
+        }
+
         function respawnPlayerAtOrigin() {
             player.position.set(0, getGroundHeight(0, 0), 0);
             velocity.set(0, 0, 0);
@@ -1913,6 +1929,10 @@
             roofColliders.push({ x, z, halfW, halfD, topY, bottomY, rotation });
         }
 
+        function addRoofColliderCircle(x, z, radius, topY, bottomY) {
+            roofColliders.push({ x, z, radius, topY, bottomY, rotation: 0 });
+        }
+
         function addLocalRoofCollider(originX, originZ, localX, localZ, halfW, halfD, topY, bottomY, rotation = 0) {
             const world = localToWorldXZ(originX, originZ, localX, localZ, rotation);
             addRoofColliderRect(world.x, world.z, halfW, halfD, topY, bottomY, rotation);
@@ -1973,6 +1993,17 @@
             const hitZ = clampedZ !== player.position.z;
             player.position.x = clampedX;
             player.position.z = clampedZ;
+            return { hitX, hitZ };
+        }
+
+        function clampPositionToWorldBounds(position) {
+            const bound = WORLD_SIZE - 10;
+            const clampedX = Math.max(-bound, Math.min(bound, position.x));
+            const clampedZ = Math.max(-bound, Math.min(bound, position.z));
+            const hitX = clampedX !== position.x;
+            const hitZ = clampedZ !== position.z;
+            position.x = clampedX;
+            position.z = clampedZ;
             return { hitX, hitZ };
         }
 
@@ -2061,6 +2092,68 @@
             }
 
             return { blockedX, blockedZ };
+        }
+
+        function resolveCircularEntityWallOverlaps(position, y, radius, resolvePasses = 3, previousPosition = null) {
+            let blockedX = false;
+            let blockedZ = false;
+
+            for (let pass = 0; pass < resolvePasses; pass++) {
+                let hadOverlap = false;
+                const passPreviousPosition = pass === 0 ? previousPosition : null;
+
+                for (const wall of solidWalls) {
+                    if (!isWallActiveForY(wall, y)) continue;
+                    const push = resolveCircularWallCollision(position, radius, wall, passPreviousPosition);
+                    if (!push) continue;
+
+                    position.x += push.x;
+                    position.z += push.z;
+                    if (Math.abs(push.x) > 1e-5) blockedX = true;
+                    if (Math.abs(push.z) > 1e-5) blockedZ = true;
+                    hadOverlap = true;
+                }
+
+                const bounded = clampPositionToWorldBounds(position);
+                blockedX = blockedX || bounded.hitX;
+                blockedZ = blockedZ || bounded.hitZ;
+                if (!hadOverlap) break;
+            }
+
+            return { blockedX, blockedZ };
+        }
+
+        function resolveCircularBodyRoofCollision(position, previousY, supportOffset, verticalMotion) {
+            let groundedOnRoof = false;
+
+            for (const roof of roofColliders) {
+                if (!isPointInsideRoofCollider(position.x, position.z, roof)) continue;
+
+                const roofTop = roof.topY + supportOffset;
+                const roofBottom = roof.bottomY - supportOffset;
+
+                if (verticalMotion <= 0 && previousY >= roofTop - 0.05 && position.y <= roofTop + 0.35) {
+                    position.y = roofTop;
+                    groundedOnRoof = true;
+                    continue;
+                }
+
+                if (verticalMotion > 0 && previousY <= roofBottom + 0.05 && position.y >= roofBottom) {
+                    position.y = roofBottom - 0.01;
+                }
+            }
+
+            return groundedOnRoof;
+        }
+
+        function isPointInsideRoofCollider(x, z, roof) {
+            if (roof.radius !== undefined) {
+                const dx = x - roof.x;
+                const dz = z - roof.z;
+                return dx * dx + dz * dz <= roof.radius * roof.radius;
+            }
+
+            return isPointInRotatedRect(x, z, roof);
         }
 
         function getPlayerMovementSubsteps(totalDX, totalDZ) {
@@ -2211,12 +2304,25 @@
             }
 
             for (const roof of roofColliders) {
-                const mesh = new THREE.Mesh(
-                    new THREE.BoxGeometry(roof.halfW * 2, Math.max(0.08, roof.topY - roof.bottomY), roof.halfD * 2),
-                    planeMat
-                );
+                let mesh;
+                if (roof.radius !== undefined) {
+                    mesh = new THREE.Mesh(
+                        new THREE.CylinderGeometry(
+                            roof.radius,
+                            roof.radius,
+                            Math.max(0.08, roof.topY - roof.bottomY),
+                            24
+                        ),
+                        planeMat
+                    );
+                } else {
+                    mesh = new THREE.Mesh(
+                        new THREE.BoxGeometry(roof.halfW * 2, Math.max(0.08, roof.topY - roof.bottomY), roof.halfD * 2),
+                        planeMat
+                    );
+                    mesh.rotation.y = roof.rotation || 0;
+                }
                 mesh.position.set(roof.x, (roof.topY + roof.bottomY) / 2, roof.z);
-                mesh.rotation.y = roof.rotation || 0;
                 addDebugMesh(mesh);
             }
         }
@@ -2573,10 +2679,11 @@
         }
 
         function createDragonVolcano() {
-            const volcanoHeight = tallestSnowyMountainHeight || DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
-            const outerBaseRadius = Math.max(165, volcanoHeight * 0.55);
-            const outerTopRadius = Math.max(62, volcanoHeight * 0.22);
-            const coreRadius = Math.max(48, volcanoHeight * 0.16);
+            const rawVolcanoHeight = tallestSnowyMountainHeight || DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
+            const volcanoHeight    = rawVolcanoHeight * 0.75;                    // 25% shorter
+            const outerBaseRadius  = Math.max(215, rawVolcanoHeight * 0.715);   // 30% wider than original (165*1.3, 0.55*1.3)
+            const outerTopRadius   = Math.max(62,  rawVolcanoHeight * 0.22);    // unchanged
+            const coreRadius       = Math.max(48,  volcanoHeight * 0.16);
             const lavaHeight = volcanoHeight * 0.3;
             const platformRadius = Math.max(8, coreRadius * 0.2);
             const platformThickness = 2.5;
@@ -2702,15 +2809,13 @@
             volcanoGroup.add(lavaLight);
 
             scene.add(volcanoGroup);
-
-            structures.push({
-                type: 'cylinder',
-                x: placement.x,
-                z: placement.z,
-                y: platformBottomY,
-                radius: platformRadius,
-                height: platformThickness
-            });
+            addRoofColliderCircle(
+                placement.x,
+                placement.z,
+                platformRadius,
+                platformTopY,
+                platformBottomY
+            );
 
             for (let i = 0; i < innerWallSegments; i++) {
                 const angle = (i / innerWallSegments) * Math.PI * 2;
@@ -4592,8 +4697,8 @@
             const wings = [];
 
             const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
-            const redMaterial = new THREE.MeshLambertMaterial({ color: 0x8B0000 });
-            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+            const redMaterial = new THREE.MeshLambertMaterial({ color: 0xcc0000 });
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xFF2200 });
 
             // Body
             const body = new THREE.Mesh(
@@ -4774,15 +4879,57 @@
             const dy = player.position.y - dragonGem.mesh.position.y;
             const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-            if (dist < 3) {
+            if (dist < 2) {
                 collectDragonGem();
             }
         }
 
         function collectDragonGem() {
             dragonGemCollected = true;
+
+            // Capture world position before removing the mesh
+            const gemWorldPos = dragonGem.mesh.position.clone();
             scene.remove(dragonGem.mesh);
             updateMenuPanels();
+
+            // Particle burst — red and black, matching the gem's aesthetic
+            const particles = new THREE.Group();
+            particles.userData.ignoreCameraOcclusion = true;
+            for (let i = 0; i < 30; i++) {
+                const particle = new THREE.Mesh(
+                    new THREE.OctahedronGeometry(0.3, 0),
+                    new THREE.MeshBasicMaterial({
+                        color: Math.random() > 0.4 ? 0xFF1100 : 0x111111,
+                        transparent: true,
+                        opacity: 1
+                    })
+                );
+                particle.position.copy(gemWorldPos);
+                particle.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 20,
+                    Math.random() * 15,
+                    (Math.random() - 0.5) * 20
+                );
+                particles.add(particle);
+            }
+            scene.add(particles);
+            let particleLife = 0;
+            const animateGemParticles = () => {
+                particleLife += 0.016;
+                particles.children.forEach(p => {
+                    p.position.add(p.userData.velocity.clone().multiplyScalar(0.016));
+                    p.userData.velocity.y -= 15 * 0.016;
+                    p.material.opacity = Math.max(0, 1 - particleLife);
+                    p.rotation.x += 0.1;
+                    p.rotation.y += 0.15;
+                });
+                if (particleLife < 2) {
+                    requestAnimationFrame(animateGemParticles);
+                } else {
+                    scene.remove(particles);
+                }
+            };
+            animateGemParticles();
 
             // Flash effect
             const flash = document.createElement('div');
@@ -4791,11 +4938,11 @@
             setTimeout(() => { flash.style.opacity = '0'; }, 100);
             setTimeout(() => { flash.remove(); }, 1100);
 
-            // Start dragon descent
-            dragonDescendTracksPlayer = true;
+            // Start dragon descent — spawn directly above the gem so it descends onto it
+            const DRAGON_SPAWN_HEIGHT = 500;
             dragonDescending = true;
             dragon.visible = true;
-            dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
+            dragon.position.set(dragonGem.x, dragonGem.baseY + DRAGON_SPAWN_HEIGHT, dragonGem.z);
         }
 
         // Returns the nearest clear XZ point that isn't over an enclosed structure (house/cave/tent)
@@ -4827,75 +4974,32 @@
         function updateDragon(delta) {
             if (!dragon) return;
 
-            // Set to true to allow the dragon to track the player during the first descent, 
-            // false to have it just drop straight down
-            const ALLOW_TRACKING = false;
-
             if (dragonDescending && !mountedOnDragon) {
                 const previousDragonX = dragon.position.x;
                 const previousDragonZ = dragon.position.z;
-                let targetX = dragon.position.x;
-                let targetZ = dragon.position.z;
-                let targetY;
 
-                // Current descent setup:
-                // 1. `baseTargetDist` is the distance we want the dragon to end up from the player in the straight-above case.
-                // 2. `dragonTargetDist` is a closer target point that the dragon actually flies toward.
-                // 3. `residualDist` is how close the dragon must get to that target before descent stops.
-                // 4. In the straight-above case, `dragonTargetDist + residualDist` equals `baseTargetDist`.
-                // 5. While tracking the player, the target Y is `player.y + dragonTargetDist`.
-                // 6. While tracking from the side, the target is also pushed outward in XZ by `dragonTargetDist * targetDistScaler * sin(theta)`.
-                // 7. The dragon eases toward that target, then stops once it is within `residualDist` of it.
-                const baseTargetDist = 6;
-                const dragonTargetDist = 3;
-                const residualDist = baseTargetDist - dragonTargetDist;
-                const targetDistScaler = 3;
+                // DRAGON_HOVER_HEIGHT: how far above the ground the dragon stops.
+                // The dragon eases toward (groundY + targetDist), which is below the
+                // stopping threshold (groundY + DRAGON_HOVER_HEIGHT).  Because the true
+                // easing target is lower than the stop point, the dragon is still
+                // decelerating when it crosses the threshold — smooth halt, no crawl.
+                const DRAGON_HOVER_HEIGHT = 6;  // tunable: units above ground at landing
+                const targetDist = 3;            // easing aim point below DRAGON_HOVER_HEIGHT
+                const groundY = getDragonSupportHeight(dragon.position.x, dragon.position.z);
+                const targetY = groundY + targetDist;
 
-                if (ALLOW_TRACKING && dragonDescendTracksPlayer) {
-                    const toDragonX = dragon.position.x - player.position.x;
-                    const toDragonY = dragon.position.y - player.position.y;
-                    const toDragonZ = dragon.position.z - player.position.z;
-                    const horizontalDist = Math.hypot(toDragonX, toDragonZ);
-                    const dragonDist = Math.hypot(toDragonX, toDragonY, toDragonZ);
-                    const sinTheta = dragonDist > 1e-5 ? horizontalDist / dragonDist : 0;
-                    const horizontalOffset = dragonTargetDist * (targetDistScaler * sinTheta);
-
-                    let offsetDirX = 0;
-                    let offsetDirZ = 0;
-                    if (horizontalDist > 1e-5) {
-                        offsetDirX = toDragonX / horizontalDist;
-                        offsetDirZ = toDragonZ / horizontalDist;
-                    }
-
-                    targetX = player.position.x + offsetDirX * horizontalOffset;
-                    targetZ = player.position.z + offsetDirZ * horizontalOffset;
-                    targetY = player.position.y + dragonTargetDist;
-                } else {
-                    targetY = getLandSurfaceHeight(targetX, targetZ) + dragonTargetDist;
-                }
-
-                const followRate = 1 - Math.exp(-0.75 * delta);
-                dragon.position.x += (targetX - dragon.position.x) * followRate;
-                dragon.position.y += (targetY - dragon.position.y) * followRate;
-                dragon.position.z += (targetZ - dragon.position.z) * followRate;
-                dragon.position.y = Math.max(
+                const descentRate = 1 - Math.exp(-0.75 * delta);
+                dragon.position.y += (targetY - dragon.position.y) * descentRate;
+                resolveCircularEntityWallOverlaps(
+                    dragon.position,
                     dragon.position.y,
-                    getGroundHeight(dragon.position.x, dragon.position.z) + baseTargetDist
+                    DRAGON_COLLISION_RADIUS,
+                    3,
+                    { x: previousDragonX, z: previousDragonZ }
                 );
 
-                // Face the direction the dragon is moving as it tracks the player.
-                const followDX = dragon.position.x - previousDragonX;
-                const followDZ = dragon.position.z - previousDragonZ;
-                if (followDX * followDX + followDZ * followDZ > 1e-5) {
-                    dragon.rotation.set(0, Math.atan2(-followDZ, followDX), 0);
-                }
-
-                const distToTarget = Math.hypot(
-                    targetX - dragon.position.x,
-                    targetY - dragon.position.y,
-                    targetZ - dragon.position.z
-                );
-                if (distToTarget < residualDist) {
+                if (dragon.position.y <= groundY + DRAGON_HOVER_HEIGHT) {
+                    dragon.position.y = groundY + DRAGON_HOVER_HEIGHT; // correct sub-frame overshoot (<0.05 units)
                     dragonDescending = false;
                 }
             }
@@ -4926,7 +5030,19 @@
                 dragonVelocity.multiplyScalar(anyKeyHeld ? 0.85 : 0.5);
 
                 // Update position
+                const previousDragonX = dragon.position.x;
+                const previousDragonZ = dragon.position.z;
+                const previousDragonY = dragon.position.y;
                 dragon.position.addScaledVector(dragonVelocity, delta);
+                const wallOverlaps = resolveCircularEntityWallOverlaps(
+                    dragon.position,
+                    dragon.position.y,
+                    DRAGON_COLLISION_RADIUS,
+                    3,
+                    { x: previousDragonX, z: previousDragonZ }
+                );
+                if (wallOverlaps.blockedX) dragonVelocity.x = 0;
+                if (wallOverlaps.blockedZ) dragonVelocity.z = 0;
 
                 // Keep above ground
                 const dgY = getLandSurfaceHeight(dragon.position.x, dragon.position.z);
@@ -4934,18 +5050,35 @@
                     dragon.position.y = dgY + 8;
                     if (dragonVelocity.y < 0) dragonVelocity.y = 0;
                 }
+                const groundedOnRoof = resolveCircularBodyRoofCollision(
+                    dragon.position,
+                    previousDragonY,
+                    8,
+                    dragon.position.y - previousDragonY
+                );
+                if (groundedOnRoof && dragonVelocity.y < 0) {
+                    dragonVelocity.y = 0;
+                }
 
                 // Camera follows dragon (further back than normal player cam)
-                const dragonCamDist = 35;
-                const dragonCamH = 14;
-                const cameraOffset = new THREE.Vector3(
-                    -Math.sin(cameraYaw) * dragonCamDist,
-                    dragonCamH + Math.sin(cameraPitch) * dragonCamDist * 0.8,
-                    -Math.cos(cameraYaw) * dragonCamDist
-                );
-                camera.position.copy(dragon.position).add(cameraOffset);
                 const lookTarget = dragon.position.clone();
                 lookTarget.y += 18;
+                const dragonCamDist = 35;
+                const dragonCamH = 14;
+                const pitchCos = Math.cos(cameraPitch);
+                const pitchSin = Math.sin(cameraPitch);
+                const pitchHeight = cameraPitch > 0
+                    ? pitchSin * dragonCamDist * 0.65
+                    : pitchSin * dragonCamDist * 1.8;
+                const cameraOffset = new THREE.Vector3(
+                    -Math.sin(cameraYaw) * dragonCamDist * pitchCos,
+                    dragonCamH + pitchHeight,
+                    -Math.cos(cameraYaw) * dragonCamDist * pitchCos
+                );
+                const desiredCameraPosition = dragon.position.clone().add(cameraOffset);
+                desiredCameraPosition.y += 2;
+                scene.updateMatrixWorld();
+                camera.position.copy(resolveThirdPersonCameraPosition(lookTarget, desiredCameraPosition));
                 camera.lookAt(lookTarget);
             }
 
@@ -4990,16 +5123,16 @@
             mountedOnDragon = false;
             player.visible = true;
 
-            // Place player at the ground directly below the dragon
-            player.position.x = dragon.position.x;
-            player.position.z = dragon.position.z;
-            player.position.y = getLandSurfaceHeight(dragon.position.x, dragon.position.z);
-
+            // Drop the player from their current mounted position so they fall naturally.
+            // Do NOT teleport to ground — getDragonSupportHeight has no y-awareness and
+            // would pull the player up to a platform that is above them.
+            const riderOffset = mountedPlayerLocalOffset.clone().applyQuaternion(dragon.quaternion);
+            player.position.copy(dragon.position).add(riderOffset);
             velocity.set(0, 0, 0);
+            isGrounded = false;
             updateAK47VisualState();
 
             // Dragon descends back down so the player can remount
-            dragonDescendTracksPlayer = false;
             dragonDescending = true;
         }
 
@@ -5010,9 +5143,10 @@
             const aimDir = new THREE.Vector3();
             camera.getWorldDirection(aimDir);
 
-            // Beam starts from dragon's head area
-            const beamStart = dragon.position.clone();
-            beamStart.y += 5;
+            // Beam starts from the tip of the dragon's snout (local +X front face at (15, 4.5, 0))
+            const beamStart = dragon.position.clone().add(
+                new THREE.Vector3(15, 4.5, 0).applyQuaternion(dragon.quaternion)
+            );
 
             // Raycast from screen center (crosshair) against all solid scene objects.
             // Exclude the dragon, player, NPCs, and any still-fading beam meshes so the
@@ -5192,7 +5326,7 @@
             const dy = player.position.y - secretGem.mesh.position.y;
             const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-            if (dist < 3) {
+            if (dist < 2) {
                 collectGem();
             }
         }
@@ -5900,7 +6034,6 @@
                 dragonIsWhite = true;
                 dragon.visible = true;
                 // Trigger dragon descent
-                dragonDescendTracksPlayer = true;
                 dragonDescending = true;
                 dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
             }
@@ -6723,7 +6856,7 @@
             let groundedOnRoof = false;
 
             for (const roof of roofColliders) {
-                if (!isPointInRotatedRect(player.position.x, player.position.z, roof)) continue;
+                if (!isPointInsideRoofCollider(player.position.x, player.position.z, roof)) continue;
 
                 // Landing from above: clamp to roof top.
                 if (velocity.y <= 0 && previousY >= roof.topY - 0.05 && player.position.y <= roof.topY + 0.35) {
@@ -6781,6 +6914,7 @@
         const ACCEL = 14;  // MODIFIED: accel controls how quickly you reach full speed while holding movement
         const DECEL = 20;  // MODIFIED: decel controls how quickly you come to a stop after releasing movement
         const PLAYER_RADIUS = 0.5;
+        const DRAGON_COLLISION_RADIUS = 4.5;
 
         function update(delta) {
             if (playerDead) return;
@@ -7398,7 +7532,6 @@
 
             if (dragon && dragonIsWhite) {
                 dragon.visible = true;
-                dragonDescendTracksPlayer = true;
                 dragonDescending = true;
                 dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
             }
