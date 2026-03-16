@@ -613,7 +613,7 @@
         const underwaterTintEl = document.getElementById('underwater-tint');
 
         // Debug modes (for easy testing)
-        const DEBUG_GEMS = true;  // makes gems spawn very close to origin
+        const DEBUG_GEMS = false;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = false;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
@@ -621,6 +621,7 @@
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
+        const DEBUG_VOLCANO = true;  // spawns the player near the volcano for dragon gem testing
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -669,10 +670,12 @@
 
         // World bounds
         const WORLD_SIZE = 3000;
+        const MOUNTAIN_BODY_COLOR = 0x5a5a5a;
         const ORIGIN_CLEAR_RADIUS = 50;
         const STRUCTURE_PLACEMENT_GAP = 10;
         const STRUCTURE_WORLD_LIMIT = WORLD_SIZE - 120;
         const MOUNTAIN_EDGE_SAMPLE_COUNT = 50;
+        const DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT = 300;
         const MOUNTAIN_EXTRA_SINK = 1;
         const BOULDER_Y_SINK = 6;
         const PORTAL_FRAME_Y_SINK = 2;
@@ -782,6 +785,8 @@
         // Dragon system
         let dragonGem;
         let dragonGemCollected = false;
+        let dragonVolcano = null;
+        let tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
         let dragon;
         let dragonDescending = false;
         let mountedOnDragon = false;
@@ -863,6 +868,7 @@
             createFlowers();
             createGrass();
             createMountains();
+            createDragonVolcano();
             createClimbableStructures();
             createEnterableStructures();
             createCollisionDebugVisuals();
@@ -1657,6 +1663,74 @@
             return Math.max(0, baseY - minBoundaryGroundY);
         }
 
+        function isInsideDragonVolcanoCore(x, z, inset = 0) {
+            if (!dragonVolcano) return false;
+
+            const radius = Math.max(0, dragonVolcano.coreRadius - inset);
+            const dx = x - dragonVolcano.x;
+            const dz = z - dragonVolcano.z;
+            return dx * dx + dz * dz < radius * radius;
+        }
+
+        function getDragonVolcanoShellHeight(x, z) {
+            if (!dragonVolcano) return -Infinity;
+
+            const dx = x - dragonVolcano.x;
+            const dz = z - dragonVolcano.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+
+            if (dist < dragonVolcano.coreRadius || dist > dragonVolcano.outerBaseRadius) {
+                return -Infinity;
+            }
+
+            if (dist <= dragonVolcano.outerTopRadius) {
+                return dragonVolcano.topY;
+            }
+
+            const slopeSpan = dragonVolcano.outerBaseRadius - dragonVolcano.outerTopRadius;
+            if (slopeSpan <= 1e-5) return dragonVolcano.topY;
+
+            const t = (dist - dragonVolcano.outerTopRadius) / slopeSpan;
+            return dragonVolcano.baseY + dragonVolcano.height * (1 - t);
+        }
+
+        function getDragonVolcanoTerrainFloorHeight(x, z, terrainY) {
+            if (!isInsideDragonVolcanoCore(x, z)) return terrainY;
+            return dragonVolcano.baseY;
+        }
+
+        function respawnPlayerAtOrigin() {
+            player.position.set(0, getGroundHeight(0, 0), 0);
+            velocity.set(0, 0, 0);
+            isGrounded = true;
+            isJumping = false;
+            canJump = true;
+            spaceHeld = false;
+        }
+
+        function respawnPlayerFromDragonVolcanoLava() {
+            if (!dragonVolcano || mountedOnDragon) return false;
+            if (!isInsideDragonVolcanoCore(player.position.x, player.position.z, PLAYER_RADIUS * 0.15)) return false;
+            if (player.position.y > dragonVolcano.lavaTopY) return false;
+
+            respawnPlayerAtOrigin();
+            return true;
+        }
+
+        function movePlayerNearDragonVolcanoDebug() {
+            if (!dragonVolcano || !player) return;
+
+            const toOriginLength = Math.hypot(dragonVolcano.x, dragonVolcano.z);
+            const dirX = toOriginLength > 1e-5 ? -dragonVolcano.x / toOriginLength : 1;
+            const dirZ = toOriginLength > 1e-5 ? -dragonVolcano.z / toOriginLength : 0;
+            const spawnRadius = dragonVolcano.outerBaseRadius + 75;
+            const x = dragonVolcano.x + dirX * spawnRadius;
+            const z = dragonVolcano.z + dirZ * spawnRadius;
+
+            player.position.set(x, getLandSurfaceHeight(x, z), z);
+            velocity.set(0, 0, 0);
+        }
+
         function addStructureBox(x, z, y, width, height, depth, rotation = 0, extra = {}) {
             const structure = {
                 type: 'box',
@@ -2424,10 +2498,11 @@
         }
 
         function createMountains() {
-            const mountainMaterial = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
+            const mountainMaterial = new THREE.MeshLambertMaterial({ color: MOUNTAIN_BODY_COLOR });
             const snowMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
             const region = { type: 'ring', minRadius: 1450, maxRadius: 1950 };
+            tallestSnowyMountainHeight = 0;
 
             for (let i = 0; i < 30; i++) {
                 const placement = findPlacement(() => {
@@ -2446,6 +2521,7 @@
                 }, 260);
 
                 if (!placement) continue;
+                tallestSnowyMountainHeight = Math.max(tallestSnowyMountainHeight, placement.height);
 
                 const mountainGroup = new THREE.Group();
 
@@ -2489,6 +2565,184 @@
                 mountainGroup.rotation.y = placement.rotation;
                 scene.add(mountainGroup);
             }
+
+            if (tallestSnowyMountainHeight <= 0) {
+                tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
+            }
+        }
+
+        function createDragonVolcano() {
+            const volcanoHeight = tallestSnowyMountainHeight || DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
+            const outerBaseRadius = Math.max(165, volcanoHeight * 0.55);
+            const outerTopRadius = Math.max(62, volcanoHeight * 0.22);
+            const coreRadius = Math.max(48, volcanoHeight * 0.16);
+            const lavaHeight = volcanoHeight * 0.3;
+            const platformRadius = Math.max(8, coreRadius * 0.2);
+            const platformThickness = 2.5;
+            const innerWallThickness = 3;
+            const innerWallSegments = 40;
+
+            const placement = findPlacement(() => {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = backgroundDist();
+                const x = Math.cos(angle) * distance;
+                const z = Math.sin(angle) * distance;
+                return {
+                    x,
+                    z,
+                    footprint: makePlacementFootprint(x, z, outerBaseRadius + 40)
+                };
+            }, 320) || (() => {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = backgroundDist();
+                return {
+                    x: Math.cos(angle) * distance,
+                    z: Math.sin(angle) * distance
+                };
+            })();
+
+            const volcanoDrop = getStructureBoundaryDrop(
+                0,
+                sampleCircleBoundaryMinGroundHeight(
+                    placement.x,
+                    placement.z,
+                    outerBaseRadius,
+                    MOUNTAIN_EDGE_SAMPLE_COUNT
+                )
+            ) + MOUNTAIN_EXTRA_SINK;
+
+            const baseY = -volcanoDrop;
+            const topY = baseY + volcanoHeight;
+            const platformTopY = baseY + volcanoHeight * 0.5;
+            const platformBottomY = platformTopY - platformThickness;
+            const lavaTopY = baseY + lavaHeight;
+
+            const rockMaterial = new THREE.MeshLambertMaterial({ color: MOUNTAIN_BODY_COLOR, side: THREE.DoubleSide });
+            const lavaMaterial = new THREE.MeshPhongMaterial({
+                color: 0xff5a00,
+                emissive: 0xff2200,
+                emissiveIntensity: 2.2,
+                transparent: true,
+                opacity: 0.92
+            });
+            const lavaSurfaceMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffaa22,
+                transparent: true,
+                opacity: 0.65,
+                side: THREE.DoubleSide
+            });
+
+            const volcanoGroup = new THREE.Group();
+
+            const outerShell = new THREE.Mesh(
+                new THREE.CylinderGeometry(outerTopRadius, outerBaseRadius, volcanoHeight, 28, 1, true),
+                rockMaterial
+            );
+            outerShell.position.y = volcanoHeight / 2;
+            outerShell.castShadow = true;
+            outerShell.receiveShadow = true;
+            volcanoGroup.add(outerShell);
+
+            const innerWall = new THREE.Mesh(
+                new THREE.CylinderGeometry(coreRadius, coreRadius, volcanoHeight, 28, 1, true),
+                rockMaterial
+            );
+            innerWall.position.y = volcanoHeight / 2;
+            innerWall.castShadow = true;
+            innerWall.receiveShadow = true;
+            volcanoGroup.add(innerWall);
+
+            const rim = new THREE.Mesh(
+                new THREE.RingGeometry(coreRadius, outerTopRadius, 28),
+                rockMaterial
+            );
+            rim.rotation.x = -Math.PI / 2;
+            rim.position.y = volcanoHeight;
+            rim.receiveShadow = true;
+            volcanoGroup.add(rim);
+
+            const craterFloor = new THREE.Mesh(
+                new THREE.CircleGeometry(coreRadius * 0.98, 28),
+                rockMaterial
+            );
+            craterFloor.rotation.x = -Math.PI / 2;
+            craterFloor.position.y = 0.05;
+            craterFloor.receiveShadow = true;
+            volcanoGroup.add(craterFloor);
+
+            const lavaRadius = coreRadius + 1.5;
+
+            const lava = new THREE.Mesh(
+                new THREE.CylinderGeometry(lavaRadius, lavaRadius, lavaHeight, 28),
+                lavaMaterial
+            );
+            lava.position.y = lavaHeight / 2;
+            volcanoGroup.add(lava);
+
+            const lavaSurface = new THREE.Mesh(
+                new THREE.CircleGeometry(lavaRadius * 0.99, 28),
+                lavaSurfaceMaterial
+            );
+            lavaSurface.rotation.x = -Math.PI / 2;
+            lavaSurface.position.y = lavaHeight + 0.08;
+            volcanoGroup.add(lavaSurface);
+
+            const platform = new THREE.Mesh(
+                new THREE.CylinderGeometry(platformRadius, platformRadius, platformThickness, 20),
+                rockMaterial
+            );
+            platform.position.y = platformBottomY - baseY + platformThickness / 2;
+            platform.castShadow = true;
+            platform.receiveShadow = true;
+            volcanoGroup.add(platform);
+
+            const lavaLight = new THREE.PointLight(0xff5a00, 160, volcanoHeight * 1.1, 1.5);
+            lavaLight.position.y = lavaHeight + 10;
+            volcanoGroup.add(lavaLight);
+
+            scene.add(volcanoGroup);
+
+            structures.push({
+                type: 'cylinder',
+                x: placement.x,
+                z: placement.z,
+                y: platformBottomY,
+                radius: platformRadius,
+                height: platformThickness
+            });
+
+            for (let i = 0; i < innerWallSegments; i++) {
+                const angle = (i / innerWallSegments) * Math.PI * 2;
+                const wallCenterRadius = coreRadius + innerWallThickness * 0.5;
+                const wallArcHalfWidth = coreRadius * Math.tan(Math.PI / innerWallSegments) + 1.6;
+                addSolidWallRect(
+                    placement.x + Math.cos(angle) * wallCenterRadius,
+                    placement.z + Math.sin(angle) * wallCenterRadius,
+                    wallArcHalfWidth,
+                    innerWallThickness * 0.5,
+                    baseY,
+                    topY - 0.25,
+                    Math.PI / 2 - angle
+                );
+            }
+
+            dragonVolcano = {
+                mesh: volcanoGroup,
+                x: placement.x,
+                z: placement.z,
+                baseY,
+                topY,
+                height: volcanoHeight,
+                outerBaseRadius,
+                outerTopRadius,
+                coreRadius,
+                innerWallThickness,
+                lavaTopY,
+                platformTopY,
+                platformRadius
+            };
+
+            volcanoGroup.position.set(placement.x, baseY, placement.z);
         }
 
         function createClimbableStructures() {
@@ -2860,6 +3114,11 @@
                 if (height > maxHeight) {
                     maxHeight = height;
                 }
+            }
+
+            const volcanoHeight = getDragonVolcanoShellHeight(x, z);
+            if (volcanoHeight > maxHeight) {
+                maxHeight = volcanoHeight;
             }
 
             return maxHeight;
@@ -3717,12 +3976,13 @@
         }
 
         function getLandSurfaceHeight(x, z) {
-            return Math.max(getGroundHeight(x, z), getStructureHeight(x, z));
+            const terrainY = getDragonVolcanoTerrainFloorHeight(x, z, getGroundHeight(x, z));
+            return Math.max(terrainY, getStructureHeight(x, z));
         }
 
         function getMoverSurfaceHeight(x, z, allowWater = false) {
             const structureY = getStructureHeight(x, z);
-            const terrainY = getGroundHeight(x, z);
+            const terrainY = getDragonVolcanoTerrainFloorHeight(x, z, getGroundHeight(x, z));
             const landY = Math.max(terrainY, structureY);
 
             if (!allowWater) return landY;
@@ -3735,7 +3995,7 @@
         }
 
         function getWaterTraversalState(x, z, y, entityHeight = 0) {
-            const terrainY = getGroundHeight(x, z);
+            const terrainY = getDragonVolcanoTerrainFloorHeight(x, z, getGroundHeight(x, z));
             const structureY = getStructureHeight(x, z);
             const landY = Math.max(terrainY, structureY);
             const water = getWaterBodyAt(x, z);
@@ -4235,6 +4495,10 @@
         }
 
         function createDragonGem() {
+            if (!dragonVolcano) {
+                createDragonVolcano();
+            }
+
             const gemGroup = new THREE.Group();
             gemGroup.userData.ignoreCameraOcclusion = true;
 
@@ -4291,23 +4555,30 @@
             gemGroup.userData.outerGlow = outerGlow;
             gemGroup.userData.pointLight = gemLight;
 
-            // Place at random location (different from blue gem)
-            const angle = Math.random() * Math.PI * 2;
-            const distance = DEBUG_GEMS ? (10 + Math.random() * 50) : backgroundDist();
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
-            const terrainY = getGroundHeight(x, z);
-            const structY = getStructureHeight(x, z);
-            const groundY = Math.max(terrainY, structY);
+            let x;
+            let z;
+            let baseY;
 
-            gemGroup.position.set(x, groundY + 1.5, z);
+            if (DEBUG_GEMS) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 10 + Math.random() * 50;
+                x = Math.cos(angle) * distance;
+                z = Math.sin(angle) * distance;
+                baseY = getLandSurfaceHeight(x, z) + 1.5;
+            } else {
+                x = dragonVolcano ? dragonVolcano.x : 0;
+                z = dragonVolcano ? dragonVolcano.z : 0;
+                baseY = dragonVolcano ? dragonVolcano.platformTopY + 1.5 : getLandSurfaceHeight(x, z) + 1.5;
+            }
+
+            gemGroup.position.set(x, baseY, z);
             scene.add(gemGroup);
 
             dragonGem = {
                 mesh: gemGroup,
                 x: x,
                 z: z,
-                baseY: groundY + 1.5,
+                baseY,
                 rotationSpeed: 1.5,
                 bobSpeed: 2.5,
                 bobAmount: 0.4
@@ -4479,10 +4750,9 @@
             enableMeshShadows(dragon);
             scene.add(dragon);
 
-            // Just for debugging; trigger the apocalypse immediately when the dragon is created
-            if (DEBUG_APOCALYPSE) {
-                triggerDemonApocalypse();
-            }
+            // Debugging
+            if (DEBUG_APOCALYPSE) triggerDemonApocalypse();
+            if (DEBUG_VOLCANO) movePlayerNearDragonVolcanoDebug();
         }
 
         function updateDragonGem(delta, time) {
@@ -4558,7 +4828,7 @@
             if (dragonDescending && !mountedOnDragon) {
                 // Dragon descends to a clear spot near the player, low enough to mount without jumping
                 const { x: targetX, z: targetZ } = findClearDescendPoint(player.position.x, player.position.z);
-                const targetY = Math.max(getGroundHeight(targetX, targetZ), 0) + 3;
+                const targetY = Math.max(getLandSurfaceHeight(targetX, targetZ), 0) + 3;
 
                 dragon.position.x += (targetX - dragon.position.x) * delta * 0.5;
                 dragon.position.y += (targetY - dragon.position.y) * delta * 0.5;
@@ -4605,10 +4875,7 @@
                 dragon.position.addScaledVector(dragonVelocity, delta);
 
                 // Keep above ground
-                const dgY = Math.max(
-                    getGroundHeight(dragon.position.x, dragon.position.z),
-                    getStructureHeight(dragon.position.x, dragon.position.z)
-                );
+                const dgY = getLandSurfaceHeight(dragon.position.x, dragon.position.z);
                 if (dragon.position.y < dgY + 8) {
                     dragon.position.y = dgY + 8;
                     if (dragonVelocity.y < 0) dragonVelocity.y = 0;
@@ -4671,10 +4938,7 @@
             // Place player at the ground directly below the dragon
             player.position.x = dragon.position.x;
             player.position.z = dragon.position.z;
-            player.position.y = Math.max(
-                getGroundHeight(dragon.position.x, dragon.position.z),
-                getStructureHeight(dragon.position.x, dragon.position.z)
-            );
+            player.position.y = getLandSurfaceHeight(dragon.position.x, dragon.position.z);
 
             velocity.set(0, 0, 0);
             updateAK47VisualState();
@@ -6549,6 +6813,8 @@
                 }
 
                 player.position.y += velocity.y * delta;
+
+                respawnPlayerFromDragonVolcanoLava();
 
                 const waterState = getWaterTraversalState(
                     player.position.x,
