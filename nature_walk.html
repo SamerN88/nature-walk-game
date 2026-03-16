@@ -789,6 +789,7 @@
         let tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
         let dragon;
         let dragonDescending = false;
+        let dragonDescendTracksPlayer = false;
         let mountedOnDragon = false;
         let dragonVelocity = new THREE.Vector3();
         const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
@@ -1723,7 +1724,7 @@
             const toOriginLength = Math.hypot(dragonVolcano.x, dragonVolcano.z);
             const dirX = toOriginLength > 1e-5 ? -dragonVolcano.x / toOriginLength : 1;
             const dirZ = toOriginLength > 1e-5 ? -dragonVolcano.z / toOriginLength : 0;
-            const spawnRadius = dragonVolcano.outerBaseRadius + 75;
+            const spawnRadius = dragonVolcano.coreRadius + PLAYER_RADIUS + 0.75;
             const x = dragonVolcano.x + dirX * spawnRadius;
             const z = dragonVolcano.z + dirZ * spawnRadius;
 
@@ -2626,7 +2627,7 @@
                 opacity: 0.92
             });
             const lavaSurfaceMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffaa22,
+                color: 0xff6600,
                 transparent: true,
                 opacity: 0.65,
                 side: THREE.DoubleSide
@@ -2696,7 +2697,7 @@
             platform.receiveShadow = true;
             volcanoGroup.add(platform);
 
-            const lavaLight = new THREE.PointLight(0xff5a00, 160, volcanoHeight * 1.1, 1.5);
+            const lavaLight = new THREE.PointLight(0xff5a00, 400, volcanoHeight, 1.5);
             lavaLight.position.y = lavaHeight + 10;
             volcanoGroup.add(lavaLight);
 
@@ -4791,9 +4792,10 @@
             setTimeout(() => { flash.remove(); }, 1100);
 
             // Start dragon descent
+            dragonDescendTracksPlayer = true;
             dragonDescending = true;
             dragon.visible = true;
-            dragon.position.set(player.position.x + 50, 150, player.position.z + 50);
+            dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
         }
 
         // Returns the nearest clear XZ point that isn't over an enclosed structure (house/cave/tent)
@@ -4825,23 +4827,75 @@
         function updateDragon(delta) {
             if (!dragon) return;
 
+            // Set to true to allow the dragon to track the player during the first descent, 
+            // false to have it just drop straight down
+            const ALLOW_TRACKING = false;
+
             if (dragonDescending && !mountedOnDragon) {
-                // Dragon descends to a clear spot near the player, low enough to mount without jumping
-                const { x: targetX, z: targetZ } = findClearDescendPoint(player.position.x, player.position.z);
-                const targetY = Math.max(getLandSurfaceHeight(targetX, targetZ), 0) + 3;
+                const previousDragonX = dragon.position.x;
+                const previousDragonZ = dragon.position.z;
+                let targetX = dragon.position.x;
+                let targetZ = dragon.position.z;
+                let targetY;
 
-                dragon.position.x += (targetX - dragon.position.x) * delta * 0.5;
-                dragon.position.y += (targetY - dragon.position.y) * delta * 0.5;
-                dragon.position.z += (targetZ - dragon.position.z) * delta * 0.5;
+                // Current descent setup:
+                // 1. `baseTargetDist` is the distance we want the dragon to end up from the player in the straight-above case.
+                // 2. `dragonTargetDist` is a closer target point that the dragon actually flies toward.
+                // 3. `residualDist` is how close the dragon must get to that target before descent stops.
+                // 4. In the straight-above case, `dragonTargetDist + residualDist` equals `baseTargetDist`.
+                // 5. While tracking the player, the target Y is `player.y + dragonTargetDist`.
+                // 6. While tracking from the side, the target is also pushed outward in XZ by `dragonTargetDist * targetDistScaler * sin(theta)`.
+                // 7. The dragon eases toward that target, then stops once it is within `residualDist` of it.
+                const baseTargetDist = 6;
+                const dragonTargetDist = 3;
+                const residualDist = baseTargetDist - dragonTargetDist;
+                const targetDistScaler = 3;
 
-                // Face player - dragon's +X is head direction
-                const ddx = player.position.x - dragon.position.x;
-                const ddz = player.position.z - dragon.position.z;
-                dragon.rotation.set(0, Math.atan2(-ddz, ddx), 0);
+                if (ALLOW_TRACKING && dragonDescendTracksPlayer) {
+                    const toDragonX = dragon.position.x - player.position.x;
+                    const toDragonY = dragon.position.y - player.position.y;
+                    const toDragonZ = dragon.position.z - player.position.z;
+                    const horizontalDist = Math.hypot(toDragonX, toDragonZ);
+                    const dragonDist = Math.hypot(toDragonX, toDragonY, toDragonZ);
+                    const sinTheta = dragonDist > 1e-5 ? horizontalDist / dragonDist : 0;
+                    const horizontalOffset = dragonTargetDist * (targetDistScaler * sinTheta);
 
-                // Stop descending once close enough to mount
-                const dist = Math.sqrt(ddx*ddx + (player.position.y-dragon.position.y)**2 + ddz*ddz);
-                if (dist < 12) {
+                    let offsetDirX = 0;
+                    let offsetDirZ = 0;
+                    if (horizontalDist > 1e-5) {
+                        offsetDirX = toDragonX / horizontalDist;
+                        offsetDirZ = toDragonZ / horizontalDist;
+                    }
+
+                    targetX = player.position.x + offsetDirX * horizontalOffset;
+                    targetZ = player.position.z + offsetDirZ * horizontalOffset;
+                    targetY = player.position.y + dragonTargetDist;
+                } else {
+                    targetY = getLandSurfaceHeight(targetX, targetZ) + dragonTargetDist;
+                }
+
+                const followRate = 1 - Math.exp(-0.75 * delta);
+                dragon.position.x += (targetX - dragon.position.x) * followRate;
+                dragon.position.y += (targetY - dragon.position.y) * followRate;
+                dragon.position.z += (targetZ - dragon.position.z) * followRate;
+                dragon.position.y = Math.max(
+                    dragon.position.y,
+                    getGroundHeight(dragon.position.x, dragon.position.z) + baseTargetDist
+                );
+
+                // Face the direction the dragon is moving as it tracks the player.
+                const followDX = dragon.position.x - previousDragonX;
+                const followDZ = dragon.position.z - previousDragonZ;
+                if (followDX * followDX + followDZ * followDZ > 1e-5) {
+                    dragon.rotation.set(0, Math.atan2(-followDZ, followDX), 0);
+                }
+
+                const distToTarget = Math.hypot(
+                    targetX - dragon.position.x,
+                    targetY - dragon.position.y,
+                    targetZ - dragon.position.z
+                );
+                if (distToTarget < residualDist) {
                     dragonDescending = false;
                 }
             }
@@ -4922,6 +4976,7 @@
 
             if (dist < 25) {
                 mountedOnDragon = true;
+                dragonDescending = false;
                 player.visible = true;
                 dragonVelocity.set(0, 0, 0);
                 updateMountedPlayerPose();
@@ -4944,6 +4999,7 @@
             updateAK47VisualState();
 
             // Dragon descends back down so the player can remount
+            dragonDescendTracksPlayer = false;
             dragonDescending = true;
         }
 
@@ -5844,8 +5900,9 @@
                 dragonIsWhite = true;
                 dragon.visible = true;
                 // Trigger dragon descent
+                dragonDescendTracksPlayer = true;
                 dragonDescending = true;
-                dragon.position.set(player.position.x + 40, 150, player.position.z + 40);
+                dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
             }
 
             // ── Divine flash sequence ──
@@ -6105,7 +6162,7 @@
             ring.classList.add('punch-ring-active');
 
             // Check if we can mount the dragon
-            if (dragon && dragon.visible && !dragonDescending) {
+            if (dragon && dragon.visible) {
                 const dx = player.position.x - dragon.position.x;
                 const dy = player.position.y - dragon.position.y;
                 const dz = player.position.z - dragon.position.z;
@@ -7341,8 +7398,9 @@
 
             if (dragon && dragonIsWhite) {
                 dragon.visible = true;
+                dragonDescendTracksPlayer = true;
                 dragonDescending = true;
-                dragon.position.set(player.position.x + 40, 150, player.position.z + 40);
+                dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
             }
         }
 
