@@ -620,8 +620,10 @@
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
+        const DEBUG_SHADOW_MAN_IGNORE_BUFFER = true;  // ignores the initial buffer when shadow man cannot spawn
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
         const DEBUG_VOLCANO = false;  // spawns the player near the volcano for dragon gem testing
+        const DEBUG_WATER = true;  // shows a tall red translucent wall around water cylinder boundaries
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -683,6 +685,7 @@
         const TOWER_Y_SINK = 3;
         const PRIMITIVE_BLOCK_EDGE_SAMPLE_COUNT = 50;
         const PRIMITIVE_BLOCK_EXTRA_SINK = 1;
+        const GEM_COLLECTION_RADIUS = 2.5;
 
         // Climbable structures
         let structures = [];
@@ -697,15 +700,15 @@
         let terrainHeights = null;
         let groundMesh = null; // terrain mesh, stored for raycasting
         const TERRAIN_SEGS = 200; // must match PlaneGeometry segments
-        const LAKE_CRATER_FLOOR_Y = -22;
-        const POND_CRATER_FLOOR_Y = -16;
-        const WATER_VISUAL_Y_OFFSET = -3;
+        const LAKE_CRATER_FLOOR_Y = -85;
+        const POND_CRATER_FLOOR_Y = -25;
+        const WATER_VISUAL_Y_OFFSET = -5;
         const WATER_VISUAL_EXTRA_BOTTOM_DEPTH = 100;
-        const WATER_VISUAL_RADIUS_BONUS = 5;
+        //const WATER_VISUAL_RADIUS_BONUS = 10;
         const WATER_SURFACE_STRUCTURE_CLEARANCE = 0.25;
         const PLAYER_WATER_HEIGHT = 2.25;
         const PLAYER_WATER_SURFACE_EMERGENCE = 0.3;
-        const PLAYER_WATER_SINK_SPEED = 9;
+        const PLAYER_WATER_SINK_SPEED = 11;
         const PLAYER_WATER_RISE_SPEED = 11;
         const PLAYER_WATER_SINK_RESPONSE = 8;
         const PLAYER_WATER_RISE_RESPONSE = 8;
@@ -723,7 +726,7 @@
         const SHADOW_MAN_NIGHT_COLOR = 0xe0e0e0;
         const SHADOW_MAN_CAMERA_ANGLE_RANGE = THREE.MathUtils.degToRad(50);
         const SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS = 30 * 1000;  // 30 * 1000
-        const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = 5;  // 5;
+        const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : 5;  // 5;
         const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.1;  // 0.1
         const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;  // 0
 
@@ -1228,6 +1231,19 @@
             };
         }
 
+        // Returns the polygon edge radius of a water body at a given world angle.
+        // Vertices are evenly spaced in angle; we linearly interpolate between neighbours.
+        function waterPolyRadiusAt(water, angle) {
+            const verts = water.polyVerts;
+            const N = verts.length;
+            const twoPi = Math.PI * 2;
+            const a = ((angle % twoPi) + twoPi) % twoPi;   // normalise to [0, 2π)
+            const segF = a / twoPi * N;
+            const i0 = Math.floor(segF) % N;
+            const t  = segF - Math.floor(segF);
+            return verts[i0].r * (1 - t) + verts[(i0 + 1) % N].r * t;
+        }
+
         function carveTerrainHeightForWater(worldX, worldZ, baseHeight) {
             let carvedHeight = baseHeight;
 
@@ -1237,14 +1253,18 @@
                 const dist = Math.hypot(dx, dz);
                 if (dist > water.bankOuterRadius) continue;
 
+                // Polygon edge radius in this direction determines where the
+                // inner crater ends and the bank transition begins.
+                const polyR = waterPolyRadiusAt(water, Math.atan2(dz, dx));
+
                 let targetHeight;
                 if (dist <= water.floorRadius) {
                     targetHeight = water.floorY;
-                } else if (dist <= water.radius) {
-                    const t = smoothstep01((dist - water.floorRadius) / (water.radius - water.floorRadius));
+                } else if (dist <= polyR) {
+                    const t = smoothstep01((dist - water.floorRadius) / Math.max(0.01, polyR - water.floorRadius));
                     targetHeight = water.floorY + (water.surfaceY - water.floorY) * t;
                 } else {
-                    const t = smoothstep01((dist - water.radius) / (water.bankOuterRadius - water.radius));
+                    const t = smoothstep01((dist - polyR) / Math.max(0.01, water.bankOuterRadius - polyR));
                     targetHeight = water.surfaceY + (baseHeight - water.surfaceY) * t;
                 }
 
@@ -3842,38 +3862,38 @@
             const waterConfigs = [
                 {
                     kind: 'lake',
-                    radiusMin: 90,
-                    radiusMax: 135,
-                    region: { type: 'ring', minRadius: 180, maxRadius: 1050 },
+                    radiusMin: 179,//90,
+                    radiusMax: 180,//135,
+                    region: { type: 'ring', minRadius: 220/*180*/, maxRadius: 1000/*1050*/ },
                     flatness: 7.5,
-                    segments: 56,
+                    segments: 60,
                     opacity: 0.78
                 },
                 {
                     kind: 'pond',
-                    radiusMin: 26,
-                    radiusMax: 42,
+                    radiusMin: 99,//26,
+                    radiusMax: 100,//42,
                     region: { type: 'ring', minRadius: 140, maxRadius: 950 },
                     flatness: 5.5,
-                    segments: 40,
+                    segments: 60,
                     opacity: 0.72
                 },
                 {
                     kind: 'pond',
-                    radiusMin: 26,
-                    radiusMax: 42,
+                    radiusMin: 89,//26,
+                    radiusMax: 90,//42,
                     region: { type: 'ring', minRadius: 140, maxRadius: 950 },
                     flatness: 5.5,
-                    segments: 40,
+                    segments: 60,
                     opacity: 0.72
                 },
                 {
                     kind: 'pond',
-                    radiusMin: 26,
-                    radiusMax: 42,
+                    radiusMin: 79,//26,
+                    radiusMax: 80,//42,
                     region: { type: 'ring', minRadius: 140, maxRadius: 950 },
                     flatness: 5.5,
-                    segments: 40,
+                    segments: 60,
                     opacity: 0.72
                 }
             ];
@@ -3885,56 +3905,87 @@
 
                 for (const allowedRange of flatnessPasses) {
                     placement = findPlacement(() => {
-                        const radius = randRange(config.radiusMin, config.radiusMax);
+                        // R is the maximum crater radius; every polygon vertex lies within R.
+                        const R = randRange(config.radiusMin, config.radiusMax);
                         const point = samplePointInRegion(config.region);
-                        const stats = sampleTerrainStats(point.x, point.z, radius, config.kind === 'lake' ? 4 : 3, config.kind === 'lake' ? 14 : 10);
+
+                        // Flatness check: terrain inside R must not vary too wildly.
+                        const stats = sampleTerrainStats(point.x, point.z, R,
+                            config.kind === 'lake' ? 4 : 3,
+                            config.kind === 'lake' ? 14 : 10);
                         if (stats.range > allowedRange) return null;
-                        const edgeStats = sampleTerrainRingStats(point.x, point.z, radius, config.kind === 'lake' ? 48 : 36);
-                        const surfaceY = edgeStats.min - 0.03;
+
+                        // Build the crater polygon: 16 vertices evenly spaced in angle,
+                        // each with radius R * (1 - rand(0, 0.25)).  All vertices lie
+                        // strictly inside the circle of radius R.
+                        const POLY_N = 50;
+                        const polyVerts = [];
+                        const WATER_EDGE_PERTURBATION = 0.4;
+                        for (let i = 0; i < POLY_N; i++) {
+                            polyVerts.push({ r: R * (1 - Math.random() * WATER_EDGE_PERTURBATION) });
+                        }
+
+                        // Bank: smooth transition zone outside R before terrain returns
+                        // to its natural height.
+                        const bankWidth = Math.max(8, R * 0.2);
+                        const bankOuterRadius = R + bankWidth;
+
+                        // surfaceY: sample terrain from R out to bankOuterRadius + a
+                        // margin, then drop below the minimum so the water surface never
+                        // sits above surrounding terrain troughs.
+                        let minSurroundHeight = Infinity;
+                        const bankSampleStep = Math.max(2, bankWidth * 0.25);
+                        for (let sr = R; sr <= bankOuterRadius + bankWidth; sr += bankSampleStep) {
+                            const rs = sampleTerrainRingStats(point.x, point.z, sr, 50);
+                            minSurroundHeight = Math.min(minSurroundHeight, rs.min);
+                        }
+                        const surfaceDropMargin = config.kind === 'lake' ? 4 : 2;
+                        const surfaceY = minSurroundHeight - surfaceDropMargin;
+
                         const craterFloorY = config.kind === 'lake' ? LAKE_CRATER_FLOOR_Y : POND_CRATER_FLOOR_Y;
                         const floorY = Math.min(
                             surfaceY - (config.kind === 'lake' ? 10 : 6),
                             craterFloorY
                         );
-                        // Compute bankOuterRadius as the largest circle whose full
-                        // circumference sits inside the natural terrain bank: scan outward
-                        // in 36 directions from the water edge and find the first radius
-                        // where the base terrain has risen >= 0.5 units above surfaceY.
-                        // The minimum across all directions gives the inscribed circle.
-                        const BANK_SCAN_DIRS    = 36;
-                        const BANK_RISE_TARGET  = surfaceY + 0.5;
-                        const BANK_SCAN_MAX     = radius * 3.0;
-                        const BANK_SCAN_STEP    = 2.0;
-                        // We want the LARGEST crater radius across all directions so the
-                        // water cylinder is guaranteed to cover the full irregular crater
-                        // boundary.  For each direction find where terrain first rises to
-                        // surfaceY level; take the max of those distances.
-                        let bankOuterRadius = radius * 1.05;  // grows to the farthest edge
-                        for (let di = 0; di < BANK_SCAN_DIRS; di++) {
-                            const angle = (di / BANK_SCAN_DIRS) * Math.PI * 2;
-                            let dirOuter = radius * 1.05;  // fallback: terrain never rises
-                            for (let r = radius + BANK_SCAN_STEP; r <= BANK_SCAN_MAX; r += BANK_SCAN_STEP) {
+
+                        // Expand cylinderRadius until its full boundary ring sits on
+                        // terrain at or above surfaceY, so the water mesh never floats
+                        // visibly above a terrain trough at its edge.
+                        const CYL_CHECK_ANGLES = 36;
+                        const CYL_STEP         = 5;
+                        const CYL_MAX_STEPS    = 10;
+                        let cylinderRadius = R + CYL_STEP;
+                        for (let step = 0; step < CYL_MAX_STEPS; step++) {
+                            let ok = true;
+                            for (let ci = 0; ci < CYL_CHECK_ANGLES; ci++) {
+                                const a = (ci / CYL_CHECK_ANGLES) * 2*Math.PI;
                                 const h = getBaseTerrainHeight(
-                                    point.x + Math.cos(angle) * r,
-                                    point.z + Math.sin(angle) * r
+                                    point.x + Math.cos(a) * cylinderRadius,
+                                    point.z + Math.sin(a) * cylinderRadius
                                 );
-                                if (h >= BANK_RISE_TARGET) { dirOuter = r; break; }
+                                if (h <= surfaceY) { 
+                                    ok = false; 
+                                    break; 
+                                }
                             }
-                            bankOuterRadius = Math.max(bankOuterRadius, dirOuter);
+                            if (ok) break;
+                            cylinderRadius += CYL_STEP;
                         }
 
                         return {
                             kind: config.kind,
                             x: point.x,
                             z: point.z,
-                            radius,
+                            radius: R,           // used by getWaterBodyAt gameplay check
+                            polyVerts,
                             surfaceY,
                             floorY,
-                            floorRadius: radius * (config.kind === 'lake' ? 0.52 : 0.48),
+                            floorRadius: R * 0.35,
                             bankOuterRadius,
+                            cylinderRadius,
                             segments: config.segments,
                             opacity: config.opacity,
-                            footprint: makePlacementFootprint(point.x, point.z, radius + 18)
+                            footprint: makePlacementFootprint(point.x, point.z, bankOuterRadius + 18)
                         };
                     }, 260);
                     if (placement) break;
@@ -3947,10 +3998,12 @@
                     x: placement.x,
                     z: placement.z,
                     radius: placement.radius,
+                    polyVerts: placement.polyVerts,
                     surfaceY: placement.surfaceY,
                     floorY: placement.floorY,
                     floorRadius: placement.floorRadius,
                     bankOuterRadius: placement.bankOuterRadius,
+                    cylinderRadius: placement.cylinderRadius,
                     segments: placement.segments,
                     opacity: placement.opacity,
                     mesh: null
@@ -3964,7 +4017,7 @@
 
                 const waterGroup = new THREE.Group();
                 waterGroup.userData.ignoreCameraOcclusion = true;
-                const waterVisualRadius = waterBody.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
+                const waterVisualRadius = waterBody.cylinderRadius;
                 const waterSurfaceMaterial = new THREE.MeshPhongMaterial({
                     color: waterBody.kind === 'lake' ? 0x2467a8 : 0x2f7fc3,
                     emissive: 0x10365a,
@@ -4003,6 +4056,29 @@
                 waterVolume.position.y = waterBody.surfaceY - waterVolumeDepth / 2;
                 waterVolume.userData.isWater = true;
                 waterGroup.add(waterVolume);
+
+                if (DEBUG_WATER) {
+                    const debugWallHeight = 100;
+                    const debugWall = new THREE.Mesh(
+                        new THREE.CylinderGeometry(
+                            waterVisualRadius,
+                            waterVisualRadius,
+                            debugWallHeight,
+                            waterBody.segments,
+                            1,
+                            true
+                        ),
+                        new THREE.MeshBasicMaterial({
+                            color: 0xff0000,
+                            transparent: true,
+                            opacity: 0.22,
+                            side: THREE.DoubleSide,
+                            depthWrite: false
+                        })
+                    );
+                    debugWall.position.y = waterBody.surfaceY + debugWallHeight / 2;
+                    waterGroup.add(debugWall);
+                }
 
                 waterGroup.position.set(waterBody.x, WATER_VISUAL_Y_OFFSET, waterBody.z);
                 scene.add(waterGroup);
@@ -4088,7 +4164,7 @@
         }
 
         function getWaterVisualRadius(water) {
-            return water.bankOuterRadius + WATER_VISUAL_RADIUS_BONUS;
+            return water.cylinderRadius;
         }
 
         function getWaterLogicalSurfaceY(water) {
@@ -4919,7 +4995,7 @@
             const dy = player.position.y - dragonGem.mesh.position.y;
             const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-            if (dist < 2) {
+            if (dist < GEM_COLLECTION_RADIUS) {
                 collectDragonGem();
             }
         }
@@ -5387,7 +5463,7 @@
             const dy = player.position.y - secretGem.mesh.position.y;
             const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-            if (dist < 2) {
+            if (dist < GEM_COLLECTION_RADIUS) {
                 collectGem();
             }
         }
