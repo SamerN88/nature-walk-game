@@ -743,7 +743,7 @@
         const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : 5;  // 5;
         const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.15;  // 0.1
         const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;  // 0
-        const DIG_ZONE_SIZE = 7;
+        const DIG_ZONE_SIZE = 10;
 
         // NPCs
         let npcs = [];
@@ -1398,8 +1398,8 @@
 
             playerShovel = createShovelMesh(0.85);
             // Held at right side, angled forward-down like carrying a shovel
-            playerShovel.position.set(0.45, 0.55, 0.25);
-            playerShovel.rotation.set(0.35, 0, -0.25);
+            playerShovel.position.set(-0.44, 1.7, 0.7);
+            playerShovel.rotation.set(Math.PI/3.5, 0, Math.PI);
             playerShovel.visible = false;
             player.add(playerShovel);
 
@@ -3974,7 +3974,7 @@
 
                 const shovelInTent = createShovelMesh(1.0);
                 shovelInTent.position.set(localX, localY, localZ);
-                shovelInTent.rotation.set(0, Math.PI / 5, Math.PI / 2);
+                shovelInTent.rotation.set(0, Math.PI / 1.5, Math.PI / 2);
                 shovelInTent.userData.isTentShovel = true;
                 chosenTent.add(shovelInTent);
                 chosenTent.updateMatrixWorld(true);
@@ -4078,7 +4078,7 @@
                         const CYL_CHECK_ANGLES = 36;
                         const CYL_STEP         = 5;
                         const CYL_MAX_STEPS    = 10;
-                        let cylinderRadius = R + CYL_STEP;
+                        let cylinderRadius = R + 10;
                         for (let step = 0; step < CYL_MAX_STEPS; step++) {
                             let ok = true;
                             for (let ci = 0; ci < CYL_CHECK_ANGLES; ci++) {
@@ -6675,7 +6675,7 @@
             // Must be within the square area (DIG_ZONE_SIZE/2 units radius in each axis) at the lake center
             if (Math.abs(dx) > DIG_ZONE_SIZE/2 || Math.abs(dz) > DIG_ZONE_SIZE/2) return false;
             // Must be near the lake floor
-            if (player.position.y > bigLake.floorY + 7) return false;
+            if (player.position.y > bigLake.floorY + 10) return false;
 
             digCount++;
             spawnDigParticles(bigLake.x + (Math.random() - 0.5) * 2, bigLake.floorY, bigLake.z + (Math.random() - 0.5) * 2);
@@ -6887,11 +6887,11 @@
             const controls = document.getElementById('menu-controls-list');
             if (controls) {
                 const lines = [
+                    'M - Menu',
                     'WASD - Move',
                     'SHIFT - Run',
                     'SPACE - Jump',
-                    'Click - Punch/Interact',
-                    'M - Menu',
+                    'Click - Punch/Interact'
                 ];
                 if (dragonGemCollected) lines.push('U - Unmount dragon');
                 lines.push('1 - Fist');
