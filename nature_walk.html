@@ -487,6 +487,18 @@
     </div>
     <div id="crosshair"></div>
     <div id="punch-ring"></div>
+    <div id="golden-key-hud" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; pointer-events:none;">
+        <svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px #ffcc00) drop-shadow(0 0 14px #ff8800);">
+            <!-- Key ring -->
+            <circle cx="18" cy="18" r="11" fill="none" stroke="#ffd700" stroke-width="4"/>
+            <circle cx="18" cy="18" r="5" fill="#ffd700" opacity="0.35"/>
+            <!-- Shank -->
+            <rect x="27" y="15.5" width="20" height="5" rx="2.5" fill="#ffd700"/>
+            <!-- Teeth -->
+            <rect x="38" y="20.5" width="5" height="5" rx="1.5" fill="#ffd700"/>
+            <rect x="31" y="20.5" width="4" height="4" rx="1.5" fill="#ffd700"/>
+        </svg>
+    </div>
 
     <!-- Demon Apocalypse UI -->
     <div id="demon-counter"><span id="round-label" style="display:none;font-size:13px;letter-spacing:2px;opacity:0.8;"></span>&#x2620;&#xFE0E; DEMONS: <span id="demon-count">0</span> &#x2620;&#xFE0E;</div>
@@ -618,9 +630,11 @@
         const DEBUG_CHEST = false;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
+        const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
+        const DEBUG_DIG_ZONE = false; // show dig zone at lake floor as translucent red square
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
-        const DEBUG_SHADOW_MAN_IGNORE_BUFFER = true;  // ignores the initial buffer when shadow man cannot spawn
+        const DEBUG_SHADOW_MAN_IGNORE_BUFFER = false;  // ignores the initial buffer when shadow man cannot spawn
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
         const DEBUG_VOLCANO = false;  // spawns the player near the volcano for dragon gem testing
         const DEBUG_WATER = false;  // shows a tall red translucent wall around water cylinder boundaries
@@ -729,6 +743,7 @@
         const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : 5;  // 5;
         const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.15;  // 0.1
         const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;  // 0
+        const DIG_ZONE_SIZE = 7;
 
         // NPCs
         let npcs = [];
@@ -751,7 +766,6 @@
             human: 0,
             demon: 0
         };
-        let bird50FlashPlayed = false;
 
         // Respawn rate (how many NPCs spawn per natural kill, default 0)
         let respawnRate = 0;
@@ -816,6 +830,19 @@
         let ak47MuzzleLightTimer = 0;
         let ak47Beams = [];
         let ak47TriggerHeld = false;
+
+        // Hand-held item system
+        let hasShovel = false;
+        let currentHandItem = 'fist'; // 'fist' | 'shovel' | 'ak47'
+        let playerShovel = null;
+        let tentShovelMesh = null;
+
+        // Lake digging / golden key system
+        let digCount = 0;
+        let hasGoldenKey = false;
+        let goldenKeyMesh = null;
+        let bigLake = null;
+        let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
         const AK47_SHOT_INTERVAL_MS = 100; // 600 RPM
         const AK47_BEAM_LIFETIME = 0.03;
         const AK47_MUZZLE_FLASH_LIFETIME = 0.03;
@@ -823,7 +850,6 @@
         const AK47_BEAM_MAX_VISUAL_RANGE = 900;
         const AK47_BEAM_MIN_VISUAL_RANGE = 80;
         const AK47_BEAM_COLOR = 0xffe438;
-        const BIRD_KILLS_FOR_AK47 = 50;
 
         function init() {
             // Scene
@@ -867,6 +893,22 @@
             planWaterBodies();
             createGround();
             createWater();
+            bigLake = waterBodies.filter(w => w.kind === 'lake').sort((a, b) => b.cylinderRadius - a.cylinderRadius)[0] || null;
+
+            if (DEBUG_SHOVEL) {
+                hasShovel = true;
+                currentHandItem = 'shovel';
+            }
+
+            if (DEBUG_DIG_ZONE && bigLake) {
+                const zoneMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+                const zoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(DIG_ZONE_SIZE, DIG_ZONE_SIZE), zoneMat);
+                zoneMesh.rotation.x = -Math.PI / 2;
+                zoneMesh.position.set(bigLake.x, bigLake.floorY + 0.05, bigLake.z);
+                zoneMesh.renderOrder = 5;
+                scene.add(zoneMesh);
+            }
+
             createPlayer();
             createTrees();
             createRocks();
@@ -976,10 +1018,51 @@
             return { mesh: rifle, muzzle };
         }
 
+        function createShovelMesh(scale = 1) {
+            const group = new THREE.Group();
+            const wood = new THREE.MeshLambertMaterial({ color: 0x8B5E3C });
+            const metal = new THREE.MeshLambertMaterial({ color: 0xAAAAAA });
+            // Handle
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * scale, 0.06 * scale, 2.2 * scale, 8), wood);
+            handle.position.y = 1.1 * scale;
+            group.add(handle);
+            // Blade
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.55 * scale, 0.65 * scale, 0.06 * scale), metal);
+            blade.position.y = -0.33 * scale;
+            group.add(blade);
+            enableMeshShadows(group);
+            return group;
+        }
+
+        function createGoldenKeyMesh() {
+            const group = new THREE.Group();
+            const gold = new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x886600, emissiveIntensity: 0.4 });
+            // Key ring
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.12, 8, 20), gold);
+            ring.position.y = 0.45;
+            group.add(ring);
+            // Shank
+            const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.9, 8), gold);
+            shank.position.y = -0.1;
+            group.add(shank);
+            // Teeth
+            const tooth1 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.13, 0.13), gold);
+            tooth1.position.set(0.22, -0.38, 0);
+            group.add(tooth1);
+            const tooth2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.13), gold);
+            tooth2.position.set(0.19, -0.56, 0);
+            group.add(tooth2);
+            enableMeshShadows(group);
+            return group;
+        }
+
         function updateAK47VisualState() {
+            // Sync ak47Equipped from currentHandItem (DEBUG_AK47 overrides)
             if (DEBUG_AK47) {
                 ak47Collected = true;
                 ak47Equipped = true;
+            } else {
+                ak47Equipped = (currentHandItem === 'ak47');
             }
 
             if (akChest && akChest.gunMesh) {
@@ -997,6 +1080,10 @@
                 ak47MuzzleLightTimer = 0;
                 if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
                 if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
+            }
+
+            if (playerShovel) {
+                playerShovel.visible = hasShovel && (currentHandItem === 'shovel') && !playerDead && !mountedOnDragon;
             }
         }
 
@@ -1308,6 +1395,13 @@
             playerAk47.rotation.set(0, 0, 0);
             playerAk47.visible = false;
             player.add(playerAk47);
+
+            playerShovel = createShovelMesh(0.85);
+            // Held at right side, angled forward-down like carrying a shovel
+            playerShovel.position.set(0.45, 0.55, 0.25);
+            playerShovel.rotation.set(0.35, 0, -0.25);
+            playerShovel.visible = false;
+            player.add(playerShovel);
 
             const flashMat = new THREE.MeshBasicMaterial({
                 color: AK47_BEAM_COLOR,
@@ -3775,6 +3869,8 @@
                 { type: 'box', minX: 100,  maxX: 260, minZ: -260, maxZ: -90 },
             ];
 
+            const builtTentGroups = [];
+
             tentRegions.forEach(region => {
                 const placement = findPlacement(() => {
                     const point = samplePointInRegion(region);
@@ -3855,7 +3951,35 @@
                 scene.add(tent);
                 tent.updateMatrixWorld(true);
                 registerColliderMarkers(tentColliderMarkers);
+                builtTentGroups.push(tent);
             });
+
+            // Place a shovel on the floor of one randomly chosen tent
+            if (builtTentGroups.length > 0) {
+                const chosenTent = builtTentGroups[Math.floor(Math.random() * builtTentGroups.length)];
+
+                // Desired local XZ offset inside the tent (right of centre, back from entrance)
+                const localX = 1.8;
+                const localZ = -1.2;
+
+                // Convert to world XZ so we can sample actual terrain height there
+                const ty = chosenTent.rotation.y;
+                const worldShovelX = chosenTent.position.x + localX * Math.cos(ty) - localZ * Math.sin(ty);
+                const worldShovelZ = chosenTent.position.z + localX * Math.sin(ty) + localZ * Math.cos(ty);
+                const terrainAtShovel = getGroundHeight(worldShovelX, worldShovelZ);
+
+                // Local Y: terrain relative to tent origin, then add clearance so shovel sits visibly above it.
+                // The shovel laid flat (rotation.z=PI/2) has ~0.3 unit radius, so 0.5 clearance is safe.
+                const localY = Math.max(0.35, (terrainAtShovel - chosenTent.position.y) + 0.5);
+
+                const shovelInTent = createShovelMesh(1.0);
+                shovelInTent.position.set(localX, localY, localZ);
+                shovelInTent.rotation.set(0, Math.PI / 5, Math.PI / 2);
+                shovelInTent.userData.isTentShovel = true;
+                chosenTent.add(shovelInTent);
+                chosenTent.updateMatrixWorld(true);
+                tentShovelMesh = shovelInTent;
+            }
         }
 
         function planWaterBodies() {
@@ -6317,14 +6441,17 @@
             if (perp > 2.2) return false;
 
             if (!akChest.opened) {
-                if (DEBUG_CHEST || killBreakdown.bird >= BIRD_KILLS_FOR_AK47) {
+                if (DEBUG_CHEST || hasGoldenKey) {
                     akChest.opened = true;
                     akChest.lidPivot.rotation.x = -Math.PI * 0.65;
+                    hasGoldenKey = false;
+                    updateKeyHUD();
                     updateAK47VisualState();
                 }
             } else if (!akChest.collected) {
                 akChest.collected = true;
                 ak47Collected = true;
+                currentHandItem = 'ak47';
                 updateAK47VisualState();
                 updateMenuPanels();
             }
@@ -6449,6 +6576,47 @@
             const aimDir = new THREE.Vector3();
             camera.getWorldDirection(aimDir);
 
+            // Shovel digging (only when shovel is equipped, in the dig zone, key not yet found)
+            if (currentHandItem === 'shovel' && bigLake && !hasGoldenKey && digCount < 31 && !goldenKeyMesh) {
+                if (tryDig()) return;
+            }
+
+            // Shovel pickup (works without having the shovel)
+            if (!hasShovel && tentShovelMesh) {
+                const shovelWorldPos = new THREE.Vector3();
+                tentShovelMesh.getWorldPosition(shovelWorldPos);
+                const toShovel = shovelWorldPos.clone().sub(camera.position);
+                const proj = toShovel.dot(aimDir);
+                if (proj > 0 && proj < punchRange) {
+                    const perp = toShovel.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+                    if (perp < 1.8) {
+                        hasShovel = true;
+                        tentShovelMesh.parent.remove(tentShovelMesh);
+                        tentShovelMesh = null;
+                        currentHandItem = 'shovel';
+                        updateAK47VisualState();
+                        return;
+                    }
+                }
+            }
+
+            // Golden key pickup
+            if (goldenKeyMesh) {
+                const keyPos = goldenKeyMesh.position;
+                const toKey = keyPos.clone().sub(camera.position);
+                const proj = toKey.dot(aimDir);
+                if (proj > 0 && proj < punchRange) {
+                    const perp = toKey.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+                    if (perp < 2.5) {
+                        hasGoldenKey = true;
+                        scene.remove(goldenKeyMesh);
+                        goldenKeyMesh = null;
+                        updateKeyHUD();
+                        return;
+                    }
+                }
+            }
+
             if (tryInteractWithAkChest(aimDir, punchRange)) return;
 
             let hitNPC = null;
@@ -6492,6 +6660,89 @@
                 }
             }
             if (hitDemon) explodeDemon(hitDemon, hitZIdx);
+        }
+
+        function updateKeyHUD() {
+            const el = document.getElementById('golden-key-hud');
+            if (el) el.style.display = hasGoldenKey ? 'block' : 'none';
+        }
+
+        // Returns true if a dig was performed (player was in dig zone)
+        function tryDig() {
+            if (!bigLake) return false;
+            const dx = player.position.x - bigLake.x;
+            const dz = player.position.z - bigLake.z;
+            // Must be within the square area (DIG_ZONE_SIZE/2 units radius in each axis) at the lake center
+            if (Math.abs(dx) > DIG_ZONE_SIZE/2 || Math.abs(dz) > DIG_ZONE_SIZE/2) return false;
+            // Must be near the lake floor
+            if (player.position.y > bigLake.floorY + 7) return false;
+
+            digCount++;
+            spawnDigParticles(bigLake.x + (Math.random() - 0.5) * 2, bigLake.floorY, bigLake.z + (Math.random() - 0.5) * 2);
+
+            if (digCount >= 31) {
+                spawnGoldenKey();
+            }
+            return true;
+        }
+
+        function spawnDigParticles(x, y, z) {
+            const count = 18;
+            const meshes = [];
+            const velocities = [];
+            for (let i = 0; i < count; i++) {
+                const size = 0.12 + Math.random() * 0.18;
+                const mat = new THREE.MeshLambertMaterial({
+                    color: new THREE.Color().setHSL(0.07 + Math.random() * 0.05, 0.6, 0.28 + Math.random() * 0.1),
+                    transparent: true,
+                    opacity: 1
+                });
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat);
+                mesh.position.set(
+                    x + (Math.random() - 0.5) * 1.2,
+                    y + 0.2,
+                    z + (Math.random() - 0.5) * 1.2
+                );
+                scene.add(mesh);
+                meshes.push(mesh);
+                velocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 5,
+                    3 + Math.random() * 6,
+                    (Math.random() - 0.5) * 5
+                ));
+            }
+            digParticles.push({ meshes, velocities, life: 0, maxLife: 1.2 });
+        }
+
+        function updateDigParticles(delta) {
+            for (let i = digParticles.length - 1; i >= 0; i--) {
+                const p = digParticles[i];
+                p.life += delta;
+                const t = p.life / p.maxLife;
+                for (let j = 0; j < p.meshes.length; j++) {
+                    const m = p.meshes[j];
+                    m.position.addScaledVector(p.velocities[j], delta);
+                    p.velocities[j].y -= 12 * delta;
+                    m.material.opacity = 1 - t;
+                }
+                if (p.life >= p.maxLife) {
+                    p.meshes.forEach(m => scene.remove(m));
+                    digParticles.splice(i, 1);
+                }
+            }
+        }
+
+        function spawnGoldenKey() {
+            goldenKeyMesh = createGoldenKeyMesh();
+            goldenKeyMesh.position.set(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
+            goldenKeyMesh.userData.isGoldenKey = true;
+            scene.add(goldenKeyMesh);
+        }
+
+        function updateGoldenKey(delta) {
+            if (!goldenKeyMesh) return;
+            goldenKeyMesh.rotation.y += delta * 1.2;
+            goldenKeyMesh.position.y = bigLake.floorY + 0.8 + Math.sin(performance.now() / 700) * 0.3;
         }
 
         function explodeNPC(npcData, index) {
@@ -6625,23 +6876,10 @@
             }
         }
 
-        function playBirdMilestoneFlash() {
-            const flash = document.createElement('div');
-            flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,230,120,0.35);pointer-events:none;z-index:850;opacity:0;transition:opacity 0.4s ease';
-            document.body.appendChild(flash);
-            requestAnimationFrame(() => { flash.style.opacity = '1'; });
-            setTimeout(() => { flash.style.opacity = '0'; }, 120);
-            setTimeout(() => flash.remove(), 500);
-        }
-
         function recordKill(type) {
             killCount++;
             if (killBreakdown[type] !== undefined) {
                 killBreakdown[type]++;
-            }
-            if (!bird50FlashPlayed && killBreakdown.bird === BIRD_KILLS_FOR_AK47) { 
-                bird50FlashPlayed = true;
-                playBirdMilestoneFlash();
             }
         }
 
@@ -6653,10 +6891,12 @@
                     'SHIFT - Run',
                     'SPACE - Jump',
                     'Click - Punch/Interact',
-                    'M - Menu'
+                    'M - Menu',
                 ];
                 if (dragonGemCollected) lines.push('U - Unmount dragon');
-                if (ak47Collected) lines.push('G - Equip gun');
+                lines.push('1 - Fist');
+                if (hasShovel) lines.push('2 - Shovel');
+                if (ak47Collected) lines.push('3 - AK47');
                 controls.innerHTML = lines.map(line => `<div>${line}</div>`).join('');
             }
 
@@ -6822,10 +7062,19 @@
                 case 'KeyU':
                     unmountDragon();
                     break;
-                case 'KeyG':
+                case 'Digit1':
+                    currentHandItem = 'fist';
+                    updateAK47VisualState();
+                    break;
+                case 'Digit2':
+                    if (hasShovel) {
+                        currentHandItem = 'shovel';
+                        updateAK47VisualState();
+                    }
+                    break;
+                case 'Digit3':
                     if (ak47Collected) {
-                        ak47Equipped = !ak47Equipped;
-                        if (!ak47Equipped) ak47TriggerHeld = false;
+                        currentHandItem = 'ak47';
                         updateAK47VisualState();
                     }
                     break;
@@ -7262,6 +7511,8 @@
                 fireAK47();
             }
             updateAK47Effects(delta);
+            updateDigParticles(delta);
+            updateGoldenKey(delta);
             underwaterTintEl.style.opacity = isPointInsideWaterCylinder(
                 camera.position.x,
                 camera.position.y,
