@@ -488,15 +488,15 @@
     <div id="crosshair"></div>
     <div id="punch-ring"></div>
     <div id="golden-key-hud" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; pointer-events:none;">
-        <svg width="52" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px #ffcc00) drop-shadow(0 0 14px #ff8800);">
+        <svg width="80" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px #ffcc00) drop-shadow(0 0 14px #ff8800);">
             <!-- Key ring -->
             <circle cx="18" cy="18" r="11" fill="none" stroke="#ffd700" stroke-width="4"/>
             <circle cx="18" cy="18" r="5" fill="#ffd700" opacity="0.35"/>
             <!-- Shank -->
-            <rect x="27" y="15.5" width="20" height="5" rx="2.5" fill="#ffd700"/>
+            <rect x="27" y="15.5" width="30" height="5" rx="1.5" fill="#ffd700"/>
             <!-- Teeth -->
-            <rect x="38" y="20.5" width="5" height="5" rx="1.5" fill="#ffd700"/>
-            <rect x="31" y="20.5" width="4" height="4" rx="1.5" fill="#ffd700"/>
+            <rect x="43" y="20.5" width="5" height="6" rx="1.5" fill="#ffd700"/>
+            <rect x="50" y="20.5" width="4" height="5" rx="1.5" fill="#ffd700"/>
         </svg>
     </div>
 
@@ -632,6 +632,8 @@
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
         const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
         const DEBUG_DIG_ZONE = false; // show dig zone at lake floor as translucent red square
+        const DEBUG_GOLDEN_KEY_IN_LAKE = false; // key is already revealed when player first reaches the lake floor
+        const DEBUG_GOLDEN_KEY_OBTAINED = false; // start with the golden key already collected
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
         const DEBUG_SHADOW_MAN_IGNORE_BUFFER = false;  // ignores the initial buffer when shadow man cannot spawn
@@ -841,6 +843,8 @@
         let digCount = 0;
         let hasGoldenKey = false;
         let goldenKeyMesh = null;
+        let goldenKeyLockTimer = 0; // seconds remaining before key can be picked up after spawning
+        let debugGoldenKeySpawned = false; // one-shot for DEBUG_GOLDEN_KEY_IN_LAKE
         let bigLake = null;
         let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
         const AK47_SHOT_INTERVAL_MS = 100; // 600 RPM
@@ -900,6 +904,10 @@
                 currentHandItem = 'shovel';
             }
 
+            if (DEBUG_GOLDEN_KEY_OBTAINED) {
+                hasGoldenKey = true;
+            }
+
             if (DEBUG_DIG_ZONE && bigLake) {
                 const zoneMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
                 const zoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(DIG_ZONE_SIZE, DIG_ZONE_SIZE), zoneMat);
@@ -925,6 +933,7 @@
             createDragonGem();
             createDragon();
             updateAK47VisualState();
+            updateKeyHUD();
             updateStats();
             updateMenuPanels();
 
@@ -1038,11 +1047,11 @@
             const group = new THREE.Group();
             const gold = new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x886600, emissiveIntensity: 0.4 });
             // Key ring
-            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.12, 8, 20), gold);
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.12, 8, 20), gold);
             ring.position.y = 0.45;
             group.add(ring);
             // Shank
-            const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.9, 8), gold);
+            const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 8), gold);
             shank.position.y = -0.1;
             group.add(shank);
             // Teeth
@@ -6600,8 +6609,8 @@
                 }
             }
 
-            // Golden key pickup
-            if (goldenKeyMesh) {
+            // Golden key pickup (blocked for 3s after spawning)
+            if (goldenKeyMesh && goldenKeyLockTimer <= 0) {
                 const keyPos = goldenKeyMesh.position;
                 const toKey = keyPos.clone().sub(camera.position);
                 const proj = toKey.dot(aimDir);
@@ -6737,12 +6746,45 @@
             goldenKeyMesh.position.set(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
             goldenKeyMesh.userData.isGoldenKey = true;
             scene.add(goldenKeyMesh);
+            goldenKeyLockTimer = 3; // 3-second pickup lockout with glow animation
         }
 
         function updateGoldenKey(delta) {
+            // DEBUG_GOLDEN_KEY_IN_LAKE: spawn key the first time player reaches the lake floor
+            if (DEBUG_GOLDEN_KEY_IN_LAKE && !debugGoldenKeySpawned && !goldenKeyMesh && !hasGoldenKey && bigLake) {
+                const dx = player.position.x - bigLake.x;
+                const dz = player.position.z - bigLake.z;
+                if (Math.abs(dx) < bigLake.cylinderRadius && player.position.y < bigLake.floorY + 10) {
+                    debugGoldenKeySpawned = true;
+                    digCount = 31;
+                    spawnGoldenKey();
+                }
+            }
+
             if (!goldenKeyMesh) return;
+
+            // Spin and bob
             goldenKeyMesh.rotation.y += delta * 1.2;
-            goldenKeyMesh.position.y = bigLake.floorY + 0.8 + Math.sin(performance.now() / 700) * 0.3;
+            goldenKeyMesh.position.y = bigLake.floorY + 1.1 + Math.sin(performance.now() / 700) * 0.3;
+
+            // Lock-out countdown with pulsing gold glow
+            if (goldenKeyLockTimer > 0) {
+                goldenKeyLockTimer = Math.max(0, goldenKeyLockTimer - delta);
+                // Pulse emissive intensity between dim and bright over the 3-second window
+                const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
+                goldenKeyMesh.traverse(obj => {
+                    if (obj.isMesh && obj.material) {
+                        obj.material.emissiveIntensity = 0.4 + pulse * 1.4;
+                    }
+                });
+            } else {
+                // Settled glow once pickable
+                goldenKeyMesh.traverse(obj => {
+                    if (obj.isMesh && obj.material) {
+                        obj.material.emissiveIntensity = 0.4;
+                    }
+                });
+            }
         }
 
         function explodeNPC(npcData, index) {
