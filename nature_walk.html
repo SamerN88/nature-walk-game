@@ -666,9 +666,12 @@
         const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
         const DEBUG_SHADOW_MAN_IGNORE_BUFFER = false;  // ignores the initial buffer when shadow man cannot spawn
         const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
-        const DEBUG_CUTSCENE = true;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
         const DEBUG_VOLCANO = false;  // spawns the player near the volcano for dragon gem testing
         const DEBUG_WATER = false;  // shows a tall red translucent wall around water cylinder boundaries
+        const DEBUG_CUTSCENE = false;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
+        
+        // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
+        const FALL_TO_CUTSCENE = true;
 
         // Game constants
         const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
@@ -2948,17 +2951,25 @@
             ].join(';');
             document.body.appendChild(vignetteEl);
 
-            // Detect if player is airborne; if so, wait for them to land first
+            // Detect if player is airborne
             const csGroundY = getGroundHeight(player.position.x, player.position.z);
             const csStructY = getStructureHeight(player.position.x, player.position.z);
             const csSurfY   = Math.max(csGroundY, csStructY);
             const csAirborne = player.position.y > csSurfY + 0.5;
 
+            // If airborne and not falling-to-cutscene mode, teleport to surface immediately
+            if (csAirborne && !FALL_TO_CUTSCENE) {
+                player.position.y = csSurfY;
+                velocity.set(0, 0, 0);
+            }
+
+            const csStartFalling = csAirborne && FALL_TO_CUTSCENE;
+
             shadowManCutscene = {
-                phase: csAirborne ? 'falling' : 'freeze',
+                phase: csStartFalling ? 'falling' : 'freeze',
                 // falling | freeze | approach | face_freeze | head_oscillate | body_oscillate | flash
                 timer: 0,
-                frozenPlayerPos: csAirborne ? null : player.position.clone(),
+                frozenPlayerPos: csStartFalling ? null : player.position.clone(),
                 approachStart: null,
                 approachTarget: null,
                 approachStep: -1,
@@ -3197,6 +3208,13 @@
 
             // Remove vignette
             if (cs.vignetteEl && cs.vignetteEl.parentNode) cs.vignetteEl.remove();
+
+            // Orient camera to face toward where the SM was standing
+            if (shadowMan && cs.frozenPlayerPos) {
+                const smPos = shadowMan.mesh.position;
+                cameraYaw = Math.atan2(smPos.x - cs.frozenPlayerPos.x, smPos.z - cs.frozenPlayerPos.z);
+                cameraPitch = 0;
+            }
 
             // Reset SM part positions then remove shadow man
             if (shadowMan) {
