@@ -838,6 +838,11 @@
         let dragonDescendTracksPlayer = false;  // currently unused, but leaving it in for posterity
         let mountedOnDragon = false;
         let dragonLavaTimer = 0;  // seconds the unmounted dragon has spent continuously in lava
+        let dragonBondKills = 0;        // NPC/demon kills made via the dragon beam
+        let dragonBondFormed = false;   // true once DRAGON_BOND_KILLS_REQUIRED reached
+        let dragonTethered = false;     // true when player has toggled tether on with T
+        let dragonTetherShotTimer = 0;  // countdown to next tether auto-shot
+        let dragonBondFlashes = [];     // [{light1, light2, elapsed}] – bond formation flash state
         let dragonVelocity = new THREE.Vector3();
         const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
         let dragonIsWhite = false;
@@ -874,6 +879,12 @@
         let debugGoldenKeySpawned = false; // one-shot for DEBUG_GOLDEN_KEY_IN_LAKE
         let bigLake = null;
         let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
+        // Dragon bond / tether constants
+        const DRAGON_BOND_KILLS_REQUIRED  = 3; // dragon-beam kills needed to form bond
+        const DRAGON_TETHER_HEIGHT        = 60;  // units above player head when tethered
+        const DRAGON_TETHER_DETECT_RADIUS = 30;  // radius around player to detect demons for tether shots
+        const DRAGON_TETHER_SHOT_INTERVAL = 1;   // seconds between tether auto-shots
+
         const AK47_SHOT_INTERVAL_MS = 100; // 600 RPM
         const AK47_BEAM_LIFETIME = 0.03;
         const AK47_MUZZLE_FLASH_LIFETIME = 0.03;
@@ -5250,7 +5261,7 @@
         function updateDragon(delta) {
             if (!dragon) return;
 
-            if (dragonDescending && !mountedOnDragon) {
+            if (dragonDescending && !mountedOnDragon && !dragonTethered) {
                 const previousDragonX = dragon.position.x;
                 const previousDragonZ = dragon.position.z;
 
@@ -5371,6 +5382,48 @@
                 });
                 if (dragon.userData.tailPivot) {
                     dragon.userData.tailPivot.rotation.y = tailSwing;
+                }
+            }
+
+            // Tether: float above the player and auto-shoot nearby demons.
+            if (dragonTethered && !mountedOnDragon) {
+                // Clear any pending descent — tether overrides it.
+                dragonDescending = false;
+
+                // Smoothly follow the target position above the player.
+                const targetX = player.position.x;
+                const targetY = player.position.y + DRAGON_TETHER_HEIGHT;
+                const targetZ = player.position.z;
+                const followRate = 1 - Math.exp(-1.8 * delta);
+                dragon.position.x += (targetX - dragon.position.x) * followRate;
+                dragon.position.y += (targetY - dragon.position.y) * followRate;
+                dragon.position.z += (targetZ - dragon.position.z) * followRate;
+
+                // Face toward player.
+                const dxP = player.position.x - dragon.position.x;
+                const dzP = player.position.z - dragon.position.z;
+                dragon.rotation.set(0, Math.atan2(dxP, dzP), 0);
+
+                // Auto-shoot the closest demon within detection radius.
+                dragonTetherShotTimer -= delta;
+                if (dragonTetherShotTimer <= 0 && demons.length > 0) {
+                    let closestDemon = null;
+                    let closestDist = Infinity;
+                    let closestIdx = -1;
+                    for (let i = 0; i < demons.length; i++) {
+                        const dx = demons[i].mesh.position.x - player.position.x;
+                        const dz = demons[i].mesh.position.z - player.position.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist <= DRAGON_TETHER_DETECT_RADIUS && dist < closestDist) {
+                            closestDist = dist;
+                            closestDemon = demons[i];
+                            closestIdx = i;
+                        }
+                    }
+                    if (closestDemon) {
+                        dragonTetherShoot(closestDemon, closestIdx);
+                    }
+                    dragonTetherShotTimer = DRAGON_TETHER_SHOT_INTERVAL;
                 }
             }
 
@@ -5506,6 +5559,14 @@
 
             // Use explodeNPC for each killed NPC (handles kill count, animation, removal)
             killList.sort((a, b) => b - a).forEach(index => {
+                if (!dragonBondFormed) {
+                    dragonBondKills++;
+                    if (dragonBondKills >= DRAGON_BOND_KILLS_REQUIRED) {
+                        dragonBondFormed = true;
+                        updateMenuPanels();
+                        playDragonBondFlash(dragon.position.clone(), player.position.clone());
+                    }
+                }
                 explodeNPC(npcs[index], index);
             });
 
@@ -5520,11 +5581,75 @@
                 }
             });
             demonKillList.sort((a, b) => b - a).forEach(index => {
+                if (!dragonBondFormed) {
+                    dragonBondKills++;
+                    if (dragonBondKills >= DRAGON_BOND_KILLS_REQUIRED) {
+                        dragonBondFormed = true;
+                        updateMenuPanels();
+                        playDragonBondFlash(dragon.position.clone(), player.position.clone());
+                    }
+                }
                 explodeDemon(demons[index], index);
             });
 
             setTimeout(() => { beam.material.opacity = 0.4; }, 100);
             setTimeout(() => { scene.remove(beam); beam.geometry.dispose(); beam.material.dispose(); }, 250);
+        }
+
+        // Creates two slow-pulsing light-blue point lights (at dragon + at player)
+        // that pulse 3 times over 3 seconds to mark the dragon bond formation.
+        function playDragonBondFlash(dragonPos, playerPos) {
+            const color = 0x88DDFF;
+            const light1 = new THREE.PointLight(color, 0, 120);
+            light1.position.copy(dragonPos);
+            scene.add(light1);
+            const light2 = new THREE.PointLight(color, 0, 80);
+            light2.position.copy(playerPos);
+            scene.add(light2);
+            dragonBondFlashes.push({ light1, light2, elapsed: 0 });
+        }
+
+        function updateDragonBondFlashes(delta) {
+            const FLASH_DURATION = 3.0; // seconds for 3 pulses
+            for (let i = dragonBondFlashes.length - 1; i >= 0; i--) {
+                const f = dragonBondFlashes[i];
+                f.elapsed += delta;
+                if (f.elapsed >= FLASH_DURATION) {
+                    scene.remove(f.light1);
+                    scene.remove(f.light2);
+                    dragonBondFlashes.splice(i, 1);
+                    continue;
+                }
+                // max(0, sin(t*6π)) produces exactly 3 positive bumps in [0,1]
+                const t = f.elapsed / FLASH_DURATION;
+                const intensity = Math.max(0, Math.sin(t * 6 * Math.PI)) * 22;
+                f.light1.intensity = intensity;
+                f.light2.intensity = intensity * 0.7;
+            }
+        }
+
+        // Fire one tether shot from the dragon at a specific demon.
+        function dragonTetherShoot(targetDemon, targetIndex) {
+            const snoutOffset = new THREE.Vector3(15, 4.5, 0).applyQuaternion(dragon.quaternion);
+            const beamStart = dragon.position.clone().add(snoutOffset);
+            const beamEnd = targetDemon.mesh.position.clone();
+            beamEnd.y += targetDemon.gunHitCenterY ?? 4.8;
+
+            const beamVec = beamEnd.clone().sub(beamStart);
+            const beamLen = beamVec.length();
+            const beamDir = beamVec.clone().normalize();
+
+            const beamGeo = new THREE.CylinderGeometry(0.3, 0.9, beamLen, 8);
+            const beamMat = new THREE.MeshBasicMaterial({ color: dragonIsWhite ? 0x00DDFF : 0xFF2200, transparent: true, opacity: 0.82 });
+            const beam = new THREE.Mesh(beamGeo, beamMat);
+            beam.userData.isBeam = true;
+            beam.position.copy(beamStart).addScaledVector(beamDir, beamLen / 2);
+            beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamDir);
+            scene.add(beam);
+            setTimeout(() => { beam.material.opacity = 0.3; }, 100);
+            setTimeout(() => { scene.remove(beam); beam.geometry.dispose(); beam.material.dispose(); }, 260);
+
+            explodeDemon(targetDemon, targetIndex);
         }
 
         function updateNPCs(delta) {
@@ -6974,6 +7099,7 @@
                     'Click - Punch/Interact'
                 ];
                 if (dragonGemCollected) lines.push('U - Unmount dragon');
+                if (dragonBondFormed) lines.push('T - Tether dragon');
                 lines.push('1 - Fist');
                 if (hasShovel) lines.push('2 - Shovel');
                 if (ak47Collected) lines.push('3 - AK47');
@@ -7141,6 +7267,12 @@
                     break;
                 case 'KeyU':
                     unmountDragon();
+                    break;
+                case 'KeyT':
+                    if (dragonBondFormed && dragonGemCollected) {
+                        dragonTethered = !dragonTethered;
+                        // Do NOT reset the shot timer on toggle — prevents rapid-T from bypassing the fire rate.
+                    }
                     break;
                 case 'Digit1':
                     currentHandItem = 'fist';
@@ -7594,6 +7726,7 @@
                 fireAK47();
             }
             updateAK47Effects(delta);
+            updateDragonBondFlashes(delta);
             updateDigParticles(delta);
             updateGoldenKey(delta);
             underwaterTintEl.style.opacity = isPointInsideWaterCylinder(
