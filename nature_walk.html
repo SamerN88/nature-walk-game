@@ -251,6 +251,32 @@
             0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
             100% { transform: translate(-50%, -50%) scale(6); opacity: 0; }
         }
+        #equip-hint {
+            position: fixed;
+            bottom: 54px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.95);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 200;
+            opacity: 0;
+            background: rgba(0,0,0,0.55);
+            padding: 5px 16px;
+            border-radius: 6px;
+        }
+        .equip-hint-flash {
+            animation: equipHintFade 1.0s ease-out forwards;
+        }
+        @keyframes equipHintFade {
+            0%   { opacity: 1; }
+            40%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
         #crosshair::after {
             width: 20px;
             height: 2px;
@@ -487,6 +513,7 @@
     </div>
     <div id="crosshair"></div>
     <div id="punch-ring"></div>
+    <div id="equip-hint"></div>
     <div id="golden-key-hud" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; pointer-events:none;">
         <svg width="80" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px #ffcc00) drop-shadow(0 0 14px #ff8800);">
             <!-- Key ring -->
@@ -6462,6 +6489,7 @@
                 ak47Collected = true;
                 currentHandItem = 'ak47';
                 updateAK47VisualState();
+                flashEquipHint('AK47');
                 updateMenuPanels();
             }
             return true;
@@ -6604,6 +6632,7 @@
                         tentShovelMesh = null;
                         currentHandItem = 'shovel';
                         updateAK47VisualState();
+                        flashEquipHint('Shovel');
                         return;
                     }
                 }
@@ -6674,6 +6703,15 @@
         function updateKeyHUD() {
             const el = document.getElementById('golden-key-hud');
             if (el) el.style.display = hasGoldenKey ? 'block' : 'none';
+        }
+
+        function flashEquipHint(label) {
+            const el = document.getElementById('equip-hint');
+            if (!el) return;
+            el.textContent = label;
+            el.classList.remove('equip-hint-flash');
+            void el.offsetWidth; // force reflow to restart animation
+            el.classList.add('equip-hint-flash');
         }
 
         // Returns true if a dig was performed (player was in dig zone)
@@ -7107,17 +7145,20 @@
                 case 'Digit1':
                     currentHandItem = 'fist';
                     updateAK47VisualState();
+                    flashEquipHint('Fist');
                     break;
                 case 'Digit2':
                     if (hasShovel) {
                         currentHandItem = 'shovel';
                         updateAK47VisualState();
+                        flashEquipHint('Shovel');
                     }
                     break;
                 case 'Digit3':
                     if (ak47Collected) {
                         currentHandItem = 'ak47';
                         updateAK47VisualState();
+                        flashEquipHint('AK47');
                     }
                     break;
             }
