@@ -659,6 +659,7 @@
         const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
         const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
         const DEBUG_DIG_ZONE = false; // show dig zone at lake floor as translucent red square
+        const DEBUG_GOLDEN_KEY = false;  // punchable box 30 units ahead; 3 hits reveals the golden key
         const DEBUG_GOLDEN_KEY_IN_LAKE = false; // key is already revealed when player first reaches the lake floor
         const DEBUG_GOLDEN_KEY_OBTAINED = false; // start with the golden key already collected
         const DEBUG_DISTANCE = false;  // spawns a single large red stake at some distance from origin along +X
@@ -875,8 +876,11 @@
         let digCount = 0;
         let hasGoldenKey = false;
         let goldenKeyMesh = null;
-        let goldenKeyLockTimer = 0; // seconds remaining before key can be picked up after spawning
+        let goldenKeyLockTimer = 0;  // seconds remaining before key can be picked up after spawning
+        let goldenKeySpawnTime = 0; // performance.now() at spawn, for phase-locked pulse animation
+        let goldenKeyBaseY = 0;    // base Y used for bob animation (set when key is spawned)
         let debugGoldenKeySpawned = false; // one-shot for DEBUG_GOLDEN_KEY_IN_LAKE
+        let debugKeyBox = null;    // { mesh, hitCount } for DEBUG_GOLDEN_KEY punchable box
         let bigLake = null;
         let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
         // Dragon bond / tether constants
@@ -953,6 +957,17 @@
                 zoneMesh.position.set(bigLake.x, bigLake.floorY + 0.05, bigLake.z);
                 zoneMesh.renderOrder = 5;
                 scene.add(zoneMesh);
+            }
+
+            if (DEBUG_GOLDEN_KEY) {
+                const boxY = getGroundHeight(0, 30);
+                const boxMesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(2, 2, 2),
+                    new THREE.MeshLambertMaterial({ color: 0x8B5E3C })
+                );
+                boxMesh.position.set(0, boxY + 1, 30);
+                scene.add(boxMesh);
+                debugKeyBox = { mesh: boxMesh, hitCount: 0 };
             }
 
             createPlayer();
@@ -6771,6 +6786,30 @@
             const aimDir = new THREE.Vector3();
             camera.getWorldDirection(aimDir);
 
+            // DEBUG_GOLDEN_KEY: punchable box — 3 hits reveals the golden key
+            if (debugKeyBox) {
+                const toBox = debugKeyBox.mesh.position.clone().sub(camera.position);
+                const proj = toBox.dot(aimDir);
+                if (proj > 0 && proj < punchRange) {
+                    const perp = toBox.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+                    if (perp < 2) {
+                        debugKeyBox.hitCount++;
+                        if (debugKeyBox.hitCount >= 3) {
+                            const pos = debugKeyBox.mesh.position.clone();
+                            scene.remove(debugKeyBox.mesh);
+                            debugKeyBox = null;
+                            digCount = 31;
+                            spawnGoldenKey(pos.x, pos.y, pos.z);
+                        } else {
+                            const origColor = debugKeyBox.mesh.material.color.getHex();
+                            debugKeyBox.mesh.material.color.setHex(0xffffff);
+                            setTimeout(() => { if (debugKeyBox) debugKeyBox.mesh.material.color.setHex(origColor); }, 80);
+                        }
+                        return;
+                    }
+                }
+            }
+
             // Shovel digging (only when shovel is equipped, in the dig zone, key not yet found)
             if (currentHandItem === 'shovel' && bigLake && !hasGoldenKey && digCount < 31 && !goldenKeyMesh) {
                 if (tryDig()) return;
@@ -6886,7 +6925,7 @@
             spawnDigParticles(bigLake.x + (Math.random() - 0.5) * 2, bigLake.floorY, bigLake.z + (Math.random() - 0.5) * 2);
 
             if (digCount >= 31) {
-                spawnGoldenKey();
+                spawnGoldenKey(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
             }
             return true;
         }
@@ -6937,12 +6976,17 @@
             }
         }
 
-        function spawnGoldenKey() {
+        function spawnGoldenKey(x, y, z) {
             goldenKeyMesh = createGoldenKeyMesh();
-            goldenKeyMesh.position.set(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
+            goldenKeyBaseY = y;
+            goldenKeyMesh.position.set(x, y, z);
             goldenKeyMesh.userData.isGoldenKey = true;
+            const keyLight = new THREE.PointLight(0xFFCC44, 0, 12);
+            keyLight.userData.isGoldenKeyLight = true;
+            goldenKeyMesh.add(keyLight);
             scene.add(goldenKeyMesh);
-            goldenKeyLockTimer = 3; // 3-second pickup lockout with glow animation
+            goldenKeySpawnTime = performance.now();
+            goldenKeyLockTimer = 3; // exactly 3 oscillations × 1 s each
         }
 
         function updateGoldenKey(delta) {
@@ -6953,7 +6997,7 @@
                 if (Math.abs(dx) < bigLake.cylinderRadius && player.position.y < bigLake.floorY + 10) {
                     debugGoldenKeySpawned = true;
                     digCount = 31;
-                    spawnGoldenKey();
+                    spawnGoldenKey(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
                 }
             }
 
@@ -6961,16 +7005,20 @@
 
             // Spin and bob
             goldenKeyMesh.rotation.y += delta * 1.2;
-            goldenKeyMesh.position.y = bigLake.floorY + 1.1 + Math.sin(performance.now() / 700) * 0.3;
+            goldenKeyMesh.position.y = goldenKeyBaseY + 0.3 + Math.sin(performance.now() / 700) * 0.3;
 
-            // Lock-out countdown with pulsing gold glow
+            // Lock-out countdown with pulsing gold glow + point light
             if (goldenKeyLockTimer > 0) {
                 goldenKeyLockTimer = Math.max(0, goldenKeyLockTimer - delta);
-                // Pulse emissive intensity between dim and bright over the 3-second window
-                const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
+                // Phase-locked pulse: starts and ends at 0 over exactly 4 cycles
+                const phase = (performance.now() - goldenKeySpawnTime) / 1000 * 2 * Math.PI;
+                const pulse = 2 - 2 * Math.cos(phase);
                 goldenKeyMesh.traverse(obj => {
                     if (obj.isMesh && obj.material) {
                         obj.material.emissiveIntensity = 0.4 + pulse * 1.4;
+                    }
+                    if (obj.isLight && obj.userData.isGoldenKeyLight) {
+                        obj.intensity = pulse * 1.5;
                     }
                 });
             } else {
@@ -6978,6 +7026,9 @@
                 goldenKeyMesh.traverse(obj => {
                     if (obj.isMesh && obj.material) {
                         obj.material.emissiveIntensity = 0.4;
+                    }
+                    if (obj.isLight && obj.userData.isGoldenKeyLight) {
+                        obj.intensity = 0;
                     }
                 });
             }
