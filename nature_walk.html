@@ -998,6 +998,7 @@
             createDistanceDebugStake();
             createNPCs();
             // createSecretGem() is now called in demonVictory() as a post-apocalypse reward
+            if (DEBUG_GEMS) createSecretGem();
             createDragonGem();
             createDragon();
             updateAK47VisualState();
@@ -6997,7 +6998,7 @@
             }
 
             // ── Spawn magenta gem as post-apocalypse reward ──
-            if (!gemCollected) createSecretGem();
+            if (!gemCollected && !secretGem) createSecretGem();
 
             // ── Divine flash sequence ──
             let flashPhase = 0;
