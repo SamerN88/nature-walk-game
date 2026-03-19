@@ -5111,6 +5111,7 @@
                 );
                 spike.position.set(-3.2 - i * 2.7, 1.45 - i * 0.35, 0);
                 spike.rotation.z = Math.PI / 4;
+                spike.userData.isDragonSpike = true;
                 tailPivot.add(spike);
             }
 
@@ -5131,6 +5132,7 @@
                     );
                     claw.position.set(pos[0] + (c - 1) * 0.5, -5.5, pos[1] * 2.35);
                     claw.rotation.x = Math.PI;
+                    claw.userData.isDragonClaw = true;
                     dragon.add(claw);
                 }
             });
@@ -6458,21 +6460,31 @@
             if (dragon) {
                 dragon.traverse(child => {
                     if (!child.isMesh || !child.material) return;
-                    // Electric-blue eyes: any MeshBasicMaterial (only eyes use this)
+
+                    // Tail spikes & foot claws: electric blue, BasicMaterial (self-lit, visible in dark)
+                    if (child.userData.isDragonSpike || child.userData.isDragonClaw) {
+                        child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
+                        return;
+                    }
+                    // Eyes: already BasicMaterial — keep electric blue
                     if (child.material.type === 'MeshBasicMaterial') {
                         child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
                         return;
                     }
-                    // Color-based body recolor
                     const hex = child.material.color ? child.material.color.getHex() : 0;
-                    if (hex === 0x8B0000 || hex === 0xff0000) {
-                        child.material = new THREE.MeshLambertMaterial({ color: 0x00DDFF }); // electric blue horns/accents
-                    } else if (hex === 0x2a0a0a) {
+                    // Wing membranes: electric-blue translucent
+                    if (hex === 0x2a0a0a) {
                         child.material = new THREE.MeshBasicMaterial({
-                            color: 0x00DDFF, side: THREE.DoubleSide, transparent: true, opacity: 0.88 }); // electric-blue wings
-                    } else {
-                        child.material = new THREE.MeshLambertMaterial({ color: 0xFFFFFF }); // white body
+                            color: 0x00DDFF, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
+                        return;
                     }
+                    // Horns (redMaterial, 0xcc0000): BasicMaterial electric blue
+                    if (hex === 0xcc0000) {
+                        child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
+                        return;
+                    }
+                    // Everything else (body, neck, head, legs, wing bones, tail): dark blue-grey
+                    child.material = new THREE.MeshLambertMaterial({ color: 0x444455 });
                 });
                 dragonIsWhite = true;
                 dragon.visible = true;
