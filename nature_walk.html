@@ -880,7 +880,7 @@
         let bigLake = null;
         let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
         // Dragon bond / tether constants
-        const DRAGON_BOND_KILLS_REQUIRED  = 3; // dragon-beam kills needed to form bond
+        const DRAGON_BOND_KILLS_REQUIRED  = 300; // dragon-beam kills needed to form bond
         const DRAGON_TETHER_HEIGHT        = 60;  // units above player head when tethered
         const DRAGON_TETHER_DETECT_RADIUS = 30;  // radius around player to detect demons for tether shots
         const DRAGON_TETHER_SHOT_INTERVAL = 1;   // seconds between tether auto-shots
@@ -5387,14 +5387,11 @@
 
             // Tether: float above the player and auto-shoot nearby demons.
             if (dragonTethered && !mountedOnDragon) {
-                // Clear any pending descent — tether overrides it.
-                dragonDescending = false;
-
                 // Smoothly follow the target position above the player.
                 const targetX = player.position.x;
                 const targetY = player.position.y + DRAGON_TETHER_HEIGHT;
                 const targetZ = player.position.z;
-                const followRate = 1 - Math.exp(-1.8 * delta);
+                const followRate = 1 - Math.exp(-1 * delta);
                 dragon.position.x += (targetX - dragon.position.x) * followRate;
                 dragon.position.y += (targetY - dragon.position.y) * followRate;
                 dragon.position.z += (targetZ - dragon.position.z) * followRate;
@@ -5402,7 +5399,7 @@
                 // Face toward player.
                 const dxP = player.position.x - dragon.position.x;
                 const dzP = player.position.z - dragon.position.z;
-                dragon.rotation.set(0, Math.atan2(dxP, dzP), 0);
+                dragon.rotation.set(0, Math.atan2(dxP, dzP) - Math.PI/2, 0);
 
                 // Auto-shoot the closest demon within detection radius.
                 dragonTetherShotTimer -= delta;
@@ -5451,6 +5448,7 @@
 
         function mountDragon() {
             if (!dragon || !dragon.visible || mountedOnDragon) return;
+            if (demonApocalypse) return; // cannot mount during a hell run
 
             const dx = player.position.x - dragon.position.x;
             const dy = player.position.y - dragon.position.y;
@@ -5564,7 +5562,7 @@
                     if (dragonBondKills >= DRAGON_BOND_KILLS_REQUIRED) {
                         dragonBondFormed = true;
                         updateMenuPanels();
-                        playDragonBondFlash(dragon.position.clone(), player.position.clone());
+                        playDragonBondFlash();
                     }
                 }
                 explodeNPC(npcs[index], index);
@@ -5586,7 +5584,7 @@
                     if (dragonBondKills >= DRAGON_BOND_KILLS_REQUIRED) {
                         dragonBondFormed = true;
                         updateMenuPanels();
-                        playDragonBondFlash(dragon.position.clone(), player.position.clone());
+                        playDragonBondFlash();
                     }
                 }
                 explodeDemon(demons[index], index);
@@ -5596,17 +5594,31 @@
             setTimeout(() => { scene.remove(beam); beam.geometry.dispose(); beam.material.dispose(); }, 250);
         }
 
-        // Creates two slow-pulsing light-blue point lights (at dragon + at player)
-        // that pulse 3 times over 3 seconds to mark the dragon bond formation.
-        function playDragonBondFlash(dragonPos, playerPos) {
-            const color = 0x88DDFF;
-            const light1 = new THREE.PointLight(color, 0, 120);
-            light1.position.copy(dragonPos);
-            scene.add(light1);
-            const light2 = new THREE.PointLight(color, 0, 80);
-            light2.position.copy(playerPos);
-            scene.add(light2);
-            dragonBondFlashes.push({ light1, light2, elapsed: 0 });
+        // Creates visible glowing aura spheres (additive blending) on both the dragon and
+        // the player that pulse 3 times over 3 seconds to mark the dragon bond formation.
+        // Because they are emissive meshes with additive blending they are fully visible
+        // in mid-air with no nearby surfaces to reflect light onto.
+        function makeBondAuraMesh(radius) {
+            const mat = new THREE.MeshBasicMaterial({
+                color: 0x88DDFF,
+                transparent: true,
+                opacity: 0,
+                side: THREE.BackSide,      // render inside-out so it glows outward
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), mat);
+            mesh.renderOrder = 10;
+            mesh.frustumCulled = false;
+            mesh.userData.ignoreCameraOcclusion = true;
+            scene.add(mesh);
+            return mesh;
+        }
+
+        function playDragonBondFlash() {
+            const dragonAura = makeBondAuraMesh(18);  // large enough to wrap the dragon
+            const playerAura = makeBondAuraMesh(4);   // fits snugly around the player
+            dragonBondFlashes.push({ dragonAura, playerAura, elapsed: 0 });
         }
 
         function updateDragonBondFlashes(delta) {
@@ -5615,16 +5627,25 @@
                 const f = dragonBondFlashes[i];
                 f.elapsed += delta;
                 if (f.elapsed >= FLASH_DURATION) {
-                    scene.remove(f.light1);
-                    scene.remove(f.light2);
+                    scene.remove(f.dragonAura);
+                    f.dragonAura.geometry.dispose();
+                    f.dragonAura.material.dispose();
+                    scene.remove(f.playerAura);
+                    f.playerAura.geometry.dispose();
+                    f.playerAura.material.dispose();
                     dragonBondFlashes.splice(i, 1);
                     continue;
                 }
                 // max(0, sin(t*6π)) produces exactly 3 positive bumps in [0,1]
                 const t = f.elapsed / FLASH_DURATION;
-                const intensity = Math.max(0, Math.sin(t * 6 * Math.PI)) * 22;
-                f.light1.intensity = intensity;
-                f.light2.intensity = intensity * 0.7;
+                const pulse = Math.max(0, Math.sin(t * 6 * Math.PI));
+
+                // Follow dragon and player as they move during the effect
+                f.dragonAura.position.copy(dragon.position);
+                f.playerAura.position.copy(player.position);
+
+                f.dragonAura.material.opacity = pulse * 0.55;
+                f.playerAura.material.opacity = pulse * 0.70;
             }
         }
 
@@ -6066,9 +6087,9 @@
                 gemCollected = true;
             }
 
-            // ── Dragon poof: particle burst then hide ──
-            if (dragon) {
-                if (mountedOnDragon) unmountDragon();
+            // Always dismount the player; then poof the dragon only if not tethered.
+            if (mountedOnDragon) unmountDragon();
+            if (dragon && !dragonTethered) {
                 const poofPos = dragon.position.clone();
                 const poofGroup = new THREE.Group();
                 poofGroup.userData.ignoreCameraOcclusion = true;
@@ -7271,6 +7292,8 @@
                 case 'KeyT':
                     if (dragonBondFormed && dragonGemCollected) {
                         dragonTethered = !dragonTethered;
+                        // When untethering, send the dragon back down to the ground.
+                        if (!dragonTethered) dragonDescending = true;
                         // Do NOT reset the shot timer on toggle — prevents rapid-T from bypassing the fire rate.
                     }
                     break;
@@ -7894,9 +7917,9 @@
             document.getElementById('demon-counter').style.display = 'block';
             document.getElementById('health-bar-container').style.display = 'block';
 
-            // Dragon poof
-            if (dragon && dragon.visible) {
-                if (mountedOnDragon) unmountDragon();
+            // Always dismount the player; then poof the dragon only if not tethered.
+            if (mountedOnDragon) unmountDragon();
+            if (dragon && dragon.visible && !dragonTethered) {
                 const poofPos = dragon.position.clone();
                 const poofGroup = new THREE.Group();
                 poofGroup.userData.ignoreCameraOcclusion = true;
