@@ -652,7 +652,7 @@
         const underwaterTintEl = document.getElementById('underwater-tint');
 
         // Debug modes (for easy testing)
-        const DEBUG_GEMS = true;  // makes gems spawn very close to origin
+        const DEBUG_GEMS = false;  // makes gems spawn very close to origin
         const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
         const DEBUG_CHEST = false;  // for quick access to chest
         const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
@@ -773,6 +773,13 @@
         const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : 5;
         const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.15;
         const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;
+        const SHADOW_MAN_PHASE2_SPAWN_CHANCE = 0.50;
+        const SHADOW_MAN_PHASE3_SPAWN_CHANCE = 0.70;
+        const SHADOW_MAN_PHASE3_CHECK_INTERVAL_MS = 10 * 1000;
+        const SHADOW_MAN_PHASE3_SPAWN_THRESHOLD = 15;
+        const SHADOW_MAN_PHASE3_PLAYER_SPAWN_RADIUS = 500;
+        const SHADOW_MAN_CUTSCENE_TRIGGER_DIST = 50;
+        const SHADOW_MAN_CUTSCENE_STOP_DIST = 3;
         const DIG_ZONE_SIZE = 10;
 
         // NPCs
@@ -810,6 +817,10 @@
         let shadowMan = null;
         let shadowManLastMinuteChecked = -1;
         let shadowManPostApocalypseUnlocked = false;
+        let shadowManTotalSpawns = 0;
+        let shadowManPhase3Ready = false;
+        let shadowManCutscene = null;
+        let shadowManNextCheckMs = -1;
 
         // ── Hell Run system (Demon Rounds) ──────────────────────────────
         let roundKillCount   = 0;       // kills accumulated across all rounds this session
@@ -2599,6 +2610,7 @@
             shadowGroup.userData.nightMaterial = shadowNightMat;
             shadowGroup.userData.partMeshes = partMeshes;
             shadowGroup.userData.usingNightMaterial = false;
+            shadowGroup.userData.headMesh = partMeshes[1]; // index 1 = head sphere
 
             // const glow = new THREE.PointLight(0xff9900, 20, 20);
             // glow.position.set(0, 5, 0);
@@ -2736,11 +2748,22 @@
 
                 if (DEBUG_SHADOW_MAN) spawnShadowManDebugBeacon(x, groundY, z);
 
+                shadowManTotalSpawns++;
+                if (!shadowManPhase3Ready && shadowManTotalSpawns >= SHADOW_MAN_PHASE3_SPAWN_THRESHOLD) {
+                    shadowManPhase3Ready = true;
+                }
+
+                // Phase 3 final spawn: player near world origin, shadow man won't despawn
+                const playerDistFromOrigin = Math.hypot(player.position.x, player.position.z);
+                const isFinalPhase = shadowManPhase3Ready &&
+                    playerDistFromOrigin <= SHADOW_MAN_PHASE3_PLAYER_SPAWN_RADIUS;
+
                 shadowMan = {
                     mesh,
                     spawnDistance,
                     disappearDistance,
-                    maxPlayerDistance: initialPlayerDistance + SHADOW_MAN_DESPAWN_DISTANCE_BUFFER
+                    maxPlayerDistance: initialPlayerDistance + SHADOW_MAN_DESPAWN_DISTANCE_BUFFER,
+                    finalPhase: isFinalPhase
                 };
                 return true;
             }
@@ -2749,24 +2772,40 @@
         }
 
         function updateShadowMan(currentTimeMs) {
+            if (demonApocalypse) return;
+            if (shadowManCutscene) return;
+
             const elapsedMs = currentTimeMs - gameStartRealTimeMs;
-            const minuteIndex = Math.floor(elapsedMs / SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS);
+            const unlockMs = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS;
 
-            if (minuteIndex > shadowManLastMinuteChecked) {
-                for (let minute = shadowManLastMinuteChecked + 1; minute <= minuteIndex; minute++) {
-                    if (minute < SHADOW_MAN_SPAWN_UNLOCK_MINUTE) continue;
-                    if (shadowMan) break;
+            // Initialize next check time once the unlock window arrives
+            if (shadowManNextCheckMs < 0 && elapsedMs >= unlockMs) {
+                shadowManNextCheckMs = unlockMs;
+            }
 
-                    const spawnChance = shadowManPostApocalypseUnlocked
-                        ? SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE
-                        : SHADOW_MAN_BASE_SPAWN_CHANCE;
+            // Periodic spawn check
+            if (shadowManNextCheckMs >= 0 && elapsedMs >= shadowManNextCheckMs &&
+                !shadowMan && !shadowManPostApocalypseUnlocked) {
 
-                    if (Math.random() < spawnChance) {
-                        trySpawnShadowMan();
-                        break;
-                    }
+                const spawnChance = dragonGemCollected
+                    ? (shadowManPhase3Ready
+                        ? SHADOW_MAN_PHASE3_SPAWN_CHANCE
+                        : SHADOW_MAN_PHASE2_SPAWN_CHANCE)
+                    : SHADOW_MAN_BASE_SPAWN_CHANCE;
+
+                if (Math.random() < spawnChance) {
+                    trySpawnShadowMan();
                 }
-                shadowManLastMinuteChecked = minuteIndex;
+
+                // Advance to next check window
+                const interval = shadowManPhase3Ready
+                    ? SHADOW_MAN_PHASE3_CHECK_INTERVAL_MS
+                    : SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS;
+                shadowManNextCheckMs += interval;
+                // Skip missed intervals (lag/tab switch)
+                while (shadowManNextCheckMs <= elapsedMs) {
+                    shadowManNextCheckMs += interval;
+                }
             }
 
             if (!shadowMan || playerDead) return;
@@ -2776,6 +2815,20 @@
             const dz = player.position.z - shadowMan.mesh.position.z;
             const distXZ = Math.hypot(dx, dz);
 
+            // Face the player
+            if (distXZ > 0.01) {
+                shadowMan.mesh.rotation.y = Math.atan2(dx, dz);
+            }
+
+            // Phase 3 final shadow man: no despawn, watches for cutscene trigger
+            if (shadowMan.finalPhase) {
+                if (distXZ <= SHADOW_MAN_CUTSCENE_TRIGGER_DIST) {
+                    startShadowManCutscene();
+                }
+                return;
+            }
+
+            // Normal despawn behavior
             if (distXZ <= shadowMan.disappearDistance) {
                 removeShadowMan();
                 return;
@@ -2785,11 +2838,265 @@
                 removeShadowMan();
                 return;
             }
+        }
 
-            if (distXZ > 0.01) {
-                shadowMan.mesh.rotation.y = Math.atan2(dx, dz);
+        // ── Shadow Man Cutscene ─────────────────────────────────────────
+        function startShadowManCutscene() {
+            if (shadowManCutscene || !shadowMan) return;
+
+            // Freeze player
+            velocity.set(0, 0, 0);
+
+            // Store SM part base X positions for oscillation reset
+            const parts = shadowMan.mesh.userData.partMeshes;
+            const partBaseX = parts.map(m => m.position.x);
+
+            // Hide all HUD elements
+            ['ui', 'stats', 'crosshair', 'demon-counter', 'health-bar-container',
+             'golden-key-hud', 'punch-ring', 'equip-hint'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            // Create blood-red vignette overlay (initially invisible)
+            const vignetteEl = document.createElement('div');
+            vignetteEl.style.cssText = [
+                'position:fixed', 'top:0', 'left:0', 'width:100%', 'height:100%',
+                'pointer-events:none', 'z-index:750', 'opacity:0',
+                'background:radial-gradient(ellipse at center, transparent 0%, transparent 70%, rgba(140,0,0,0.95) 90%)'
+            ].join(';');
+            document.body.appendChild(vignetteEl);
+
+            shadowManCutscene = {
+                phase: 'freeze',   // freeze | approach | head_oscillate | body_oscillate | flash
+                timer: 0,
+                frozenPlayerPos: player.position.clone(),
+                approachStart: null,
+                approachTarget: null,
+                approachStep: -1,
+                vignetteEl,
+                eyes: null,
+                parts,
+                partBaseX,
+                flashShown: false,
+            };
+        }
+
+        function updateShadowManCutscene(delta) {
+            if (!shadowManCutscene) return;
+            const cs = shadowManCutscene;
+            cs.timer += delta;
+
+            // Always keep player frozen and velocity zero during cutscene
+            player.position.copy(cs.frozenPlayerPos);
+            velocity.set(0, 0, 0);
+
+            // ── PHASE: freeze ──────────────────────────────────────────
+            if (cs.phase === 'freeze') {
+                if (cs.timer >= 5.0) {
+                    cs.phase = 'approach';
+                    cs.timer = 0;
+                    cs.approachStep = 0;
+
+                    if (shadowMan) {
+                        const smPos = shadowMan.mesh.position;
+                        const adx = cs.frozenPlayerPos.x - smPos.x;
+                        const adz = cs.frozenPlayerPos.z - smPos.z;
+                        const adist = Math.hypot(adx, adz);
+                        const nx = adx / adist, nz = adz / adist;
+                        cs.approachStart = smPos.clone();
+                        cs.approachTarget = new THREE.Vector3(
+                            cs.frozenPlayerPos.x - nx * SHADOW_MAN_CUTSCENE_STOP_DIST,
+                            cs.frozenPlayerPos.y,
+                            cs.frozenPlayerPos.z - nz * SHADOW_MAN_CUTSCENE_STOP_DIST
+                        );
+                    }
+                }
+            }
+
+            // ── PHASE: approach ────────────────────────────────────────
+            else if (cs.phase === 'approach') {
+                // Each "frame" = 100ms; 3 steps bringing SM to final position
+                const newStep = Math.min(Math.floor(cs.timer / 0.1), 3);
+
+                if (newStep !== cs.approachStep && shadowMan && cs.approachStart && cs.approachTarget) {
+                    cs.approachStep = newStep;
+                    const t = newStep / 3;
+                    shadowMan.mesh.position.lerpVectors(cs.approachStart, cs.approachTarget, t);
+                    shadowMan.mesh.position.y = cs.approachTarget.y; // match player foot height
+                    const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
+                    const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
+                    shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
+                }
+
+                if (cs.timer >= 0.3) {
+                    // Snap to final and transition
+                    if (shadowMan && cs.approachTarget) {
+                        shadowMan.mesh.position.copy(cs.approachTarget);
+                        const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
+                        const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
+                        shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
+                    }
+                    cs.phase = 'head_oscillate';
+                    cs.timer = 0;
+                }
+            }
+
+            // ── PHASE: head_oscillate ──────────────────────────────────
+            else if (cs.phase === 'head_oscillate') {
+                if (shadowMan) {
+                    const headMesh = shadowMan.mesh.userData.headMesh;
+                    if (headMesh) {
+                        headMesh.position.x = cs.partBaseX[1] + Math.sin(performance.now() * 0.09) * 0.25;
+                    }
+                    const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
+                    const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
+                    shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
+                }
+
+                if (cs.timer >= 3.0) {
+                    // Add red demon eyes to shadow man
+                    if (shadowMan && !cs.eyes) {
+                        const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                        const eyeGeo = new THREE.SphereGeometry(0.2, 8, 8);
+                        cs.eyes = [];
+                        [-0.26, 0.26].forEach(ex => {
+                            const eye = new THREE.Mesh(eyeGeo, eyeMat);
+                            eye.position.set(ex, 8.4, 0.44);
+                            eye.userData.baseX = ex;
+                            shadowMan.mesh.add(eye);
+                            cs.eyes.push(eye);
+                        });
+                    }
+                    // Reveal vignette
+                    if (cs.vignetteEl) cs.vignetteEl.style.opacity = '1';
+                    cs.phase = 'body_oscillate';
+                    cs.timer = 0;
+                }
+            }
+
+            // ── PHASE: body_oscillate ──────────────────────────────────
+            else if (cs.phase === 'body_oscillate') {
+                const osc = Math.sin(performance.now() * 0.09) * 0.25;
+
+                if (shadowMan) {
+                    // All body parts oscillate
+                    cs.parts.forEach((part, i) => {
+                        part.position.x = cs.partBaseX[i] + osc;
+                    });
+                    // Eyes sync with oscillation
+                    if (cs.eyes) {
+                        cs.eyes.forEach(eye => {
+                            eye.position.x = eye.userData.baseX + osc;
+                        });
+                    }
+                    const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
+                    const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
+                    shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
+                }
+
+                // Vignette: radial red creeps inward over 4 seconds
+                if (cs.vignetteEl) {
+                    const prog = Math.min(cs.timer / 4.0, 1.0);
+                    const inner = (70 * (1 - prog)).toFixed(1);
+                    const outer = Math.min(100, parseFloat(inner) + 20).toFixed(1);
+                    cs.vignetteEl.style.background =
+                        `radial-gradient(ellipse at center, transparent 0%, transparent ${inner}%, rgba(140,0,0,0.95) ${outer}%)`;
+                }
+
+                if (cs.timer >= 4.0) {
+                    cs.phase = 'flash';
+                    cs.timer = 0;
+                }
+            }
+
+            // ── PHASE: flash ───────────────────────────────────────────
+            else if (cs.phase === 'flash') {
+                if (!cs.flashShown) {
+                    cs.flashShown = true;
+                    showShadowManFaceFlash();
+                }
+                if (cs.timer >= 0.1) {
+                    endShadowManCutscene();
+                    triggerDemonApocalypse();
+                }
             }
         }
+
+        function showShadowManFaceFlash() {
+            const w = window.innerWidth, h = window.innerHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            // Black background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, w, h);
+
+            // Elongated oval face covering full vertical height
+            const faceH = h;
+            const faceW = faceH * (0.85 / 1.4); // shadow man head x/y scale ratio
+            const cx = w / 2, cy = h / 2;
+            ctx.fillStyle = '#0a0a0a';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, faceW / 2, faceH / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Glowing red eyes
+            const eyeY = cy - faceH * 0.07;
+            const eyeR = faceW * 0.13;
+            const eyeSpacing = faceW * 0.2;
+            [-1, 1].forEach(side => {
+                const ex = cx + side * eyeSpacing;
+                const grd = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeR * 1.8);
+                grd.addColorStop(0, '#ffffff');
+                grd.addColorStop(0.15, '#ff4444');
+                grd.addColorStop(0.45, '#cc0000');
+                grd.addColorStop(1, 'rgba(180,0,0,0)');
+                ctx.fillStyle = grd;
+                ctx.beginPath();
+                ctx.arc(ex, eyeY, eyeR * 1.8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            const flashDiv = document.createElement('div');
+            flashDiv.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9000;pointer-events:none;';
+            flashDiv.appendChild(canvas);
+            document.body.appendChild(flashDiv);
+            // Auto-remove (also cleaned up if page unloads)
+            setTimeout(() => { if (flashDiv.parentNode) flashDiv.remove(); }, 130);
+        }
+
+        function endShadowManCutscene() {
+            if (!shadowManCutscene) return;
+            const cs = shadowManCutscene;
+
+            // Remove vignette
+            if (cs.vignetteEl && cs.vignetteEl.parentNode) cs.vignetteEl.remove();
+
+            // Reset SM part positions then remove shadow man
+            if (shadowMan) {
+                cs.parts.forEach((part, i) => { part.position.x = cs.partBaseX[i]; });
+                scene.remove(shadowMan.mesh);
+                shadowMan = null;
+            }
+
+            // Restore HUD: only hell-run elements (ui/stats stay hidden per demonApocalypse flag)
+            const crosshairEl = document.getElementById('crosshair');
+            if (crosshairEl) crosshairEl.style.display = '';
+            const demonCounterEl = document.getElementById('demon-counter');
+            if (demonCounterEl) demonCounterEl.style.display = 'block';
+            const healthBarEl = document.getElementById('health-bar-container');
+            if (healthBarEl) healthBarEl.style.display = 'block';
+
+            // Suppress future shadow man spawns
+            shadowManPostApocalypseUnlocked = true;
+
+            shadowManCutscene = null;
+            velocity.set(0, 0, 0);
+        }
+        // ── End Shadow Man Cutscene ─────────────────────────────────────
 
         function createMountains() {
             const mountainMaterial = new THREE.MeshLambertMaterial({ color: MOUNTAIN_BODY_COLOR });
@@ -5527,12 +5834,6 @@
             const solidHits = raycaster.intersectObjects(scene.children, true)
                 .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam && !h.object.userData.isWater);
 
-            // Check if we hit the magenta gem -> trigger demon apocalypse
-            if (solidHits.length > 0 && solidHits[0].object.userData.isSecretGem) {
-                triggerDemonApocalypse();
-                return;
-            }
-
             let beamEndPoint;
             if (solidHits.length > 0) {
                 beamEndPoint = solidHits[0].point;
@@ -7421,6 +7722,7 @@
 
         function onMouseMove(event) {
             if (!isLocked) return;
+            if (shadowManCutscene) return; // camera is locked during cutscene
 
             const sensitivity = 0.002;
             cameraYaw -= event.movementX * sensitivity;
@@ -7605,6 +7907,17 @@
 
         function update(delta) {
             if (playerDead) return;
+
+            // During shadow man cutscene: freeze player, skip all input/physics
+            // Camera is handled by the animate() loop for robustness
+            if (shadowManCutscene && !mountedOnDragon) {
+                updateDayNightCycle(delta * 1000);
+                updateNPCs(delta);
+                updateGem(delta, performance.now() / 1000);
+                updateDragonGem(delta, performance.now() / 1000);
+                updateDragon(delta);
+                return;
+            }
 
             // WHOLE FUNCTION MODIFIED BY CHATGPT:
             if (!mountedOnDragon) {
@@ -7808,6 +8121,18 @@
             updateBetweenRound(delta);
             updateShrine(delta, performance.now() / 1000);
             updateShadowMan(currentTime);
+            updateShadowManCutscene(delta);
+            // Cutscene camera must run even if pointer lock is lost
+            if (shadowManCutscene && !playerDead && !mountedOnDragon && shadowMan) {
+                const smLookPos = shadowMan.mesh.position.clone();
+                smLookPos.y += 8.4;
+                const dirToSM = smLookPos.clone().sub(shadowManCutscene.frozenPlayerPos).normalize();
+                const camPos = shadowManCutscene.frozenPlayerPos.clone().addScaledVector(dirToSM, -8);
+                camPos.y = shadowManCutscene.frozenPlayerPos.y + 6;
+                scene.updateMatrixWorld();
+                camera.position.copy(camPos);
+                camera.lookAt(smLookPos);
+            }
             if (ak47TriggerHeld && isLocked && ak47Collected && ak47Equipped && !playerDead && !mountedOnDragon) {
                 fireAK47();
             }
