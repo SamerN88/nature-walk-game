@@ -4214,11 +4214,12 @@
                 { type: 'box', minX: -250, maxX: -70, minZ: -180, maxZ: -20 },
                 { type: 'box', minX: 110,  maxX: 300, minZ: 20,   maxZ: 190 },
                 { type: 'box', minX: -420, maxX: -190, minZ: 120, maxZ: 290 },
+                // Index 3: secret cave with writing, far out near the background mountains
+                { type: 'ring', minRadius: 800, maxRadius: 1100 },
             ];
-            const chosenCaveIdx = Math.floor(Math.random() * caveRegions.length);
             let caveIdx = 0;
             caveRegions.forEach(region => {
-                const isChosenCave = caveIdx === chosenCaveIdx;
+                const isChosenCave = caveIdx === 3; // only the far cave gets the writing
                 caveIdx++;
 
                 const placement = findPlacement(() => {
