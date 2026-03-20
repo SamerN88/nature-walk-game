@@ -96,7 +96,7 @@ const SHADOW_MAN_DAY_COLOR = 0x050505;
 const SHADOW_MAN_NIGHT_COLOR = 0xe0e0e0;
 const SHADOW_MAN_CAMERA_ANGLE_RANGE = THREE.MathUtils.degToRad(50);
 const SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS = 30 * 1000;
-const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : 10; // 10 min of peace (one day, one night)
+const SHADOW_MAN_SPAWN_UNLOCK_MINUTE = DEBUG_SHADOW_MAN_IGNORE_BUFFER ? 0 : FULL_CYCLE; // 1 day and 1 night of peace
 const SHADOW_MAN_BASE_SPAWN_CHANCE = 0.15;
 const SHADOW_MAN_POST_APOCALYPSE_SPAWN_CHANCE = 0;
 const SHADOW_MAN_PHASE2_SPAWN_CHANCE = 0.40;
@@ -220,6 +220,19 @@ let debugGoldenKeySpawned = false; // one-shot for DEBUG_GOLDEN_KEY_IN_LAKE
 let debugKeyBox = null;    // { mesh, hitCount } for DEBUG_GOLDEN_KEY punchable box
 let bigLake = null;
 let digParticles = []; // [{meshes:[], life, maxLife, gravity:[]}]
+
+// Notes & Inventory
+let keyHintNoteDropped = false;
+let keyHintNotePickedUp = false;
+let keyHintNoteMesh = null;
+let volcanoHintNotePickedUp = false;
+let volcanoHintNoteMesh = null;
+let lastHumanDeathPos = null;
+let inventoryOpen = false;
+let inventoryItems = [];
+
+// Doors
+let houseDoors = [];
 // Dragon bond / tether constants
 const DRAGON_BOND_KILLS_REQUIRED  = 300; // dragon-beam kills needed to form bond
 const DRAGON_TETHER_HEIGHT        = 60;  // units above player head when tethered

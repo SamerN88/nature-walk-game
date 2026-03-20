@@ -109,6 +109,7 @@ function init() {
         if (isLocked) return;
         if (playerDead) return;
         if (timeMenuOpen) return;
+        if (inventoryOpen) return;
         renderer.domElement.requestPointerLock();
     });
 
@@ -360,6 +361,8 @@ function animate() {
     updateDragonBondFlashes(delta);
     updateDigParticles(delta);
     updateGoldenKey(delta);
+    updateDoors(delta);
+    updateNotes(delta);
     underwaterTintEl.style.opacity = isPointInsideWaterCylinder(
         camera.position.x,
         camera.position.y,

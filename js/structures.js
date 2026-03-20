@@ -698,6 +698,33 @@ function createEnterableStructures() {
         if (houseIndex === chestHouseIndex) addHouseChest(house, placement, groundY);
         else addHouseTable(house, placement, groundY);
 
+        // Door — hinge on left side of doorway (x=-2 in house local space)
+        const doorPivot = new THREE.Group();
+        doorPivot.position.set(-2, 0, 4.75);
+        house.add(doorPivot);
+        const doorWoodMat = new THREE.MeshLambertMaterial({ color: 0x6B3A1F });
+        const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(3.9, 5.9, 0.32), doorWoodMat);
+        doorPanel.position.set(2, 2.95, 0);
+        doorPanel.castShadow = true;
+        doorPanel.receiveShadow = true;
+        doorPivot.add(doorPanel);
+        // Raised panels and hardware on the OUTSIDE face (+z in doorPivot space = exterior)
+        const dUpperPan = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.8, 0.07), doorWoodMat);
+        dUpperPan.position.set(2, 4.4, 0.14);
+        doorPivot.add(dUpperPan);
+        const dLowerPan = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.5, 0.07), doorWoodMat);
+        dLowerPan.position.set(2, 1.4, 0.14);
+        doorPivot.add(dLowerPan);
+        const dKnobMat = new THREE.MeshLambertMaterial({ color: 0xC8A830 });
+        const dKnob = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), dKnobMat);
+        dKnob.position.set(3.55, 2.95, 0.22);
+        doorPivot.add(dKnob);
+        [1.0, 4.8].forEach(hy => {
+            const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.32, 0.06), dKnobMat);
+            hinge.position.set(0.18, hy, 0.2);
+            doorPivot.add(hinge);
+        });
+
         houseColliderMarkers.push(
             createColliderMarker(house, 'solidWall', { localX: 0, localY: 4, localZ: -4.75, halfW: 6.0, halfD: 0.25, height: 8, extra: { isEnclosed: true } }),
             createColliderMarker(house, 'solidWall', { localX: -5.75, localY: 4, localZ: 0, halfW: 0.25, halfD: 5.0, height: 8, extra: { isEnclosed: true } }),
@@ -716,6 +743,17 @@ function createEnterableStructures() {
         scene.add(house);
         house.updateMatrixWorld(true);
         registerColliderMarkers(houseColliderMarkers);
+
+        // Register the doorway as a toggleable solid wall collider (disabled when door opens)
+        const doorOpeningWorld = localToWorldXZ(placement.x, placement.z, 0, 4.75, placement.rotation);
+        const doorWallEntry = addSolidWallRect(
+            doorOpeningWorld.x, doorOpeningWorld.z,
+            2.0, 0.25,
+            groundY, groundY + 6,
+            placement.rotation,
+            { isEnclosed: true }
+        );
+        houseDoors.push({ pivot: doorPivot, mesh: doorPanel, wallEntry: doorWallEntry, isOpen: false, angle: 0, targetAngle: 0 });
     });
 
     const caveRegions = [
@@ -725,9 +763,11 @@ function createEnterableStructures() {
         // Index 3: secret cave with writing, far out near the background mountains
         { type: 'ring', minRadius: 800, maxRadius: 1100 },
     ];
+    const volcanoNoteCaveIdx = Math.floor(Math.random() * 3); // random near-cave gets the volcano hint note
     let caveIdx = 0;
     caveRegions.forEach(region => {
         const isChosenCave = caveIdx === 3; // only the far cave gets the writing
+        const isVolcanoNoteCave = (caveIdx === volcanoNoteCaveIdx);
         caveIdx++;
 
         const placement = findPlacement(() => {
@@ -929,6 +969,35 @@ function createEnterableStructures() {
         );
         cave.updateMatrixWorld(true);
         registerColliderMarkers(caveColliderMarkers);
+
+        if (isVolcanoNoteCave) {
+            // Place the volcano hint note on the cave floor (near back wall, right side)
+            const noteWorld = localToWorldXZ(placement.x, placement.z, cW / 2 - 1.5, -(cD - 2), placement.rotation);
+            spawnVolcanoNote(noteWorld.x, groundY + 0.12, noteWorld.z, placement.rotation);
+
+            if (DEBUG_VOLCANO_HINT) {
+                const beaconHeight = 500;
+                const hoverGap = 30;
+                const beacon = new THREE.Mesh(
+                    new THREE.CylinderGeometry(8, 8, beaconHeight, 18, 1, true),
+                    new THREE.MeshBasicMaterial({
+                        color: 0x00ff44,
+                        transparent: true,
+                        opacity: 0.65,
+                        side: THREE.DoubleSide,
+                        depthWrite: false
+                    })
+                );
+                beacon.position.set(
+                    noteWorld.x,
+                    groundY + cH + hoverGap + beaconHeight / 2,
+                    noteWorld.z
+                );
+                beacon.renderOrder = 930;
+                beacon.userData.ignoreCameraOcclusion = true;
+                scene.add(beacon);
+            }
+        }
 
         const fireWorld = localToWorldXZ(placement.x, placement.z, 0, -cD / 2, placement.rotation);
         campfirePositions.push(new THREE.Vector3(fireWorld.x, groundY + 0.2, fireWorld.z));

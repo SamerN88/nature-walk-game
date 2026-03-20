@@ -484,6 +484,24 @@ function punch() {
 
     if (tryInteractWithAkChest(aimDir, punchRange)) return;
 
+    // Door toggle — punch to open or close
+    for (const door of houseDoors) {
+        const doorWorldPos = new THREE.Vector3();
+        door.mesh.getWorldPosition(doorWorldPos);
+        const toDoor = doorWorldPos.clone().sub(camera.position);
+        const proj = toDoor.dot(aimDir);
+        if (proj > 0 && proj < punchRange) {
+            const perp = toDoor.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 3.5) {
+                toggleHouseDoor(door);
+                return;
+            }
+        }
+    }
+
+    // Note pickup
+    if (tryPickupNote(aimDir, punchRange)) return;
+
     let hitNPC = null;
     let hitIndex = -1;
     let minProjected = Infinity;
@@ -525,6 +543,19 @@ function punch() {
         }
     }
     if (hitDemon) explodeDemon(hitDemon, hitZIdx);
+}
+
+function toggleHouseDoor(door) {
+    if (door.targetAngle === 0) {
+        // Open inward
+        door.targetAngle = Math.PI / 2;
+        door.isOpen = true;
+        if (door.wallEntry) door.wallEntry.active = false;
+    } else {
+        // Close — wall re-activates once fully shut (handled in updateDoors)
+        door.targetAngle = 0;
+        door.isOpen = false;
+    }
 }
 
 function updateKeyHUD() {

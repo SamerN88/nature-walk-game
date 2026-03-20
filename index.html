@@ -490,6 +490,180 @@
         .death-btn:hover { transform: scale(1.06); box-shadow: 0 0 20px rgba(255,100,0,0.5); }
         .death-btn-restart { background: linear-gradient(90deg,#cc2200,#ff4400); color:#fff; }
         .death-btn-respawn { background: linear-gradient(90deg,#440055,#880088); color:#fff; }
+
+        /* ── Inventory overlay ── */
+        #inventory-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.78);
+            display: none;
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+        }
+        #inventory-panel {
+            background: rgba(18,12,6,0.96);
+            border: 2px solid #8B6914;
+            border-radius: 14px;
+            padding: 28px 32px;
+            min-width: 280px;
+            max-width: 80vw;
+            color: #e0d4b8;
+            font-family: 'Segoe UI', serif;
+            box-shadow: 0 0 40px rgba(150,100,20,0.35);
+        }
+        .inv-header {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            color: #d4a547;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            text-shadow: 0 0 12px rgba(200,140,0,0.55);
+        }
+        #inventory-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            justify-content: center;
+            min-height: 90px;
+        }
+        .inv-item {
+            width: 90px;
+            background: rgba(100,65,15,0.45);
+            border: 2px solid #6B4914;
+            border-radius: 9px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 8px 6px 6px;
+            transition: all 0.18s;
+            user-select: none;
+        }
+        .inv-item:hover {
+            background: rgba(160,105,25,0.6);
+            border-color: #C8A830;
+            transform: scale(1.07);
+            box-shadow: 0 0 14px rgba(200,150,40,0.4);
+        }
+        .inv-item-img {
+            width: 58px;
+            height: 58px;
+            object-fit: contain;
+            background: #fff;
+            border-radius: 5px;
+            padding: 2px;
+        }
+        .inv-item-label {
+            font-size: 9px;
+            color: #c8a870;
+            text-align: center;
+            margin-top: 5px;
+            letter-spacing: 0.5px;
+        }
+        .inv-empty {
+            color: #665544;
+            font-style: italic;
+            font-size: 14px;
+            text-align: center;
+            padding: 24px 16px;
+        }
+        .inv-close-hint {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 11px;
+            color: #665544;
+            letter-spacing: 1px;
+        }
+
+        /* ── Note viewer ── */
+        #note-viewer {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.88);
+            display: none;
+            z-index: 400;
+            align-items: center;
+            justify-content: center;
+        }
+        #note-viewer-inner {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #note-viewer-paper {
+            background: #C4A265;
+            background-image:
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(100,55,15,0.055) 0px,
+                    rgba(100,55,15,0.055) 1px,
+                    transparent 1px,
+                    transparent 5px
+                );
+            border-radius: 3px;
+            padding: 28px 32px;
+            box-shadow:
+                0 8px 50px rgba(0,0,0,0.85),
+                inset 0 0 80px rgba(80,40,10,0.22);
+            width: min(640px, 86vw);
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        /* aged edge vignette via pseudo-element */
+        #note-viewer-paper::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 3px;
+            background: radial-gradient(
+                ellipse at center,
+                rgba(0,0,0,0) 45%,
+                rgba(55,22,5,0.38) 100%
+            );
+            pointer-events: none;
+        }
+        /* border */
+        #note-viewer-paper::after {
+            content: '';
+            position: absolute;
+            inset: 8px;
+            border: 9px solid rgba(75,38,8,0.5);
+            border-radius: 2px;
+            pointer-events: none;
+        }
+        #note-viewer-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            position: relative;
+            z-index: 1;
+        }
+        #note-viewer-close {
+            margin-top: 18px;
+            padding: 9px 28px;
+            background: rgba(30,20,10,0.88);
+            color: #c8a870;
+            border: 1px solid #6B4914;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        #note-viewer-close:hover {
+            background: rgba(80,50,10,0.9);
+            color: #e0c070;
+        }
     </style>
 </head>
 <body>
@@ -557,6 +731,25 @@
         <div class="death-buttons">
             <button id="hard-reset-btn" class="death-btn death-btn-restart" onclick="hardReset()">⚡ RESTART WORLD</button>
             <button id="fight-again-btn" class="death-btn death-btn-respawn" onclick="respawnWithMoreDemons()">💀 RESPAWN (+50 DEMONS)</button>
+        </div>
+    </div>
+
+    <!-- Inventory overlay -->
+    <div id="inventory-overlay">
+        <div id="inventory-panel">
+            <div class="inv-header">Inventory</div>
+            <div id="inventory-grid"></div>
+            <div class="inv-close-hint">Press I to close</div>
+        </div>
+    </div>
+
+    <!-- Note / document viewer -->
+    <div id="note-viewer">
+        <div id="note-viewer-inner">
+            <div id="note-viewer-paper">
+                <img id="note-viewer-img" src="" alt="note">
+            </div>
+            <button id="note-viewer-close" onclick="closeNoteViewer()">✕ Close &nbsp;[I / Esc]</button>
         </div>
     </div>
 
@@ -669,6 +862,7 @@
     <script src="js/daynight.js"></script>
     <script src="js/hud.js"></script>
     <script src="js/input.js"></script>
+    <script src="js/inventory.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

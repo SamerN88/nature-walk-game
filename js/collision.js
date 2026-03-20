@@ -258,6 +258,7 @@ function clampPositionToWorldBounds(position) {
 }
 
 function isWallActiveForY(wall, y) {
+    if (wall.active === false) return false;
     return wall.minY === undefined || (y >= wall.minY && y <= wall.maxY);
 }
 

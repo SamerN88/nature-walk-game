@@ -546,6 +546,9 @@ function explodeNPC(npcData, index) {
     };
     animateExplosion();
 
+    // Track human death position for note drops
+    if (npcType === 'human') lastHumanDeathPos = position.clone();
+
     // Increment kill count
     recordKill(npcType);
 
@@ -574,6 +577,12 @@ function recordKill(type) {
     killCount++;
     if (killBreakdown[type] !== undefined) {
         killBreakdown[type]++;
+    }
+    // Key-hint note: 10% drop from human kills, never in first 5 kills, one-time only
+    if (type === 'human' && !keyHintNoteDropped && (DEBUG_KEY_HINT || killCount > 5) && lastHumanDeathPos) {
+        if (DEBUG_KEY_HINT || Math.random() < 0.10) {
+            spawnKeyHintNote(lastHumanDeathPos);
+        }
     }
 }
 

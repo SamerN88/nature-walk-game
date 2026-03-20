@@ -7,6 +7,20 @@ function onKeyDown(event) {
         return;
     }
 
+    if (event.code === 'KeyI') {
+        if (playerDead) return;
+        if (event.repeat) return;
+        event.preventDefault();
+        toggleInventory();
+        return;
+    }
+
+    if (event.code === 'Escape') {
+        if (viewingNoteItem) { closeNoteViewer(); }
+        else if (inventoryOpen) { toggleInventory(); }
+        return;
+    }
+
     if (playerDead) return;
     if (!isLocked) return;
 

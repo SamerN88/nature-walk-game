@@ -16,6 +16,8 @@ const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation
 const DEBUG_VOLCANO = false;  // spawns the player near the volcano for dragon gem testing
 const DEBUG_WATER = false;  // shows a tall red translucent wall around water cylinder boundaries
 const DEBUG_CAVE_WRITING = false;  // spawns a hovering red beacon above the cave with the writing
+const DEBUG_VOLCANO_HINT = true;  // spawns a hovering green beacon above the cave with the volcano hint note
+const DEBUG_KEY_HINT = true;      // first human kill always drops the key-hint note (ignores 5-kill warmup)
 const DEBUG_CUTSCENE = false;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
 
 // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly

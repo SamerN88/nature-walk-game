@@ -3,6 +3,7 @@ function updateMenuPanels() {
     if (controls) {
         const lines = [
             'M - Menu',
+            'I - Inventory',
             'WASD - Move',
             'SHIFT - Run',
             'SPACE - Jump',
