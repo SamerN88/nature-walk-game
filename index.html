@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nature Walk - 3D Free Roam</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 100;
+        }
+        #time-display {
+            background: rgba(0,0,0,0.4);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        #game-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 24px 28px;
+            border-radius: 15px;
+            z-index: 150;
+            display: none;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: white;
+            text-align: left;
+            width: min(980px, 94vw);
+        }
+        #game-menu h2 {
+            margin-bottom: 15px;
+            font-size: 24px;
+            text-align: center;
+        }
+        #game-menu-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+        #game-menu .time-option {
+            display: block;
+            width: 100%;
+            padding: 10px 12px;
+            margin: 0;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #game-menu .time-option:hover {
+            transform: scale(1.05);
+        }
+        .time-dawn {
+            background: linear-gradient(90deg, #1a1a2e, #FFB347);
+            color: white;
+        }
+        .time-day {
+            background: linear-gradient(90deg, #87CEEB, #FFD700);
+            color: #333;
+        }
+        .time-sunset {
+            background: linear-gradient(90deg, #FF6B35, #FF8C00);
+            color: white;
+        }
+        .time-dusk {
+            background: linear-gradient(90deg, #FF6B35, #1a1a2e);
+            color: white;
+        }
+        .time-night {
+            background: linear-gradient(90deg, #0a0a20, #1a1a3e);
+            color: white;
+        }
+        #game-menu .close-hint {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            grid-column: 1 / -1;
+        }
+        #game-menu .section {
+            padding: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        #game-menu .section-time {
+            grid-column: 1 / -1;
+        }
+        #game-menu .time-options-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+        }
+        #game-menu .section h3 {
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #ddd;
+        }
+        #game-menu .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            margin: 8px 0;
+        }
+        #menu-controls-list,
+        #menu-kill-breakdown {
+            text-align: left;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        #menu-kill-breakdown .kill-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        #best-hell-run-section {
+            margin-top: 12px;
+            padding: 12px;
+            background: rgba(0,0,0,0.22);
+            border: none; /*1px solid rgba(255,255,255,0.08);*/
+            border-radius: 8px;
+        }
+        #best-hell-run-section h4 {
+            margin-bottom: 4px;
+            font-size: 14px;
+            color: #ddd;
+        }
+        #best-hell-run-section .kill-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            font-size: 12px;
+        }
+        #game-menu input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            text-align: center;
+        }
+        #game-menu .small-btn {
+            padding: 8px 15px;
+            font-size: 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #game-menu .small-btn:hover {
+            transform: scale(1.05);
+        }
+        .btn-spawn {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-kill {
+            background: #f44336;
+            color: white;
+        }
+        .btn-set {
+            background: #2196F3;
+            color: white;
+        }
+        #stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            text-align: right;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #stats div {
+            background: rgba(0,0,0,0.4);
+            padding: 8px 15px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        #alive-count {
+            color: #4CAF50;
+        }
+        #kill-count {
+            color: #FF5722;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #underwater-tint {
+            position: fixed;
+            inset: 0;
+            background: rgba(36, 103, 168, 0.32);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.03s linear;
+            z-index: 90;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.5);
+        }
+        #crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 9px;
+            top: 0;
+        }
+        #punch-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            border-radius: 50%;
+            border: 4px solid rgba(255,255,255,0.9);
+            background: rgba(255,255,255,0.1);
+            pointer-events: none;
+            z-index: 99;
+            width: 20px;
+            height: 20px;
+            transform: translate(-50%, -50%) scale(0);
+            opacity: 0;
+        }
+        .punch-ring-active {
+            animation: punchRing 0.3s ease-out forwards;
+        }
+        @keyframes punchRing {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(6); opacity: 0; }
+        }
+        #equip-hint {
+            position: fixed;
+            bottom: 54px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.95);
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 200;
+            opacity: 0;
+            background: rgba(0,0,0,0.55);
+            padding: 5px 16px;
+            border-radius: 6px;
+        }
+        .equip-hint-flash {
+            animation: equipHintFade 1.0s ease-out forwards;
+        }
+        @keyframes equipHintFade {
+            0%   { opacity: 1; }
+            40%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        #crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: 9px;
+            left: 0;
+        }
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a472a 0%, #2d5a3f 50%, #1a472a 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        #start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+        }
+        #start-screen p {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #ccc;
+        }
+        #start-btn {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.05s;
+        }
+        #start-btn:hover {
+            background: #5bc75f;
+            /* transform: scale(1.05); */
+        }
+        #start-btn:active {
+            background: #3a873d;
+            /* box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.12); */
+            transform: scale(0.98);
+        }
+        #start-menu-hint {
+            margin-top: 14px;
+            font-size: 13px;
+            color: #d8e9d8;
+            opacity: 0.9;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+        }
+        /* ── Demon Apocalypse UI ── */
+        #health-bar-container {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        #health-label {
+            color: #ff4444;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            text-shadow: 0 0 8px #ff0000;
+            margin-bottom: 4px;
+            letter-spacing: 2px;
+        }
+        #health-bar-bg {
+            width: 300px;
+            height: 18px;
+            background: rgba(0,0,0,0.7);
+            border: 2px solid #880000;
+            border-radius: 9px;
+            /* overflow: hidden; */
+        }
+        #health-bar-fill {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff6600);
+            border-radius: 7px;
+            transition: width 0.12s;
+            box-shadow: 0 0 10px #ff4400;
+        }
+        #demon-counter {
+            display: none;
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(80,0,0,0.85);
+            color: #ff4444;
+            font-family: serif;
+            font-size: 22px;
+            font-weight: bold;
+            padding: 10px 28px;
+            border-radius: 10px;
+            text-shadow: 0 0 12px #ff0000;
+            border: 1px solid #880000;
+            pointer-events: none;
+            z-index: 200;
+            animation: flickerApoc 0.6s ease-in-out infinite alternate;
+            letter-spacing: 2px;
+        }
+        @keyframes flickerApoc {
+            from { opacity: 0.75; }
+            to   { opacity: 1.0;  }
+        }
+        #campfire-shield {
+            position: absolute;
+            bottom: 95px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffaa44;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 13px;
+            text-shadow: 0 0 8px #ff8800;
+            text-align: center;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        @keyframes healthBarCampfireColor {
+            0% { background: #ffed23; /* warm yellow */ }
+            50% { background: #00d8c8; /* turquoise */ }
+            100% { background: #ffed23; }
+        }
+        @keyframes healthBarCampfireGlow {
+            0% {
+                box-shadow:
+                    0 0 6px rgba(255, 210, 80, 0.45),
+                    0 0 14px rgba(255, 190, 0, 0.35);
+            }
+            50% {
+                box-shadow:
+                    0 0 14px rgba(255, 220, 120, 0.8),
+                    0 0 32px rgba(255, 200, 0, 0.65);
+            }
+            100% {
+                box-shadow:
+                    0 0 6px rgba(255, 210, 80, 0.45),
+                    0 0 14px rgba(255, 190, 0, 0.35);
+            }
+        }
+        .health-bar-campfire {
+            border: 1px solid rgba(255, 210, 80, 0.9);
+            animation:
+                healthBarCampfireColor 1s ease-in-out infinite,
+                healthBarCampfireGlow 1.2s ease-in-out infinite;
+        }
+        #death-screen {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.88);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 500;
+            pointer-events: auto;  /* overlay should receive clicks */
+        }
+        #death-screen .death-btn {
+            pointer-events: none;
+            opacity: 0.7; /* visual feedback */
+        }
+        #death-screen.active .death-btn {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        #you-died-text {
+            color: #cc0000;
+            font-size: 96px;
+            font-family: serif;
+            font-weight: bold;
+            text-shadow: 0 0 40px #ff0000, 0 0 80px #880000;
+            animation: pulseDeath 1.8s ease-in-out infinite;
+            margin: 0 0 10px 0;
+        }
+        @keyframes pulseDeath {
+            0%,100% { text-shadow: 0 0 40px #ff0000, 0 0 80px #880000; }
+            50%      { text-shadow: 0 0 80px #ff2200, 0 0 120px #cc0000, 0 0 15px #ffbebe; }
+        }
+        #death-sub {
+            color: #888;
+            font-size: 20px;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0 0 36px 0;
+        }
+        .death-btn {
+            display: block;
+            width: 300px;
+            padding: 16px;
+            margin: 10px auto;
+            font-size: 18px;
+            font-weight: bold;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .death-btn:hover { transform: scale(1.06); box-shadow: 0 0 20px rgba(255,100,0,0.5); }
+        .death-btn-restart { background: linear-gradient(90deg,#cc2200,#ff4400); color:#fff; }
+        .death-btn-respawn { background: linear-gradient(90deg,#440055,#880088); color:#fff; }
+    </style>
+</head>
+<body>
+    <div id="start-screen">
+        <h1>Nature Walk</h1>
+        <p>A peaceful exploration</p>
+        <button id="start-btn">Start</button>
+        <div id="start-menu-hint">Press M to toggle menu in game</div>
+    </div>
+
+    <div id="underwater-tint"></div>
+    <div id="ui">
+        <div id="time-display">
+            <div id="time-of-day">Time: 12:00 PM</div>
+            <div id="day-night">Day</div>
+        </div>
+    </div>
+    <div id="stats">
+        <div>Alive: <span id="alive-count">0</span></div>
+        <div>Kills: <span id="kill-count">0</span></div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="punch-ring"></div>
+    <div id="equip-hint"></div>
+    <div id="golden-key-hud" style="display:none; position:fixed; bottom:24px; right:24px; z-index:200; pointer-events:none;">
+        <svg width="80" height="52" viewBox="0 0 52 52" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 0 6px #ffcc00) drop-shadow(0 0 14px #ff8800);">
+            <!-- Key ring -->
+            <circle cx="18" cy="18" r="11" fill="none" stroke="#ffd700" stroke-width="4"/>
+            <circle cx="18" cy="18" r="5" fill="#ffd700" opacity="0.35"/>
+            <!-- Shank -->
+            <rect x="27" y="15.5" width="30" height="5" rx="1.5" fill="#ffd700"/>
+            <!-- Teeth -->
+            <rect x="43" y="20.5" width="5" height="6" rx="1.5" fill="#ffd700"/>
+            <rect x="50" y="20.5" width="4" height="5" rx="1.5" fill="#ffd700"/>
+        </svg>
+    </div>
+
+    <!-- Demon Apocalypse UI -->
+    <div id="demon-counter"><span id="round-label" style="display:none;font-size:13px;letter-spacing:2px;opacity:0.8;"></span>&#x2620;&#xFE0E; DEMONS: <span id="demon-count">0</span> &#x2620;&#xFE0E;</div>
+    <div id="health-bar-container">
+        <div id="health-label">❤ HEALTH</div>
+        <div id="health-bar-bg"><div id="health-bar-fill"></div></div>
+    </div>
+    <div id="campfire-shield">
+        <strong>🔥 CAMPFIRE SHIELD 🔥</strong><br>
+        50% less damage &nbsp; &bull; &nbsp; Fast health regen
+        <div id="campfire-linger-wrap" style="display:none; margin-top:7px; align-items:center; justify-content:center; gap:7px;">
+            <svg id="campfire-timer-svg" viewBox="0 0 36 36" width="36" height="36" style="filter:drop-shadow(0 0 5px #ff8800);">
+                <!-- track -->
+                <circle cx="18" cy="18" r="13" fill="none" stroke="rgba(255,120,0,0.2)" stroke-width="3.5"/>
+                <!-- depleting arc — starts full, stroke-dashoffset set by JS -->
+                <circle id="campfire-timer-arc" cx="18" cy="18" r="13" fill="none"
+                        stroke="#ff9922" stroke-width="3.5"
+                        stroke-dasharray="81.68 81.68"
+                        stroke-dashoffset="0"
+                        stroke-linecap="round"
+                        transform="rotate(-90 18 18)"/>
+            </svg>
+            <span id="campfire-timer-text" style="font-size:15px; font-weight:bold; color:#ffcc66; text-shadow:0 0 8px #ff8800; min-width:18px; text-align:left;"></span>
+        </div>
+    </div>
+    <div id="death-screen">
+        <h1 id="you-died-text">YOU DIED</h1>
+        <p id="death-sub">The demon horde devoured your soul...</p>
+        <div class="death-buttons">
+            <button id="hard-reset-btn" class="death-btn death-btn-restart" onclick="hardReset()">⚡ RESTART WORLD</button>
+            <button id="fight-again-btn" class="death-btn death-btn-respawn" onclick="respawnWithMoreDemons()">💀 RESPAWN (+50 DEMONS)</button>
+        </div>
+    </div>
+
+    <!-- Shrine interaction prompt -->
+    <div id="shrine-prompt" style="
+        display:none; position:fixed; bottom:160px; left:50%;
+        transform:translateX(-50%); text-align:center;
+        color:#ff2200; font-family:'Segoe UI',Arial,sans-serif;
+        font-size:14px; font-weight:bold;
+        text-shadow:0 0 10px #ff0000, 0 0 20px #880000;
+        pointer-events:none; z-index:100;">
+        &#x2726; HELL RUN &#x2726;<br>
+        <span style="font-size:11px;font-weight:normal;color:#ff6644;">(punch to begin)</span>
+    </div>
+
+    <!-- Between-round countdown -->
+    <div id="between-round-ui" style="
+        display:none; position:fixed; top:30px; left:50%;
+        transform:translateX(-50%); text-align:center;
+        font-family:'Segoe UI',Arial,sans-serif; pointer-events:none; z-index:200;">
+        <div id="between-round-title" style="
+            font-size:18px; font-weight:bold; color:#ffdd00;
+            text-shadow:0 0 12px #ffaa00;"></div>
+        <div id="between-round-timer" style="
+            font-size:48px; font-weight:bold; color:#ffee44;
+            text-shadow:0 0 20px #ffcc00, 0 0 40px #ff8800;
+            line-height:1;"></div>
+    </div>
+
+    <div id="game-menu">
+        <h2>Game Menu</h2>
+        <div id="game-menu-grid">
+
+        <div class="section">
+            <h3>Controls</h3>
+            <div id="menu-controls-list"></div>
+        </div>
+
+        <div class="section">
+            <h3>Kills</h3>
+            <div id="menu-kill-breakdown">
+                <div class="kill-row"><span>Deer</span><span id="kills-deer">0</span></div>
+                <div class="kill-row"><span>Rabbits</span><span id="kills-rabbit">0</span></div>
+                <div class="kill-row"><span>Birds</span><span id="kills-bird">0</span></div>
+                <div class="kill-row"><span>Humans</span><span id="kills-human">0</span></div>
+                <div class="kill-row"><span>Demons</span><span id="kills-demon">0</span></div>
+                <div id="best-hell-run-section" style="display:none;">
+                    <h4>Best Hell Run</h4>
+                    <div class="kill-row"><span>Round Reached</span><span id="best-demon-round">0</span></div>
+                    <div class="kill-row"><span>Demons Killed</span><span id="best-demon-kills">0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section section-time">
+            <h3>Time of Day</h3>
+            <div class="time-options-grid">
+                <button class="time-option time-dawn" onclick="setTimeOfDay('dawn')">Dawn</button>
+                <button class="time-option time-day" onclick="setTimeOfDay('day')">Day</button>
+                <button class="time-option time-sunset" onclick="setTimeOfDay('sunset')">Sunset</button>
+                <button class="time-option time-dusk" onclick="setTimeOfDay('dusk')">Dusk</button>
+                <button class="time-option time-night" onclick="setTimeOfDay('night')">Night</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>NPC Life</h3>
+            <div class="control-row">
+                <input type="number" id="spawn-count" value="10" min="1" max="500">
+                <button class="small-btn btn-spawn" onclick="godSpawnNPCs()">Spawn NPCs</button>
+            </div>
+            <div class="control-row">
+                <input type="number" id="kill-input" value="10" min="1" max="500">
+                <button class="small-btn btn-kill" onclick="godKillNPCs()">Kill NPCs</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>NPC Respawn Rate</h3>
+            <p style="font-size: 12px; color: #aaa; margin-bottom: 10px;">NPCs spawned per kill</p>
+            <div class="control-row">
+                <input type="number" id="respawn-rate" value="0" min="0" max="10">
+                <button class="small-btn btn-set" onclick="setRespawnRate()">Set</button>
+            </div>
+        </div>
+
+        <p class="close-hint">Press M to toggle menu</p>
+        </div>
+    </div>
+
+    <script src="vendor/three.min.js"></script>
+
+    <script src="js/constants.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/terrain.js"></script>
+    <script src="js/water.js"></script>
+    <script src="js/collision.js"></script>
+    <script src="js/environment.js"></script>
+    <script src="js/structures.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/npcs.js"></script>
+    <script src="js/gems.js"></script>
+    <script src="js/dragon.js"></script>
+    <script src="js/weapons.js"></script>
+    <script src="js/demons.js"></script>
+    <script src="js/shadowman.js"></script>
+    <script src="js/hellrun.js"></script>
+    <script src="js/daynight.js"></script>
+    <script src="js/hud.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

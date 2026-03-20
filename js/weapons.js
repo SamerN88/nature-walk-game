@@ -1,0 +1,666 @@
+function createAK47Mesh(scale = 1) {
+    const rifle = new THREE.Group();
+    const metal = new THREE.MeshLambertMaterial({ color: 0x242424 });
+    const darkMetal = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+    const wood = new THREE.MeshLambertMaterial({ color: 0x6f4a2f });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.62), metal);
+    body.position.set(0, 0, 0.02);
+    rifle.add(body);
+
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.35), wood);
+    stock.position.set(0, 0.01, -0.46);
+    rifle.add(stock);
+
+    const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 0.38), wood);
+    handguard.position.set(0, -0.005, 0.36);
+    rifle.add(handguard);
+
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.72), darkMetal);
+    barrel.position.set(0, 0.025, 0.73);
+    rifle.add(barrel);
+
+    const muzzleCap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.1), darkMetal);
+    muzzleCap.position.set(0, 0.025, 1.13);
+    rifle.add(muzzleCap);
+
+    const gasTube = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.34), darkMetal);
+    gasTube.position.set(0, 0.08, 0.39);
+    rifle.add(gasTube);
+
+    const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.07), darkMetal);
+    rearSight.position.set(0, 0.11, -0.12);
+    rifle.add(rearSight);
+
+    const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.04), darkMetal);
+    frontSight.position.set(0, 0.09, 0.95);
+    rifle.add(frontSight);
+
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.1), darkMetal);
+    grip.position.set(0, -0.16, -0.12);
+    grip.rotation.x = -0.35;
+    rifle.add(grip);
+
+    const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.24, 0.14), darkMetal);
+    magazine.position.set(0, -0.18, 0.13);
+    magazine.rotation.x = -0.25;
+    rifle.add(magazine);
+
+    rifle.scale.setScalar(scale);
+    enableMeshShadows(rifle);
+
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(0, 0.02, 1.22);
+    rifle.add(muzzle);
+
+    return { mesh: rifle, muzzle };
+}
+
+function createShovelMesh(scale = 1) {
+    const group = new THREE.Group();
+    const wood = new THREE.MeshLambertMaterial({ color: 0x8B5E3C });
+    const metal = new THREE.MeshLambertMaterial({ color: 0xAAAAAA });
+    // Handle
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05 * scale, 0.06 * scale, 2.2 * scale, 8), wood);
+    handle.position.y = 1.1 * scale;
+    group.add(handle);
+    // Blade
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.55 * scale, 0.65 * scale, 0.06 * scale), metal);
+    blade.position.y = -0.33 * scale;
+    group.add(blade);
+    enableMeshShadows(group);
+    return group;
+}
+
+function createGoldenKeyMesh() {
+    const group = new THREE.Group();
+    const gold = new THREE.MeshLambertMaterial({ color: 0xFFD700, emissive: 0x886600, emissiveIntensity: 0.4 });
+    // Key ring
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.12, 8, 20), gold);
+    ring.position.y = 0.45;
+    group.add(ring);
+    // Shank
+    const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 8), gold);
+    shank.position.y = -0.1;
+    group.add(shank);
+    // Teeth
+    const tooth1 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.13, 0.13), gold);
+    tooth1.position.set(0.22, -0.38, 0);
+    group.add(tooth1);
+    const tooth2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.13, 0.13), gold);
+    tooth2.position.set(0.19, -0.56, 0);
+    group.add(tooth2);
+    enableMeshShadows(group);
+    return group;
+}
+
+function updateAK47VisualState() {
+    // Sync ak47Equipped from currentHandItem (DEBUG_AK47 overrides)
+    if (DEBUG_AK47) {
+        ak47Collected = true;
+        ak47Equipped = true;
+    } else {
+        ak47Equipped = (currentHandItem === 'ak47');
+    }
+
+    if (akChest && akChest.gunMesh) {
+        akChest.gunMesh.visible = !!(akChest.opened && !akChest.collected);
+    } else if (akChestGun) {
+        akChestGun.visible = false;
+    }
+
+    const showPlayerGun = ak47Collected && ak47Equipped && !playerDead && !mountedOnDragon;
+    if (playerAk47) playerAk47.visible = showPlayerGun;
+
+    if (!showPlayerGun) {
+        ak47TriggerHeld = false;
+        ak47MuzzleFlashTimer = 0;
+        ak47MuzzleLightTimer = 0;
+        if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
+        if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
+    }
+
+    if (playerShovel) {
+        playerShovel.visible = hasShovel && (currentHandItem === 'shovel') && !playerDead && !mountedOnDragon;
+    }
+}
+
+function getAk47MuzzleWorldPosition(aimDir) {
+    if (playerAk47Muzzle && playerAk47 && playerAk47.visible && player.visible) {
+        return playerAk47Muzzle.getWorldPosition(new THREE.Vector3());
+    }
+    return camera.position.clone().addScaledVector(aimDir, 1.5);
+}
+
+function getAk47CrosshairHitPoint(maxRange = AK47_BEAM_MAX_VISUAL_RANGE) {
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = maxRange;
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+    const excludeUUIDs = new Set();
+    if (player) player.traverse(obj => excludeUUIDs.add(obj.uuid));
+
+    const hits = raycaster.intersectObjects(scene.children, true)
+        .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam);
+
+    if (hits.length > 0) return hits[0].point.clone();
+    return camera.position.clone().addScaledVector(raycaster.ray.direction, maxRange);
+}
+
+function triggerAk47ShotFX(aimDir, hits, beamEndPoint = null) {
+    if (!ak47Collected || !ak47Equipped) return;
+
+
+
+
+    // ########## Bullet beam [START] ##########
+
+    const beamStart = getAk47MuzzleWorldPosition(aimDir);
+
+    const firstHitDistance = hits.length > 0 ? hits[0].projected : AK47_BEAM_MAX_VISUAL_RANGE;
+    const crosshairDistance = beamEndPoint
+        ? camera.position.distanceTo(beamEndPoint)
+        : AK47_BEAM_MAX_VISUAL_RANGE;
+    const visualStopDistance = Math.min(firstHitDistance, crosshairDistance);
+
+    const beamDistance = Math.min(AK47_BEAM_MAX_VISUAL_RANGE, Math.max(0.8, visualStopDistance));
+    const beamEnd = (beamEndPoint && crosshairDistance <= beamDistance + 0.001)
+        ? beamEndPoint.clone()
+        : camera.position.clone().addScaledVector(aimDir, beamDistance);
+    const beamVector = beamEnd.clone().sub(beamStart);
+    const visualBeamLength = beamVector.length();
+    const visualBeamDir = beamVector.clone().normalize();
+
+
+    // thickness of beam
+    const beamRadius = 0.025;
+
+    const beamGeometry = new THREE.CylinderGeometry(
+        beamRadius,
+        beamRadius,
+        visualBeamLength,
+        6,
+        1,
+        false
+    );
+
+    const beamMaterial = new THREE.MeshBasicMaterial({
+        color: AK47_BEAM_COLOR,
+        transparent: true,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        fog: false,
+        toneMapped: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+
+    // position beam between start and end
+    const midPoint = beamStart.clone().add(beamEnd).multiplyScalar(0.5);
+    beam.position.copy(midPoint);
+
+    // orient beam to match direction
+    beam.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        visualBeamDir
+    );
+
+    beam.frustumCulled = false;
+    beam.renderOrder = 60;
+
+    scene.add(beam);
+
+    ak47Beams.push({
+        mesh: beam,
+        life: AK47_BEAM_LIFETIME
+    });
+
+    // ########## Bullet beam [END] ##########
+
+
+
+
+    ak47MuzzleFlashTimer = AK47_MUZZLE_FLASH_LIFETIME;
+    ak47MuzzleLightTimer = AK47_MUZZLE_LIGHT_LIFETIME;
+    if (ak47MuzzleFlash) {
+        ak47MuzzleFlash.visible = true;
+        ak47MuzzleFlash.material.opacity = 1;
+        const scale = 0.75 + Math.random() * 1.25;
+        const scaleZ = 0.75 + Math.random() * 1.25;
+        ak47MuzzleFlash.scale.set(scale, scale, scaleZ);
+    }
+    if (ak47MuzzleLight) {
+        ak47MuzzleLight.intensity = 8;
+        ak47MuzzleLight.distance = 25 + Math.random() * 5;
+    }
+}
+
+function updateAK47Effects(delta) {
+    updateAK47VisualState();
+
+    if (ak47MuzzleFlashTimer > 0) {
+        ak47MuzzleFlashTimer = Math.max(0, ak47MuzzleFlashTimer - delta);
+        if (ak47MuzzleFlash) {
+            ak47MuzzleFlash.visible = true;
+            ak47MuzzleFlash.material.opacity = 1;
+        }
+    } else {
+        if (ak47MuzzleFlash) ak47MuzzleFlash.visible = false;
+    }
+
+    if (ak47MuzzleLightTimer > 0) {
+        ak47MuzzleLightTimer = Math.max(0, ak47MuzzleLightTimer - delta);
+        if (ak47MuzzleLight) ak47MuzzleLight.intensity = 8;
+    } else {
+        if (ak47MuzzleLight) ak47MuzzleLight.intensity = 0;
+    }
+
+    for (let i = ak47Beams.length - 1; i >= 0; i--) {
+        const beamData = ak47Beams[i];
+        if (beamData.life > 0) {
+            beamData.life = Math.max(0, beamData.life - delta);
+            beamData.mesh.material.opacity = 1;
+            continue;
+        }
+
+        if (beamData.life <= 0) {
+            scene.remove(beamData.mesh);
+            beamData.mesh.geometry.dispose();
+            beamData.mesh.material.dispose();
+            ak47Beams.splice(i, 1);
+        }
+    }
+}
+
+function tryInteractWithAkChest(aimDir, range) {
+    if (!akChest || akChest.collected) return false;
+
+    const chestPos = new THREE.Vector3(akChest.worldX, akChest.worldY, akChest.worldZ);
+    const toChest = chestPos.sub(camera.position);
+    const projected = toChest.dot(aimDir);
+    if (projected <= 0 || projected > range) return false;
+
+    const perp = toChest.sub(aimDir.clone().multiplyScalar(projected)).length();
+    if (perp > 2.2) return false;
+
+    if (!akChest.opened) {
+        if (DEBUG_CHEST || hasGoldenKey) {
+            akChest.opened = true;
+            akChest.lidPivot.rotation.x = -Math.PI * 0.65;
+            hasGoldenKey = false;
+            updateKeyHUD();
+            updateAK47VisualState();
+        }
+    } else if (!akChest.collected) {
+        akChest.collected = true;
+        ak47Collected = true;
+        currentHandItem = 'ak47';
+        updateAK47VisualState();
+        flashEquipHint('AK47');
+        updateMenuPanels();
+    }
+    return true;
+}
+
+function getDemonGunHitPoint(demon, out = new THREE.Vector3()) {
+    out.copy(demon.mesh.position);
+    out.y += (demon.gunHitCenterY ?? 4.8);
+    return out;
+}
+
+
+function fireAK47() {
+    if (!ak47Collected || !ak47Equipped || playerDead || mountedOnDragon) return;
+
+    const now = performance.now();
+    if (now - lastAk47ShotAt < AK47_SHOT_INTERVAL_MS) return;
+    lastAk47ShotAt = now;
+
+    scene.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+
+    const aimDir = new THREE.Vector3();
+    camera.getWorldDirection(aimDir);
+    const beamEndPoint = getAk47CrosshairHitPoint();
+
+    const hits = [];
+
+    npcs.forEach(npc => {
+        const toNPC = new THREE.Vector3().subVectors(npc.mesh.position, camera.position);
+        const projected = toNPC.dot(aimDir);
+        if (projected <= 0) return;
+        const perp = toNPC.sub(aimDir.clone().multiplyScalar(projected)).length();
+        if (perp <= getNPCHitRadius(npc)) {
+            hits.push({ kind: 'npc', target: npc, projected });
+        }
+    });
+
+    const demonHitPoint = new THREE.Vector3();
+    demons.forEach(demon => {
+        const toDemon = new THREE.Vector3().subVectors(
+            getDemonGunHitPoint(demon, demonHitPoint),
+            camera.position
+        );
+        const projected = toDemon.dot(aimDir);
+        if (projected <= 0) return;
+        const perp = toDemon.sub(aimDir.clone().multiplyScalar(projected)).length();
+        if (perp <= (demon.gunHitRadius ?? 4.6)) {
+            hits.push({ kind: 'demon', target: demon, projected });
+        }
+    });
+
+    hits.sort((a, b) => a.projected - b.projected);
+    triggerAk47ShotFX(aimDir, hits, beamEndPoint);
+
+    let penetratedDemons = 0;
+    for (const hit of hits) {
+        if (hit.kind === 'npc') {
+            const idx = npcs.indexOf(hit.target);
+            if (idx !== -1) explodeNPC(hit.target, idx);
+            continue;
+        }
+
+        if (penetratedDemons >= 3) break; // 4th demon blocks all remaining damage.
+        penetratedDemons++;
+
+        const idx = demons.indexOf(hit.target);
+        if (idx === -1) continue;
+        hit.target.gunShotsToKill = Math.max(0, (hit.target.gunShotsToKill ?? 2) - 1);
+        if (hit.target.gunShotsToKill <= 0) {
+            explodeDemon(hit.target, idx);
+        }
+    }
+}
+
+function punch() {
+    if (playerDead) return;
+
+    // If mounted on dragon, fire beam instead
+    if (mountedOnDragon) {
+        dragonBeamAttack();
+        return;
+    }
+
+    // Shrine interaction — start hell run (demon rounds)
+    if (shrineActive && shrine) {
+        const sd = player.position.distanceTo(shrine.position);
+        if (sd < SHRINE_INTERACT_DIST) {
+            startDemonRound(1);
+            return;
+        }
+    }
+
+    // Trigger punch animation
+    const ring = document.getElementById('punch-ring');
+    ring.classList.remove('punch-ring-active');
+    void ring.offsetWidth; // force reflow
+    ring.classList.add('punch-ring-active');
+
+    // Check if we can mount the dragon
+    if (dragon && dragon.visible) {
+        const dx = player.position.x - dragon.position.x;
+        const dy = player.position.y - dragon.position.y;
+        const dz = player.position.z - dragon.position.z;
+        const distToDragon = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (distToDragon < 15) {
+            mountDragon();
+            return;
+        }
+    }
+
+    // Punch hits whatever the crosshair is aimed at — ray from camera = exact crosshair
+    const punchRange = 25;
+    const aimDir = new THREE.Vector3();
+    camera.getWorldDirection(aimDir);
+
+    // DEBUG_GOLDEN_KEY: punchable box — 3 hits reveals the golden key
+    if (debugKeyBox) {
+        const toBox = debugKeyBox.mesh.position.clone().sub(camera.position);
+        const proj = toBox.dot(aimDir);
+        if (proj > 0 && proj < punchRange) {
+            const perp = toBox.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 2) {
+                debugKeyBox.hitCount++;
+                if (debugKeyBox.hitCount >= 3) {
+                    const pos = debugKeyBox.mesh.position.clone();
+                    scene.remove(debugKeyBox.mesh);
+                    debugKeyBox = null;
+                    digCount = 31;
+                    spawnGoldenKey(pos.x, pos.y, pos.z);
+                } else {
+                    const origColor = debugKeyBox.mesh.material.color.getHex();
+                    debugKeyBox.mesh.material.color.setHex(0xffffff);
+                    setTimeout(() => { if (debugKeyBox) debugKeyBox.mesh.material.color.setHex(origColor); }, 80);
+                }
+                return;
+            }
+        }
+    }
+
+    // Shovel digging (only when shovel is equipped, in the dig zone, key not yet found)
+    if (currentHandItem === 'shovel' && bigLake && !hasGoldenKey && digCount < 31 && !goldenKeyMesh) {
+        if (tryDig()) return;
+    }
+
+    // Shovel pickup (works without having the shovel)
+    if (!hasShovel && tentShovelMesh) {
+        const shovelWorldPos = new THREE.Vector3();
+        tentShovelMesh.getWorldPosition(shovelWorldPos);
+        const toShovel = shovelWorldPos.clone().sub(camera.position);
+        const proj = toShovel.dot(aimDir);
+        if (proj > 0 && proj < punchRange) {
+            const perp = toShovel.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 1.8) {
+                hasShovel = true;
+                tentShovelMesh.parent.remove(tentShovelMesh);
+                tentShovelMesh = null;
+                currentHandItem = 'shovel';
+                updateAK47VisualState();
+                flashEquipHint('Shovel');
+                return;
+            }
+        }
+    }
+
+    // Golden key pickup (blocked for 3s after spawning)
+    if (goldenKeyMesh && goldenKeyLockTimer <= 0) {
+        const keyPos = goldenKeyMesh.position;
+        const toKey = keyPos.clone().sub(camera.position);
+        const proj = toKey.dot(aimDir);
+        if (proj > 0 && proj < punchRange) {
+            const perp = toKey.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 2.5) {
+                hasGoldenKey = true;
+                scene.remove(goldenKeyMesh);
+                goldenKeyMesh = null;
+                updateKeyHUD();
+                return;
+            }
+        }
+    }
+
+    if (tryInteractWithAkChest(aimDir, punchRange)) return;
+
+    let hitNPC = null;
+    let hitIndex = -1;
+    let minProjected = Infinity;
+
+    for (let i = 0; i < npcs.length; i++) {
+        const npc = npcs[i];
+        const toNPC = new THREE.Vector3().subVectors(npc.mesh.position, camera.position);
+        const projected = toNPC.dot(aimDir);
+        if (projected > 0 && projected < punchRange) {
+            const perp = toNPC.clone().sub(aimDir.clone().multiplyScalar(projected)).length();
+            if (perp < 2.5 && projected < minProjected) {
+                minProjected = projected;
+                hitNPC = npc;
+                hitIndex = i;
+            }
+        }
+    }
+
+    if (hitNPC) {
+        explodeNPC(hitNPC, hitIndex);
+    }
+
+    // Also check demons
+    let hitDemon = null, hitZIdx = -1;
+    let minZProj = Infinity;
+    const demonPunchPoint = new THREE.Vector3();
+    for (let i = 0; i < demons.length; i++) {
+        const z = demons[i];
+        const toZ = new THREE.Vector3().subVectors(
+            getDemonGunHitPoint(z, demonPunchPoint),
+            camera.position
+        );
+        const proj = toZ.dot(aimDir);
+        if (proj > 0 && proj < punchRange) {
+            const perp = toZ.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp <= (z.gunHitRadius ?? 4.6) && proj < minZProj) {
+                minZProj = proj; hitDemon = z; hitZIdx = i;
+            }
+        }
+    }
+    if (hitDemon) explodeDemon(hitDemon, hitZIdx);
+}
+
+function updateKeyHUD() {
+    const el = document.getElementById('golden-key-hud');
+    if (el) el.style.display = hasGoldenKey ? 'block' : 'none';
+}
+
+function flashEquipHint(label) {
+    const el = document.getElementById('equip-hint');
+    if (!el) return;
+    el.textContent = label;
+    el.classList.remove('equip-hint-flash');
+    void el.offsetWidth; // force reflow to restart animation
+    el.classList.add('equip-hint-flash');
+}
+
+
+function tryDig() {
+    if (!bigLake) return false;
+    const dx = player.position.x - bigLake.x;
+    const dz = player.position.z - bigLake.z;
+    // Must be within the square area (DIG_ZONE_SIZE/2 units radius in each axis) at the lake center
+    if (Math.abs(dx) > DIG_ZONE_SIZE/2 || Math.abs(dz) > DIG_ZONE_SIZE/2) return false;
+    // Must be near the lake floor
+    if (player.position.y > bigLake.floorY + 10) return false;
+
+    digCount++;
+    spawnDigParticles(bigLake.x + (Math.random() - 0.5) * 2, bigLake.floorY, bigLake.z + (Math.random() - 0.5) * 2);
+
+    if (digCount >= 31) {
+        spawnGoldenKey(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
+    }
+    return true;
+}
+
+function spawnDigParticles(x, y, z) {
+    const count = 18;
+    const meshes = [];
+    const velocities = [];
+    for (let i = 0; i < count; i++) {
+        const size = 0.12 + Math.random() * 0.18;
+        const mat = new THREE.MeshLambertMaterial({
+            color: new THREE.Color().setHSL(0.07 + Math.random() * 0.05, 0.6, 0.28 + Math.random() * 0.1),
+            transparent: true,
+            opacity: 1
+        });
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat);
+        mesh.position.set(
+            x + (Math.random() - 0.5) * 1.2,
+            y + 0.2,
+            z + (Math.random() - 0.5) * 1.2
+        );
+        scene.add(mesh);
+        meshes.push(mesh);
+        velocities.push(new THREE.Vector3(
+            (Math.random() - 0.5) * 5,
+            3 + Math.random() * 6,
+            (Math.random() - 0.5) * 5
+        ));
+    }
+    digParticles.push({ meshes, velocities, life: 0, maxLife: 1.2 });
+}
+
+function updateDigParticles(delta) {
+    for (let i = digParticles.length - 1; i >= 0; i--) {
+        const p = digParticles[i];
+        p.life += delta;
+        const t = p.life / p.maxLife;
+        for (let j = 0; j < p.meshes.length; j++) {
+            const m = p.meshes[j];
+            m.position.addScaledVector(p.velocities[j], delta);
+            p.velocities[j].y -= 12 * delta;
+            m.material.opacity = 1 - t;
+        }
+        if (p.life >= p.maxLife) {
+            p.meshes.forEach(m => scene.remove(m));
+            digParticles.splice(i, 1);
+        }
+    }
+}
+
+function spawnGoldenKey(x, y, z) {
+    goldenKeyMesh = createGoldenKeyMesh();
+    goldenKeyBaseY = y;
+    goldenKeyMesh.position.set(x, y, z);
+    goldenKeyMesh.userData.isGoldenKey = true;
+    const keyLight = new THREE.PointLight(0xFFCC44, 0, 12);
+    keyLight.userData.isGoldenKeyLight = true;
+    goldenKeyMesh.add(keyLight);
+    scene.add(goldenKeyMesh);
+    goldenKeySpawnTime = performance.now();
+    goldenKeyLockTimer = 3; // exactly 3 oscillations × 1 s each
+}
+
+function updateGoldenKey(delta) {
+    // DEBUG_GOLDEN_KEY_IN_LAKE: spawn key the first time player reaches the lake floor
+    if (DEBUG_GOLDEN_KEY_IN_LAKE && !debugGoldenKeySpawned && !goldenKeyMesh && !hasGoldenKey && bigLake) {
+        const dx = player.position.x - bigLake.x;
+        const dz = player.position.z - bigLake.z;
+        if (Math.abs(dx) < bigLake.cylinderRadius && player.position.y < bigLake.floorY + 10) {
+            debugGoldenKeySpawned = true;
+            digCount = 31;
+            spawnGoldenKey(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
+        }
+    }
+
+    if (!goldenKeyMesh) return;
+
+    // Spin and bob
+    goldenKeyMesh.rotation.y += delta * 1.2;
+    goldenKeyMesh.position.y = goldenKeyBaseY + 0.3 + Math.sin(performance.now() / 700) * 0.3;
+
+    // Lock-out countdown with pulsing gold glow + point light
+    if (goldenKeyLockTimer > 0) {
+        goldenKeyLockTimer = Math.max(0, goldenKeyLockTimer - delta);
+        // Phase-locked pulse: starts and ends at 0 over exactly 4 cycles
+        const phase = (performance.now() - goldenKeySpawnTime) / 1000 * 2 * Math.PI;
+        const pulse = 2 - 2 * Math.cos(phase);
+        goldenKeyMesh.traverse(obj => {
+            if (obj.isMesh && obj.material) {
+                obj.material.emissiveIntensity = 0.4 + pulse * 1.4;
+            }
+            if (obj.isLight && obj.userData.isGoldenKeyLight) {
+                obj.intensity = pulse * 1.5;
+            }
+        });
+    } else {
+        // Settled glow once pickable
+        goldenKeyMesh.traverse(obj => {
+            if (obj.isMesh && obj.material) {
+                obj.material.emissiveIntensity = 0.4;
+            }
+            if (obj.isLight && obj.userData.isGoldenKeyLight) {
+                obj.intensity = 0;
+            }
+        });
+    }
+}
+
