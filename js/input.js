@@ -3,22 +3,29 @@ function onKeyDown(event) {
         if (playerDead) return;
         if (event.repeat) return;
         event.preventDefault();
-        toggleTimeMenu();
+        if (inventoryOpen || viewingNoteItem) {
+            // Close inventory (and any open note), then open game menu
+            if (viewingNoteItem) closeNoteViewer();
+            inventoryOpen = false;
+            document.getElementById('inventory-overlay').style.display = 'none';
+            openTimeMenu();
+        } else {
+            toggleTimeMenu();
+        }
         return;
     }
 
     if (event.code === 'KeyI') {
         if (playerDead) return;
         if (event.repeat) return;
+        if (timeMenuOpen) return; // I does nothing while game menu is open
         event.preventDefault();
         toggleInventory();
         return;
     }
 
     if (event.code === 'Escape') {
-        if (viewingNoteItem) { closeNoteViewer(); }
-        else if (inventoryOpen) { toggleInventory(); }
-        return;
+        return; // ESC never closes inventory/note viewer; only I does
     }
 
     if (playerDead) return;
