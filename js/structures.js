@@ -784,7 +784,18 @@ function createEnterableStructures() {
 
         if (!placement) return;
 
-        const groundY = getGroundHeight(placement.x, placement.z);
+        // Sample terrain at a grid of points across the cave footprint and use
+        // the maximum so the cave floor never sinks below the terrain on slopes.
+        const caveSamplePts = [
+            [0, 0], [0, -6], [0, -12],
+            [-8, 0], [-8, -6], [-8, -12],
+            [ 8, 0], [ 8, -6], [ 8, -12],
+            [-10, -6], [10, -6],
+        ];
+        const groundY = caveSamplePts.reduce((maxY, [lx, lz]) => {
+            const wp = localToWorldXZ(placement.x, placement.z, lx, lz, placement.rotation);
+            return Math.max(maxY, getGroundHeight(wp.x, wp.z));
+        }, getGroundHeight(placement.x, placement.z));
         const cave = new THREE.Group();
         const caveColliderMarkers = [];
 
@@ -863,6 +874,18 @@ function createEnterableStructures() {
         caveFloor.position.set(0, 0.1, -cD / 2);
         caveFloor.userData.ignoreCameraOcclusion = true;
         cave.add(caveFloor);
+
+        // Gap-filling slab: sits flush under the cave (top at y=0) and extends
+        // 5 units down into the terrain so no gap shows on uneven ground.
+        const slabThickness = 5;
+        const slabW = (cW + wT) * 2;   // matches outer wall width: 20
+        const slabD = cD + wT;          // matches outer wall depth: 14
+        const caveSlab = new THREE.Mesh(
+            new THREE.BoxGeometry(slabW, slabThickness, slabD),
+            caveStoneMat
+        );
+        caveSlab.position.set(0, -slabThickness / 2, -(cD + wT) / 2);
+        cave.add(caveSlab);
 
         for (let r = 0; r < 5; r++) {
             let rx, rz;
