@@ -612,7 +612,7 @@ function createEnterableStructures() {
                 x: point.x,
                 z: point.z,
                 rotation,
-                footprint: makePlacementFootprint(point.x, point.z, 15)
+                footprint: { ...makePlacementFootprint(point.x, point.z, 15), noTree: true }
             };
         }, 240))
         .filter(Boolean);
@@ -777,7 +777,7 @@ function createEnterableStructures() {
                 x: point.x,
                 z: point.z,
                 rotation,
-                footprint: makePlacementFootprint(footprintCenter.x, footprintCenter.z, 20)
+                footprint: { ...makePlacementFootprint(footprintCenter.x, footprintCenter.z, 20), noTree: true }
             };
         }, 260);
 
@@ -1055,7 +1055,7 @@ function createEnterableStructures() {
                 x: point.x,
                 z: point.z,
                 rotation,
-                footprint: makePlacementFootprint(point.x, point.z, 11)
+                footprint: { ...makePlacementFootprint(point.x, point.z, 11), noTree: true }
             };
         }, 220);
 

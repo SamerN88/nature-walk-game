@@ -53,6 +53,7 @@ function createTrees() {
         if (Math.abs(x) < 5 && Math.abs(z) < 60) continue;
         if (Math.sqrt(x*x + z*z) < 10) continue;
         if (isPointInWater(x, z)) continue;
+        if (placementFootprints.some(fp => fp.noTree && footprintsOverlap({ x, z, radius: 0 }, fp, 0))) continue;
 
         const scale = 0.7 + Math.random() * 0.6;
         createTree(x, z, scale);
