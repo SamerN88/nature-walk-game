@@ -117,19 +117,20 @@ function buildNoteMesh3D(imgSrc, noteWidth, noteHeight, isFloating) {
         transparent: false,
         alphaTest: 0.5,
         side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
     });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(noteWidth, noteHeight), mat);
     plane.rotation.x = -Math.PI / 2;
     plane.position.y = 0.02;
     noteGroup.add(plane);
 
-    // Load image and redraw with it composited
-    const img = new Image();
-    img.onload = () => {
-        drawNotePaper(ctx, PW, PH, applyTornPath, wrinkles, img);
-        tex.needsUpdate = true;
-    };
-    img.src = imgSrc;
+    // No image is drawn on the 3D floor note — all un-picked-up notes look the
+    // same (plain parchment).  The image is shown in the inventory viewer after
+    // the player picks the note up.  Keeping the canvas untainted also avoids
+    // the texSubImage2D SecurityError that occurs when an <img> is drawn onto a
+    // 2D canvas and then uploaded to WebGL.
 
     if (isFloating) {
         const glow = new THREE.PointLight(0xFFD080, 2.5, 9);

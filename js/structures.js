@@ -1001,10 +1001,13 @@ function createEnterableStructures() {
         registerColliderMarkers(caveColliderMarkers);
 
         if (isVolcanoNoteCave) {
-            // Parent the note to the cave group so its Y is always relative to the
-            // cave floor (local Y=0.1), never the raw terrain. The opaque material
-            // (transparent:false, alphaTest:0.5) ensures the slab cannot depth-occlude it.
-            spawnVolcanoNote(cW / 2 - 1.5, 0.14, -(cD - 2), 0.65, cave);
+            // Spawn the note directly into the scene at its computed world position.
+            // groundY is guaranteed >= terrain height at [2.5, -10] (it's in caveSamplePts),
+            // so groundY + 0.16 is safely above terrain and 0.06 above the cave floor (groundY + 0.1).
+            // Using scene-root avoids any floating-point depth corruption that can arise from
+            // the cave-group → noteGroup → plane matrix chain.
+            const noteWorld = localToWorldXZ(placement.x, placement.z, cW / 2 - 1.5, -(cD - 2), placement.rotation);
+            spawnVolcanoNote(noteWorld.x, groundY + 0.14, noteWorld.z, 0.65 + placement.rotation, null);
 
             if (DEBUG_VOLCANO_HINT) {
                 const beaconHeight = 500;
