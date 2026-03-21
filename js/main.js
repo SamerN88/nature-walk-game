@@ -270,7 +270,7 @@ function update(delta) {
         // Ceiling collision only blocks upward movement from below (inside structures).
         for (const ceil of ceilings) {
             if (isPointInRotatedRect(player.position.x, player.position.z, ceil)) {
-                if (velocity.y > 0 && previousY <= ceil.y && player.position.y >= ceil.y) {
+                if (velocity.y > 0 && previousY < ceil.y - 0.05 && player.position.y >= ceil.y) {
                     player.position.y = ceil.y - 0.01;
                     velocity.y = 0;
                 }

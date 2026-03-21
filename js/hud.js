@@ -115,7 +115,12 @@ function resolveRoofCollision(previousY) {
         if (!isPointInsideRoofCollider(player.position.x, player.position.z, roof)) continue;
 
         // Landing from above: clamp to roof top.
-        if (velocity.y <= 0 && previousY >= roof.topY - 0.05 && player.position.y <= roof.topY + 0.35) {
+        // previousY lower bound is roof.topY - 2.0 (not a tight 0.05) so that
+        // walking laterally onto the roof is caught even when gravity has already
+        // pulled the player slightly below topY in the same frame.
+        // player.position.y upper bound of topY + 1.5 handles cases where the
+        // player arrives from just above while still excluding deep-inside-cave players.
+        if (velocity.y <= 0 && previousY >= roof.topY - 2.0 && player.position.y <= roof.topY + 1.5) {
             player.position.y = roof.topY;
             if (velocity.y < 0) velocity.y = 0;
             groundedOnRoof = true;
