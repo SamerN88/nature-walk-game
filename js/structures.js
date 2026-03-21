@@ -705,7 +705,6 @@ function createEnterableStructures() {
         const doorWoodMat = new THREE.MeshLambertMaterial({ color: 0x6B3A1F });
         const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(3.9, 5.9, 0.32), doorWoodMat);
         doorPanel.position.set(2, 2.95, 0);
-        doorPanel.castShadow = true;
         doorPanel.receiveShadow = true;
         doorPivot.add(doorPanel);
         // Raised panels and hardware on the OUTSIDE face (+z in doorPivot space = exterior)
