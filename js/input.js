@@ -15,10 +15,12 @@ function onKeyDown(event) {
         return;
     }
 
-    if (event.code === 'KeyI') {
+    if (event.code === 'KeyE') {
         if (playerDead) return;
         if (event.repeat) return;
-        if (timeMenuOpen) return; // I does nothing while game menu is open
+        if (timeMenuOpen) return; // E does nothing while game menu is open
+        // Only open inventory when the player has something beyond bare fists
+        if (!inventoryOpen && handSlots.length <= 1 && inventoryItems.length === 0) return;
         event.preventDefault();
         toggleInventory();
         return;

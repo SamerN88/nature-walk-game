@@ -1,5 +1,7 @@
 const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
 const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
+// Circumference of the campfire-timer SVG arc (r=13): 2π×13
+const _CAMPFIRE_ARC_CIRC = 2 * Math.PI * 13;
 
 function createDemon(biasedSpeed = false) {
     const demon = new THREE.Group();
@@ -244,6 +246,9 @@ function triggerDemonApocalypse() {
     // Show UI (counter + health bar — no banner)
     document.getElementById('demon-counter').style.display      = 'block';
     document.getElementById('health-bar-container').style.display = 'block';
+
+    // Despawn all peaceful NPCs for performance and atmosphere
+    if (!savedNpcCounts) despawnAllNPCsForHell();
 
     // Remove magenta gem but do NOT grant powers yet (granted on victory)
     if (secretGem && !gemCollected) {
@@ -613,6 +618,9 @@ function demonVictory() {
     sun.color.setHex(0xffffff);
     updateWaterLighting();
     setWaterCombatColor(false);
+
+    // Respawn peaceful NPCs now that the apocalypse is over
+    respawnSavedNPCs();
 
     // ── Grant gem powers to player (and white dragon, not original dragon) ──
     speedMultiplier = 10;

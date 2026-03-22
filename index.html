@@ -593,8 +593,10 @@
         }
         #handheld-tooltip {
             position: fixed;
-            background: rgba(18,18,22,0.95);
-            border: 1px solid rgba(80,80,92,0.55);
+            /* background: rgba(18,18,22,0.95); */
+            background-color: black;
+            /* border: 1px solid rgba(80,80,92,0.55); */
+            border: 1px solid rgb(37, 37, 37);
             border-radius: 5px;
             padding: 4px 10px;
             font-size: 12px;
@@ -603,9 +605,9 @@
             z-index: 500;
             display: none;
             white-space: nowrap;
-            font-family: 'Segoe UI', serif;
+            font-family: 'Arial', sans-serif;
             letter-spacing: 0.03em;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.85);
+            box-shadow: 0 0 20px rgba(0,0,0,0.85);
         }
 
         /* ── Note viewer ── */
@@ -831,6 +833,7 @@
 
     <script src="js/constants.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/images.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/terrain.js"></script>
     <script src="js/water.js"></script>

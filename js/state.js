@@ -110,6 +110,8 @@ const DIG_ZONE_SIZE = 10;
 
 // NPCs
 let npcs = [];
+// Counts of each NPC type saved before hell/apocalypse, null when not saved
+let savedNpcCounts = null;
 
 // Secret gem
 let secretGem;

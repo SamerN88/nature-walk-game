@@ -386,6 +386,7 @@ function tryInteractWithAkChest(aimDir, range) {
             akChest.opened = true;
             akChest.lidPivot.rotation.x = -Math.PI * 0.65;
             hasGoldenKey = false;
+            removeInventoryItem('golden-key'); // key consumed by chest
             updateKeyHUD();
             updateAK47VisualState();
         }
@@ -541,16 +542,30 @@ function punch() {
         if (tryDig()) return;
     }
 
-    // Tree hit with shovel — 3 hits immediately equip a wooden stake
+    // Tree hit with shovel — 3 hits anywhere on the tree equip a wooden stake.
+    // Only show splinter effects before the stake has been obtained.
     if (hasShovel && currentHandItem === 'shovel' && !hasStake && !hasTorch) {
         for (let i = 0; i < trees.length; i++) {
             const tree = trees[i];
-            const toTree = tree.position.clone().sub(camera.position);
-            const proj = toTree.dot(aimDir);
+            const treeScale = tree.userData.treeScale || 1;
+            // Use the visual center of the tree (midway through foliage) for hit detection
+            // so that hitting leaves or trunk both register correctly.
+            const treeCenterWorld = new THREE.Vector3(
+                tree.position.x,
+                tree.position.y + 4 * treeScale,
+                tree.position.z
+            );
+            const toCenter = treeCenterWorld.clone().sub(camera.position);
+            const proj = toCenter.dot(aimDir);
             if (proj <= 0 || proj > punchRange) continue;
-            const perp = toTree.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 3) {
+            const perp = toCenter.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 3.5 * treeScale) {
                 tree.userData.treeHitCount = (tree.userData.treeHitCount || 0) + 1;
+                // Raycast against the actual tree geometry to find the surface hit point
+                const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
+                const _treeHits = _treeRay.intersectObject(tree, true);
+                const hitPoint = _treeHits.length > 0 ? _treeHits[0].point : camera.position.clone().addScaledVector(aimDir, proj);
+                spawnWoodSplinterEffect(hitPoint);
                 if (tree.userData.treeHitCount >= 3) {
                     tree.userData.treeHitCount = 0;
                     hasStake = true;
@@ -594,7 +609,9 @@ function punch() {
                 hasGoldenKey = true;
                 scene.remove(goldenKeyMesh);
                 goldenKeyMesh = null;
-                updateKeyHUD();
+                // Show the key in inventory rather than bottom-right HUD
+                addInventoryItem('golden-key', 'Golden Key', null, { type: 'object', itemKey: 'golden-key' });
+                flashEquipHint('KEY FOUND');
                 return;
             }
         }
@@ -602,23 +619,25 @@ function punch() {
 
     if (tryInteractWithAkChest(aimDir, punchRange)) return;
 
-    // Door toggle — punch to open or close
+    // Door toggle — punch to open or close. Does NOT return early so other
+    // targets (demons, NPCs) in the same direction also receive the hit.
+    let doorHit = false;
     for (const door of houseDoors) {
-        const doorWorldPos = new THREE.Vector3();
-        door.mesh.getWorldPosition(doorWorldPos);
-        const toDoor = doorWorldPos.clone().sub(camera.position);
+        const centerPos = door.mesh.getWorldPosition(new THREE.Vector3());
+        const toDoor = centerPos.clone().sub(camera.position);
         const proj = toDoor.dot(aimDir);
         if (proj > 0 && proj < punchRange) {
             const perp = toDoor.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
             if (perp < 3.5) {
                 toggleHouseDoor(door);
-                return;
+                doorHit = true;
+                break;
             }
         }
     }
 
     // Note pickup
-    if (tryPickupNote(aimDir, punchRange)) return;
+    tryPickupNote(aimDir, punchRange);
 
     // Campfire punch with stake equipped — light it into a torch
     if (currentHandItem === 'stake' && hasStake) {
@@ -633,11 +652,12 @@ function punch() {
                 addHandSlot('torch', 'stake');
                 updateAK47VisualState();
                 flashEquipHint('Torch');
-                return;
+                break;
             }
         }
     }
 
+    // Hit NPCs
     let hitNPC = null;
     let hitIndex = -1;
     let minProjected = Infinity;
@@ -660,7 +680,7 @@ function punch() {
         explodeNPC(hitNPC, hitIndex);
     }
 
-    // Also check demons
+    // Hit demons — always checked regardless of door/NPC hit
     let hitDemon = null, hitZIdx = -1;
     let minZProj = Infinity;
     const demonPunchPoint = new THREE.Vector3();
@@ -695,8 +715,10 @@ function toggleHouseDoor(door) {
 }
 
 function updateKeyHUD() {
+    // Key is now shown in the inventory overlay, not the bottom-right HUD.
+    // Always keep the legacy HUD element hidden.
     const el = document.getElementById('golden-key-hud');
-    if (el) el.style.display = hasGoldenKey ? 'block' : 'none';
+    if (el) el.style.display = 'none';
 }
 
 function flashEquipHint(label) {
@@ -725,6 +747,35 @@ function tryDig() {
         spawnGoldenKey(bigLake.x, bigLake.floorY + 0.8, bigLake.z);
     }
     return true;
+}
+
+function spawnWoodSplinterEffect(hitPoint) {
+    const count = 20;
+    const meshes = [];
+    const velocities = [];
+    const woodMat = new THREE.MeshLambertMaterial({ color: 0x7A5230, transparent: true, opacity: 1 });
+    for (let i = 0; i < count; i++) {
+        const len = 0.08 + Math.random() * 0.18;
+        const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(0.04, len, 0.04),
+            woodMat.clone()
+        );
+        mesh.position.copy(hitPoint).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 0.4,
+            (Math.random() - 0.5) * 0.4,
+            (Math.random() - 0.5) * 0.4
+        ));
+        mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        mesh.userData.ignoreCameraOcclusion = true;
+        scene.add(mesh);
+        meshes.push(mesh);
+        velocities.push(new THREE.Vector3(
+            (Math.random() - 0.5) * 6,
+            2 + Math.random() * 5,
+            (Math.random() - 0.5) * 6
+        ));
+    }
+    digParticles.push({ meshes, velocities, life: 0, maxLife: 0.7 });
 }
 
 function spawnDigParticles(x, y, z) {

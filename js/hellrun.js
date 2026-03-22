@@ -7,18 +7,21 @@ function createShrine() {
     const baseMat = new THREE.MeshLambertMaterial({ color: 0x444455 });
     const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(4, 5, 1.2, 8), baseMat);
     baseMesh.position.y = 0.6;
+    baseMesh.userData.ignoreCameraOcclusion = true;
     group.add(baseMesh);
 
     // Obelisk
     const obeliskMat = new THREE.MeshLambertMaterial({ color: 0x2a2a3a });
     const obelisk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 6, 1.2), obeliskMat);
     obelisk.position.y = 4.2;
+    obelisk.userData.ignoreCameraOcclusion = true;
     group.add(obelisk);
 
     // Obelisk cap
     const capMat = new THREE.MeshLambertMaterial({ color: 0xFF0000, emissive: new THREE.Color(0xFF0000), emissiveIntensity: 0.8 });
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0, 1, 1.5, 4), capMat);
     cap.position.y = 8;
+    cap.userData.ignoreCameraOcclusion = true;
     group.add(cap);
 
     // Cap glow light
@@ -34,6 +37,7 @@ function createShrine() {
         const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), crystalMat.clone());
         const a = (i / 3) * Math.PI * 2;
         c.position.set(Math.cos(a) * 2.5, crystalHeights[i], Math.sin(a) * 2.5);
+        c.userData.ignoreCameraOcclusion = true;
         const crystalLight = new THREE.PointLight(0xFF2200, 10, 50);
         c.add(crystalLight);
         group.add(c);
@@ -45,6 +49,7 @@ function createShrine() {
     const runeRing = new THREE.Mesh(new THREE.RingGeometry(3.5, 4, 32), runeMat);
     runeRing.rotation.x = -Math.PI / 2;
     runeRing.position.y = 0.05;
+    runeRing.userData.ignoreCameraOcclusion = true;
     group.add(runeRing);
 
     // Floating embers
@@ -56,9 +61,70 @@ function createShrine() {
         const er = Math.random() * 3;
         e.position.set(Math.cos(ea) * er, 0.5 + Math.random() * 4, Math.sin(ea) * er);
         e.userData.offset = Math.random() * Math.PI * 2;
+        e.userData.ignoreCameraOcclusion = true;
         group.add(e);
         embers.push(e);
     }
+
+    // Permanent thin red beacon — rotates, rises particles, stays forever
+    const BEACON_BASE_Y = 8.5;
+    const BEACON_HEIGHT = 3000;
+    const beaconGrp = new THREE.Group();
+    beaconGrp.position.y = BEACON_BASE_Y;
+    beaconGrp.userData.ignoreCameraOcclusion = true;
+
+    const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xFF1100, transparent: true, opacity: 0.45,
+        side: THREE.DoubleSide, depthWrite: false,
+    });
+    const beamMesh = new THREE.Mesh(
+        // new THREE.CylinderGeometry(0.04, 0.18, BEACON_HEIGHT, 8, 1, true),
+        new THREE.CylinderGeometry(0.3, 0.3, BEACON_HEIGHT, 8, 1, true),
+        beamMat
+    );
+    beamMesh.position.y = BEACON_HEIGHT / 2 - 1;
+    beamMesh.userData.ignoreCameraOcclusion = true;
+    // renderOrder > 0 forces the beam to draw after water (renderOrder 0),
+    // so depthTest correctly keeps the beam visible in front of background water.
+    beamMesh.renderOrder = 2;
+    beaconGrp.add(beamMesh);
+
+    // Inner brighter core
+    const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xFF5500, transparent: true, opacity: 0.7,
+        side: THREE.DoubleSide, depthWrite: false,
+    });
+    const coreMesh = new THREE.Mesh(
+        // new THREE.CylinderGeometry(0.015, 0.06, BEACON_HEIGHT, 6, 1, true),
+        new THREE.CylinderGeometry(0.13, 0.13, BEACON_HEIGHT, 6, 1, true),
+        coreMat
+    );
+    coreMesh.position.y = BEACON_HEIGHT / 2 - 1;
+    coreMesh.userData.ignoreCameraOcclusion = true;
+    coreMesh.renderOrder = 2;
+    beaconGrp.add(coreMesh);
+
+    // Rising particles spiraling up the beacon
+    const beaconParticles = [];
+    const bpMat = new THREE.MeshBasicMaterial({ color: 0xFF4400, transparent: true });
+    for (let i = 0; i < 40; i++) {
+        const bp = new THREE.Mesh(
+            new THREE.SphereGeometry(0.045 + Math.random() * 0.065, 4, 4),
+            bpMat.clone()
+        );
+        bp.userData.orbitAngle = (i / 14) * Math.PI * 2;
+        bp.userData.orbitRadius = 0.08 + Math.random() * 0.52;
+        bp.userData.riseSpeed = 6 + Math.random() * 9;
+        bp.userData.maxY = 35 + Math.random() * 40;
+        bp.position.y = Math.random() * bp.userData.maxY;
+        bp.userData.ignoreCameraOcclusion = true;
+        beaconGrp.add(bp);
+        beaconParticles.push(bp);
+    }
+
+    group.add(beaconGrp);
+    group.userData.beaconGrp = beaconGrp;
+    group.userData.beaconParticles = beaconParticles;
 
     group.userData.crystals = crystals;
     group.userData.embers   = embers;
@@ -110,7 +176,11 @@ function startDemonRound(roundNumber) {
     const batchBase = roundNumber >= 3 ? Math.floor(roundDemonsTotal / 2) : roundDemonsTotal;
     const numBatches = getRoundNumBatches(roundNumber);
     roundBatchSize = Math.max(5, Math.ceil(batchBase / numBatches));
-    if (roundNumber === 1) roundKillCount = 0;
+    if (roundNumber === 1) {
+        roundKillCount = 0;
+        // Despawn all peaceful NPCs on hell run start (round 1 only)
+        if (!savedNpcCounts) despawnAllNPCsForHell();
+    }
     updateBestDemonRoundsRun();
 
     // Strip gem powers for round mode
@@ -323,6 +393,26 @@ function updateShrine(delta, time) {
 
     shrine.userData.runeRing.material.opacity = 0.4 + Math.sin(time * 2) * 0.25;
 
+    // Animate permanent beacon
+    if (shrine.userData.beaconGrp) {
+        shrine.userData.beaconGrp.rotation.y += delta * 0.35;
+        const t = time;
+        shrine.userData.beaconParticles.forEach((bp, idx) => {
+            bp.position.y += bp.userData.riseSpeed * delta;
+            // Spiral orbit
+            bp.userData.orbitAngle += delta * (0.6 + idx * 0.04);
+            bp.position.x = Math.cos(bp.userData.orbitAngle) * bp.userData.orbitRadius;
+            bp.position.z = Math.sin(bp.userData.orbitAngle) * bp.userData.orbitRadius;
+            // Fade out as it rises, reset at top
+            const frac = bp.position.y / bp.userData.maxY;
+            bp.material.opacity = Math.max(0, 0.85 * (1 - frac));
+            if (bp.position.y > bp.userData.maxY) {
+                bp.position.y = 0;
+                bp.material.opacity = 0.85;
+            }
+        });
+    }
+
     const dist = player.position.distanceTo(shrine.position);
     document.getElementById('shrine-prompt').style.display =
         (shrineActive && dist < SHRINE_INTERACT_DIST) ? 'block' : 'none';
@@ -365,6 +455,9 @@ function exitRoundMode() {
     nearCampfireFlag = false;
     campfireShieldTimer = 0;
     roundKillCount = 0;
+
+    // Respawn peaceful NPCs now that the hell run is over
+    respawnSavedNPCs();
 
     // Restore gem powers earned from original victory
     speedMultiplier = 10;

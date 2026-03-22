@@ -84,14 +84,16 @@ function init() {
     }
 
     createPlayer();
+    // Enterable/climbable structures must be created BEFORE trees so their
+    // footprints are registered in placementFootprints before tree placement.
+    createClimbableStructures();
+    createEnterableStructures();
     createTrees();
     createRocks();
     createFlowers();
     createGrass();
     createMountains();
     createDragonVolcano();
-    createClimbableStructures();
-    createEnterableStructures();
     createCollisionDebugVisuals();
     createDistanceDebugStake();
     createNPCs();
@@ -143,7 +145,6 @@ function update(delta) {
         return;
     }
 
-    // WHOLE FUNCTION MODIFIED BY CHATGPT:
     if (!mountedOnDragon) {
         const moveSpeed = (isRunning ? RUN_SPEED : WALK_SPEED) * speedMultiplier;
 

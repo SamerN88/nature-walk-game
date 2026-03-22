@@ -229,9 +229,16 @@ function tryPickupNote(aimDir, punchRange) {
 
 // ─── Inventory ────────────────────────────────────────────────────────────────
 
-function addInventoryItem(id, name, imgSrc) {
+function addInventoryItem(id, name, imgSrc, opts = {}) {
     if (inventoryItems.find(i => i.id === id)) return;
-    inventoryItems.push({ id, name, imgSrc });
+    inventoryItems.push({ id, name, imgSrc, type: opts.type || 'note', itemKey: opts.itemKey });
+    if (inventoryOpen) renderInventoryGrid();
+}
+
+function removeInventoryItem(id) {
+    const idx = inventoryItems.findIndex(i => i.id === id);
+    if (idx === -1) return;
+    inventoryItems.splice(idx, 1);
     if (inventoryOpen) renderInventoryGrid();
 }
 
@@ -275,27 +282,52 @@ function renderInventoryGrid() {
         el.className = 'inv-item';
         el.title = item.name;
 
-        // Render a torn-edge parchment thumbnail in a small canvas
-        const TW = 256, TH = 192;
-        const thumbCanvas = document.createElement('canvas');
-        thumbCanvas.width = TW;
-        thumbCanvas.height = TH;
-        thumbCanvas.style.width = '62px';
-        thumbCanvas.style.height = '46px';
-        thumbCanvas.style.display = 'block';
-        thumbCanvas.style.borderRadius = '3px';
-        const tctx = thumbCanvas.getContext('2d');
-        const tTornPath = makeTornEdgePath(TW, TH, 14, 11);
-        const tWrinkles = Array.from({ length: 4 }, () => [
-            Math.random() * TW, Math.random() * TH, 35 + Math.random() * 45,
-        ]);
-        drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, null);
-        const tImg = new Image();
-        tImg.onload = () => { drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg); };
-        tImg.src = item.imgSrc;
+        if (item.type === 'object') {
+            // 3D icon — no label, no background, square canvas matching note slot size
+            const iconSrc = _renderItemIconDataURL(item.itemKey);
+            const TW = 256, TH = 256;
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = TW;
+            thumbCanvas.height = TH;
+            thumbCanvas.style.width = '62px';
+            thumbCanvas.style.height = '62px';
+            thumbCanvas.style.display = 'block';
+            thumbCanvas.style.borderRadius = '3px';
+            const tctx = thumbCanvas.getContext('2d');
+            const tImg = new Image();
+            tImg.onload = () => {
+                tctx.clearRect(0, 0, TW, TH);
+                // Center the image with letterboxing, no background fill
+                const s = Math.min(TW / tImg.width, TH / tImg.height);
+                const dw = tImg.width * s, dh = tImg.height * s;
+                tctx.drawImage(tImg, (TW - dw) / 2, (TH - dh) / 2, dw, dh);
+            };
+            tImg.src = iconSrc;
+            el.appendChild(thumbCanvas);
+            el.addEventListener('click', () => openItemViewer(item));
+        } else {
+            // Render a torn-edge parchment thumbnail in a small canvas
+            const TW = 256, TH = 256;
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = TW;
+            thumbCanvas.height = TH;
+            thumbCanvas.style.width = '62px';
+            thumbCanvas.style.height = '62px';
+            thumbCanvas.style.display = 'block';
+            thumbCanvas.style.borderRadius = '3px';
+            const tctx = thumbCanvas.getContext('2d');
+            const tTornPath = makeTornEdgePath(TW, TH, 14, 11);
+            const tWrinkles = Array.from({ length: 4 }, () => [
+                Math.random() * TW, Math.random() * TH, 35 + Math.random() * 45,
+            ]);
+            drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, null);
+            const tImg = new Image();
+            tImg.onload = () => { drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg); };
+            tImg.src = item.imgSrc;
 
-        el.appendChild(thumbCanvas);
-        el.addEventListener('click', () => openNoteViewer(item));
+            el.appendChild(thumbCanvas);
+            el.addEventListener('click', () => openNoteViewer(item));
+        }
         grid.appendChild(el);
     }
 }
@@ -323,6 +355,53 @@ function openNoteViewer(item) {
     viewer.style.display = 'flex';
 }
 
+function openItemViewer(item) {
+    // Reuse the note-viewer container but render the 3D icon into the canvas
+    // without parchment — just the object on a transparent/dark background.
+    viewingNoteItem = item;
+    const viewer = document.getElementById('note-viewer');
+    const canvas = document.getElementById('note-viewer-canvas');
+    if (!viewer || !canvas) return;
+
+    const VW = 480, VH = 480;
+    canvas.width = VW;
+    canvas.height = VH;
+    const vctx = canvas.getContext('2d');
+
+    // Render the 3D icon at high resolution for the viewer
+    _getIconRenderer();
+    _iconRenderer.setSize(VW, VH);
+    for (const m of _iconMeshes) _iconScene.remove(m);
+    _iconMeshes = [];
+
+    const cfg = _iconCamConfigs[item.itemKey] || _iconCamConfigs.fist;
+    _iconCamera.position.set(...cfg.cam);
+    _iconCamera.lookAt(...cfg.look);
+
+    let mesh = null;
+    switch (item.itemKey) {
+        case 'golden-key':
+            mesh = createGoldenKeyMesh();
+            mesh.rotation.z = Math.PI * 0.25;
+            mesh.rotation.y = 0.4;
+            mesh.position.set(0, -0.05, 0);
+            break;
+    }
+    if (mesh) { _iconScene.add(mesh); _iconMeshes.push(mesh); }
+    _iconRenderer.render(_iconScene, _iconCamera);
+
+    // Draw the rendered icon centered on a dark background
+    vctx.fillStyle = 'rgba(18,18,22,1)';
+    vctx.fillRect(0, 0, VW, VH);
+    const dataUrl = _iconRenderer.domElement.toDataURL();
+    _iconRenderer.setSize(200, 200); // restore default size
+    const vImg = new Image();
+    vImg.onload = () => { vctx.drawImage(vImg, 0, 0, VW, VH); };
+    vImg.src = dataUrl;
+
+    viewer.style.display = 'flex';
+}
+
 function closeNoteViewer() {
     viewingNoteItem = null;
     const viewer = document.getElementById('note-viewer');
@@ -338,11 +417,12 @@ let _iconMeshes = [];
 
 // Per-item camera positions and lookAt targets for best framing
 const _iconCamConfigs = {
-    fist:   { cam: [0, 0.5, 1.6],  look: [0, 0.3, 0] },
-    shovel: { cam: [1.0, 1.2, 2.6], look: [0, 0.3, 0] },
-    ak47:   { cam: [0.3, 0.5, 1.8], look: [0, 0.2, 0] },
-    stake:  { cam: [0.6, 1.1, 1.9], look: [0, 0.6, 0] },
-    torch:  { cam: [0.6, 0.9, 1.9], look: [0, 0.5, 0] },
+    fist:       { cam: [0, 0.5, 1.6],  look: [0, 0.3, 0] },
+    shovel:     { cam: [1.0, 1.2, 2.6], look: [0, 0.3, 0] },
+    ak47:       { cam: [0.3, 0.5, 1.8], look: [0, 0.2, 0] },
+    stake:      { cam: [0.6, 1.1, 1.9], look: [0, 0.6, 0] },
+    torch:      { cam: [0.6, 0.9, 1.9], look: [0, 0.5, 0] },
+    'golden-key': { cam: [1.2, 0.8, 2.0], look: [0, 0, 0] },
 };
 
 function _getIconRenderer() {
@@ -406,6 +486,12 @@ function _renderItemIconDataURL(itemName) {
             mesh.rotation.z = Math.PI;
             if (mesh.userData.flameGroup) mesh.userData.flameGroup.rotation.x = Math.PI;
             mesh.position.set(0, 0.2, 0);
+            break;
+        case 'golden-key':
+            mesh = createGoldenKeyMesh();
+            mesh.rotation.z = Math.PI * 0.25; // 45-degree tilt
+            mesh.rotation.y = 0.4;
+            mesh.position.set(0, -0.05, 0);
             break;
     }
 

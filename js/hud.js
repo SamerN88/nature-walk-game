@@ -3,7 +3,7 @@ function updateMenuPanels() {
     if (controls) {
         const lines = ['M - Menu'];
         // Only show inventory hint once the player has something to view
-        if (inventoryItems.length > 0 || handSlots.length > 1) lines.push('I - Inventory');
+        if (inventoryItems.length > 0 || handSlots.length > 1) lines.push('E - Inventory');
         lines.push('WASD - Move', 'SHIFT - Run', 'SPACE - Jump', 'Click - Punch/Interact');
         if (dragonGemCollected) lines.push('U - Unmount dragon');
         if (dragonBondFormed) lines.push('T - Tether dragon');

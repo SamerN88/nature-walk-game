@@ -561,6 +561,33 @@ function explodeNPC(npcData, index) {
     updateStats();
 }
 
+// Remove all peaceful NPCs from the scene and save their counts by type.
+// Called when the demon apocalypse or hell run begins.
+function despawnAllNPCsForHell() {
+    savedNpcCounts = { deer: 0, rabbit: 0, bird: 0, human: 0 };
+    for (const npc of npcs) {
+        if (savedNpcCounts[npc.type] !== undefined) savedNpcCounts[npc.type]++;
+        scene.remove(npc.mesh);
+    }
+    npcs.length = 0;
+    updateStats();
+}
+
+// Re-create NPCs using the counts saved by despawnAllNPCsForHell.
+// Called when the player exits hell (demonVictory or exitRoundMode).
+function respawnSavedNPCs() {
+    if (!savedNpcCounts) return;
+    for (let i = 0; i < savedNpcCounts.deer; i++) createDeer();
+    for (let i = 0; i < savedNpcCounts.rabbit; i++) createRabbit();
+    // Restore birds with original 50/50 small/large split
+    const halfBirds = Math.floor(savedNpcCounts.bird / 2);
+    for (let i = 0; i < halfBirds; i++) createBird(1);
+    for (let i = 0; i < savedNpcCounts.bird - halfBirds; i++) createBird(4);
+    for (let i = 0; i < savedNpcCounts.human; i++) createHuman();
+    savedNpcCounts = null;
+    updateStats();
+}
+
 function spawnRandomNPC() {
     const types = ['deer', 'rabbit', 'bird', 'human'];
     const type = types[Math.floor(Math.random() * types.length)];

@@ -12,6 +12,7 @@ function createTree(x, z, scale = 1) {
     tree.add(trunk);
     tree.userData.trunkMesh = trunk;
     tree.userData.treeHitCount = 0;
+    tree.userData.treeScale = scale;
 
     // Foliage layers
     const foliageMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
@@ -56,7 +57,8 @@ function createTrees() {
         if (Math.abs(x) < 5 && Math.abs(z) < 60) continue;
         if (Math.sqrt(x*x + z*z) < 10) continue;
         if (isPointInWater(x, z)) continue;
-        if (placementFootprints.some(fp => fp.noTree && footprintsOverlap({ x, z, radius: 0 }, fp, 0))) continue;
+        // Use a non-zero tree radius so foliage doesn't overlap enterable structures
+        if (placementFootprints.some(fp => fp.noTree && footprintsOverlap({ x, z, radius: 4 }, fp, 0))) continue;
 
         const scale = 0.7 + Math.random() * 0.6;
         createTree(x, z, scale);
@@ -219,12 +221,17 @@ function respawnPlayerAtOrigin() {
     spaceHeld = false;
 }
 
+let _lavaResetPending = false;
 function respawnPlayerFromDragonVolcanoLava() {
     if (!dragonVolcano || mountedOnDragon) return false;
     if (!isInsideDragonVolcanoCore(player.position.x, player.position.z, PLAYER_RADIUS * 0.15)) return false;
     if (player.position.y > dragonVolcano.lavaTopY) return false;
 
-    respawnPlayerAtOrigin();
+    // Hard reset back to title screen — no animation, pure reload
+    if (!_lavaResetPending) {
+        _lavaResetPending = true;
+        location.reload();
+    }
     return true;
 }
 
