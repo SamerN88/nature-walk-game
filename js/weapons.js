@@ -179,7 +179,7 @@ function createPlayerTorchMesh(scale = 1) {
 function updateTorchLight() {
     if (!torchEquippedLight) return;
     const torchActive = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
-    torchEquippedLight.intensity = torchActive ? 15 : 0;
+    torchEquippedLight.intensity = torchActive ? 10 : 0;
 }
 
 // ── End Stake / Torch ────────────────────────────────────────────────────────
