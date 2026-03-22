@@ -498,15 +498,17 @@
             background: rgba(0,0,0,0.42);
             display: none;
             z-index: 300;
-            align-items: center;
-            justify-content: center;
         }
         #inventory-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             background: rgba(22,22,24,0.96);
             border: 1px solid rgba(80,80,88,0.38);
             border-radius: 12px;
             padding: 22px 26px;
-            min-width: 240px;
+            min-width: 200px;
             max-width: 80vw;
             color: #b8b8c0;
             font-family: 'Segoe UI', serif;
@@ -517,6 +519,7 @@
             gap: 12px;
             justify-content: center;
             min-height: 80px;
+            min-width: 80px;
         }
         .inv-item {
             background: rgba(48,48,54,0.6);
@@ -533,6 +536,76 @@
         .inv-item:hover {
             background: rgba(72,72,80,0.75);
             transform: scale(1.03);
+        }
+
+        /* ── Handheld panel (bottom of screen) ── */
+        #handheld-panel {
+            position: absolute;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(22,22,24,0.96);
+            border: 1px solid rgba(80,80,88,0.38);
+            border-radius: 12px;
+            padding: 12px 16px 14px;
+            color: #b8b8c0;
+            font-family: 'Segoe UI', serif;
+        }
+        .handheld-bar-title {
+            font-size: 10px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: rgba(160,160,170,0.5);
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        #handheld-slots-row {
+            display: flex;
+            gap: 10px;
+        }
+        .handheld-slot {
+            position: relative;
+            width: 88px;
+            height: 88px;
+            background: rgba(30,30,36,0.85);
+            border: 1px solid rgba(75,75,82,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: default;
+            flex-shrink: 0;
+        }
+        .handheld-slot img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .handheld-slot-number {
+            position: absolute;
+            top: 5px;
+            left: 7px;
+            font-size: 11px;
+            line-height: 1;
+            color: rgba(200,200,210,0.65);
+            font-family: 'Segoe UI', monospace;
+            pointer-events: none;
+            z-index: 1;
+        }
+        #handheld-tooltip {
+            position: fixed;
+            background: rgba(18,18,22,0.95);
+            border: 1px solid rgba(80,80,92,0.55);
+            border-radius: 5px;
+            padding: 4px 10px;
+            font-size: 12px;
+            color: #c8c8d2;
+            pointer-events: none;
+            z-index: 500;
+            display: none;
+            white-space: nowrap;
+            font-family: 'Segoe UI', serif;
+            letter-spacing: 0.03em;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.85);
         }
 
         /* ── Note viewer ── */
@@ -646,9 +719,17 @@
 
     <!-- Inventory overlay -->
     <div id="inventory-overlay">
+        <!-- Non-handheld items: centered on screen -->
         <div id="inventory-panel">
             <div id="inventory-grid"></div>
         </div>
+        <!-- Handheld items: bottom of screen -->
+        <div id="handheld-panel">
+            <div class="handheld-bar-title">Handheld</div>
+            <div id="handheld-slots-row"></div>
+        </div>
+        <!-- Hover tooltip -->
+        <div id="handheld-tooltip"></div>
     </div>
 
     <!-- Note / document viewer -->
@@ -701,7 +782,7 @@
                 <div class="kill-row"><span>Rabbits</span><span id="kills-rabbit">0</span></div>
                 <div class="kill-row"><span>Birds</span><span id="kills-bird">0</span></div>
                 <div class="kill-row"><span>Humans</span><span id="kills-human">0</span></div>
-                <div class="kill-row"><span>Demons</span><span id="kills-demon">0</span></div>
+                <div class="kill-row" id="kills-demon-row" style="display:none"><span>Demons</span><span id="kills-demon">0</span></div>
                 <div id="best-hell-run-section" style="display:none;">
                     <h4>Best Hell Run</h4>
                     <div class="kill-row"><span>Round Reached</span><span id="best-demon-round">0</span></div>

@@ -10,6 +10,8 @@ function createTree(x, z, scale = 1) {
     trunk.castShadow = true;
     trunk.receiveShadow = true;
     tree.add(trunk);
+    tree.userData.trunkMesh = trunk;
+    tree.userData.treeHitCount = 0;
 
     // Foliage layers
     const foliageMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
@@ -41,6 +43,7 @@ function createTree(x, z, scale = 1) {
 
     tree.position.set(x, getGroundHeight(x, z), z);
     scene.add(tree);
+    trees.push(tree);
 }
 
 function createTrees() {

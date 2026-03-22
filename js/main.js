@@ -51,7 +51,12 @@ function init() {
 
     if (DEBUG_SHOVEL) {
         hasShovel = true;
-        currentHandItem = 'shovel';
+        addHandSlot('shovel');
+    }
+
+    if (DEBUG_TORCH) {
+        hasTorch = true;
+        addHandSlot('torch');
     }
 
     if (DEBUG_GOLDEN_KEY_OBTAINED) {
@@ -361,6 +366,7 @@ function animate() {
     updateDragonBondFlashes(delta);
     updateDigParticles(delta);
     updateGoldenKey(delta);
+    updateTorchLight();
     updateDoors(delta);
     updateNotes(delta);
     underwaterTintEl.style.opacity = isPointInsideWaterCylinder(
@@ -392,4 +398,3 @@ document.getElementById('start-btn').addEventListener('click', () => {
     animate();
     renderer.domElement.requestPointerLock();
 });
-

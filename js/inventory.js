@@ -250,8 +250,9 @@ function toggleInventory() {
     inventoryOpen = !inventoryOpen;
     const overlay = document.getElementById('inventory-overlay');
     if (inventoryOpen) {
-        overlay.style.display = 'flex';
+        overlay.style.display = 'block';
         renderInventoryGrid();
+        renderHandheldBar();
         if (document.pointerLockElement) document.exitPointerLock();
         isLocked = false;
     } else {
@@ -263,8 +264,11 @@ function toggleInventory() {
 let viewingNoteItem = null;
 
 function renderInventoryGrid() {
-    const grid = document.getElementById('inventory-grid');
+    const grid  = document.getElementById('inventory-grid');
+    const panel = document.getElementById('inventory-panel');
     if (!grid) return;
+    // Only show the notes panel when there is at least one item
+    if (panel) panel.style.display = inventoryItems.length > 0 ? '' : 'none';
     grid.innerHTML = '';
     for (const item of inventoryItems) {
         const el = document.createElement('div');
@@ -323,4 +327,145 @@ function closeNoteViewer() {
     viewingNoteItem = null;
     const viewer = document.getElementById('note-viewer');
     if (viewer) viewer.style.display = 'none';
+}
+
+// ─── Handheld icon renderer ────────────────────────────────────────────────────
+
+let _iconRenderer = null;
+let _iconScene = null;
+let _iconCamera = null;
+let _iconMeshes = [];
+
+// Per-item camera positions and lookAt targets for best framing
+const _iconCamConfigs = {
+    fist:   { cam: [0, 0.5, 1.6],  look: [0, 0.3, 0] },
+    shovel: { cam: [1.0, 1.2, 2.6], look: [0, 0.3, 0] },
+    ak47:   { cam: [0.3, 0.5, 1.8], look: [0, 0.2, 0] },
+    stake:  { cam: [0.6, 1.1, 1.9], look: [0, 0.6, 0] },
+    torch:  { cam: [0.6, 0.9, 1.9], look: [0, 0.5, 0] },
+};
+
+function _getIconRenderer() {
+    if (_iconRenderer) return _iconRenderer;
+    _iconRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    _iconRenderer.setSize(200, 200);
+    _iconRenderer.setClearColor(0x000000, 0);
+
+    _iconScene = new THREE.Scene();
+
+    _iconCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+
+    const dLight = new THREE.DirectionalLight(0xffffff, 1.6);
+    dLight.position.set(2, 3, 2);
+    _iconScene.add(dLight);
+    _iconScene.add(new THREE.AmbientLight(0x808080, 1.2));
+
+    return _iconRenderer;
+}
+
+function _renderItemIconDataURL(itemName) {
+    _getIconRenderer();
+    for (const m of _iconMeshes) _iconScene.remove(m);
+    _iconMeshes = [];
+
+    // Position camera for this item
+    const cfg = _iconCamConfigs[itemName] || _iconCamConfigs.fist;
+    _iconCamera.position.set(...cfg.cam);
+    _iconCamera.lookAt(...cfg.look);
+
+    let mesh = null;
+    switch (itemName) {
+        case 'fist': {
+            // Skin-colored sphere representing the player's hand
+            // const mat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+            // mesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), mat);
+            // mesh.position.set(0, 0.35, 0);
+            // break;
+            return 'images/fist.png';
+        }
+        case 'shovel':
+            mesh = createShovelMesh(0.42);
+            mesh.position.set(0, -0.4, 0);
+            break;
+        case 'ak47': {
+            const { mesh: gun } = createAK47Mesh(0.6);
+            gun.rotation.y = 0.25;
+            gun.position.set(-0.15, 0.15, -0.35);
+            mesh = gun;
+            break;
+        }
+        case 'stake':
+            mesh = createPlayerStakeMesh(0.82);
+            mesh.position.set(0, -0.2, 0);
+            break;
+        case 'torch':
+            mesh = createPlayerTorchMesh(0.82);
+            // Flip to match in-game orientation (flame at top).
+            // Icon only applies rotation.z = PI (no rotation.x tilt), so the flameGroup
+            // counter-rotation must be PI (not PI - PI/3.5) to keep flame pointing world +Y.
+            mesh.rotation.z = Math.PI;
+            if (mesh.userData.flameGroup) mesh.userData.flameGroup.rotation.x = Math.PI;
+            mesh.position.set(0, 0.2, 0);
+            break;
+    }
+
+    if (mesh) {
+        _iconScene.add(mesh);
+        _iconMeshes.push(mesh);
+    }
+
+    _iconRenderer.render(_iconScene, _iconCamera);
+    return _iconRenderer.domElement.toDataURL();
+}
+
+function renderHandheldBar() {
+    const panel = document.getElementById('handheld-panel');
+    const row   = document.getElementById('handheld-slots-row');
+    if (!panel || !row) return;
+
+    // Only show the handheld panel when the player has something beyond the fist
+    if (handSlots.length <= 1) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = '';
+
+    const tooltip = document.getElementById('handheld-tooltip');
+
+    row.innerHTML = '';
+    for (let i = 0; i < handSlots.length; i++) {
+        const item = handSlots[i];
+        const displayName = getItemDisplayName(item);
+
+        const slot = document.createElement('div');
+        slot.className = 'handheld-slot';
+
+        const num = document.createElement('span');
+        num.className = 'handheld-slot-number';
+        num.textContent = i + 1;
+        slot.appendChild(num);
+
+        const img = document.createElement('img');
+        // Fist uses the dedicated PNG; everything else uses the 3D icon renderer
+        img.src = _renderItemIconDataURL(item);
+        img.alt = displayName;
+        slot.appendChild(img);
+
+        // Hover tooltip
+        if (tooltip) {
+            slot.addEventListener('mouseenter', () => {
+                tooltip.textContent = displayName;
+                tooltip.style.display = 'block';
+                const r = slot.getBoundingClientRect();
+                tooltip.style.left = (r.left + r.width / 2) + 'px';
+                tooltip.style.top  = (r.top - 8) + 'px';
+                tooltip.style.transform = 'translate(-50%, -100%)';
+            });
+            slot.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+        }
+
+        row.appendChild(slot);
+    }
 }

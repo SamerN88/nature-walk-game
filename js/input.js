@@ -65,25 +65,16 @@ function onKeyDown(event) {
                 // Do NOT reset the shot timer on toggle — prevents rapid-T from bypassing the fire rate.
             }
             break;
-        case 'Digit1':
-            currentHandItem = 'fist';
-            updateAK47VisualState();
-            flashEquipHint('Fist');
-            break;
-        case 'Digit2':
-            if (hasShovel) {
-                currentHandItem = 'shovel';
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4':
+        case 'Digit5': case 'Digit6': case 'Digit7': case 'Digit8': case 'Digit9': {
+            const slotIdx = parseInt(event.code[5]) - 1;
+            if (slotIdx >= 0 && slotIdx < handSlots.length) {
+                currentHandItem = handSlots[slotIdx];
                 updateAK47VisualState();
-                flashEquipHint('Shovel');
+                flashEquipHint(getItemDisplayName(handSlots[slotIdx]));
             }
             break;
-        case 'Digit3':
-            if (ak47Collected) {
-                currentHandItem = 'ak47';
-                updateAK47VisualState();
-                flashEquipHint('AK47');
-            }
-            break;
+        }
     }
 }
 

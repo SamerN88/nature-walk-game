@@ -94,6 +94,96 @@ function createGoldenKeyMesh() {
     return group;
 }
 
+// ── Stake / Torch meshes & hand slot system ──────────────────────────────────
+
+function getItemDisplayName(item) {
+    const names = { fist: 'Fist', shovel: 'Shovel', ak47: 'AK47', stake: 'Stake', torch: 'Torch' };
+    return names[item] || item;
+}
+
+// Adds an item to the dynamic hand slot list and auto-equips it.
+// If `replaces` is given, that item's slot is swapped in-place (e.g. stake → torch).
+function addHandSlot(itemName, replaces = null) {
+    if (replaces !== null) {
+        const idx = handSlots.indexOf(replaces);
+        if (idx !== -1) {
+            handSlots[idx] = itemName;
+            currentHandItem = itemName;
+            return;
+        }
+    }
+    if (!handSlots.includes(itemName)) {
+        handSlots.push(itemName);
+    }
+    currentHandItem = itemName;
+}
+
+function createPlayerStakeMesh(scale = 1) {
+    const group = new THREE.Group();
+    const wood = new THREE.MeshLambertMaterial({ color: 0x7A5230 });
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.065 * scale, 1.4 * scale, 7), wood);
+    handle.position.y = 0.7 * scale;
+    group.add(handle);
+    // const tip = new THREE.Mesh(new THREE.ConeGeometry(0.065 * scale, 0.28 * scale, 7), wood);
+    // tip.position.y = 1.54 * scale;
+    // group.add(tip);
+    enableMeshShadows(group);
+    return group;
+}
+
+function createPlayerTorchMesh(scale = 1) {
+    const group = new THREE.Group();
+    const wood = new THREE.MeshLambertMaterial({ color: 0x7A5230 });
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0xFF8800, transparent: true, opacity: 0.9 });
+    const innerFlameMat = new THREE.MeshBasicMaterial({ color: 0xFFDD00, transparent: true, opacity: 0.8 });
+
+    // Handle: at local +Y so rotation.z=PI on player puts it pointing world -Y (downward grip).
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.065 * scale, 1.4 * scale, 7), wood);
+    handle.position.y = 0.7 * scale;
+    group.add(handle);
+
+    // Flame group: counter-rotates so its local +Y always points world +Y,
+    // regardless of the torch group's own tilt (rotation.x = PI/3.5, rotation.z = PI).
+    // Math: group applies M = Rz(PI)·Rx(PI/3.5). To make flameGroup's +Y be world +Y:
+    //   M · Rx(β) · [0,1,0] = [0,1,0]  →  β = PI - PI/3.5
+    const flameGroup = new THREE.Group();
+    flameGroup.position.y = -0.1 * scale;
+    flameGroup.position.z = -0.02 * scale;
+    flameGroup.rotation.x = Math.PI + Math.PI / 3.6;
+    group.add(flameGroup);
+    group.userData.flameGroup = flameGroup;
+
+    // Outer flame cone: ConeGeometry tip is at +Y by default. Place base at y=0, tip at y=0.4.
+    const flameCone = new THREE.Mesh(new THREE.ConeGeometry(0.13 * scale, 0.4 * scale, 8), flameMat);
+    flameCone.position.y = 0.2 * scale - 0.0002;
+    flameGroup.add(flameCone);
+
+    // Lower hemisphere: thetaStart=PI/2, thetaLength=PI/2 → lower half-sphere.
+    // Flat face sits at y=0 (aligns with cone base), dome hangs toward -Y.
+    const flameBase = new THREE.Mesh(
+        new THREE.SphereGeometry(0.125 * scale, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        flameMat
+    );
+    flameBase.position.y = 0;
+    flameGroup.add(flameBase);
+
+    // Inner core cone (brighter center)
+    const flameCore = new THREE.Mesh(new THREE.ConeGeometry(0.06 * scale, 0.28 * scale, 8), innerFlameMat);
+    flameCore.position.y = 0.14 * scale;
+    flameGroup.add(flameCore);
+
+    enableMeshShadows(group);
+    return group;
+}
+
+function updateTorchLight() {
+    if (!torchEquippedLight) return;
+    const torchActive = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
+    torchEquippedLight.intensity = torchActive ? 15 : 0;
+}
+
+// ── End Stake / Torch ────────────────────────────────────────────────────────
+
 function updateAK47VisualState() {
     // Sync ak47Equipped from currentHandItem (DEBUG_AK47 overrides)
     if (DEBUG_AK47) {
@@ -122,6 +212,12 @@ function updateAK47VisualState() {
 
     if (playerShovel) {
         playerShovel.visible = hasShovel && (currentHandItem === 'shovel') && !playerDead && !mountedOnDragon;
+    }
+    if (playerStakeMesh) {
+        playerStakeMesh.visible = hasStake && (currentHandItem === 'stake') && !playerDead && !mountedOnDragon;
+    }
+    if (playerTorchMesh) {
+        playerTorchMesh.visible = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
     }
 }
 
@@ -296,7 +392,7 @@ function tryInteractWithAkChest(aimDir, range) {
     } else if (!akChest.collected) {
         akChest.collected = true;
         ak47Collected = true;
-        currentHandItem = 'ak47';
+        addHandSlot('ak47');
         updateAK47VisualState();
         flashEquipHint('AK47');
         updateMenuPanels();
@@ -445,6 +541,28 @@ function punch() {
         if (tryDig()) return;
     }
 
+    // Tree hit with shovel — 3 hits immediately equip a wooden stake
+    if (hasShovel && currentHandItem === 'shovel' && !hasStake && !hasTorch) {
+        for (let i = 0; i < trees.length; i++) {
+            const tree = trees[i];
+            const toTree = tree.position.clone().sub(camera.position);
+            const proj = toTree.dot(aimDir);
+            if (proj <= 0 || proj > punchRange) continue;
+            const perp = toTree.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 3) {
+                tree.userData.treeHitCount = (tree.userData.treeHitCount || 0) + 1;
+                if (tree.userData.treeHitCount >= 3) {
+                    tree.userData.treeHitCount = 0;
+                    hasStake = true;
+                    addHandSlot('stake');
+                    updateAK47VisualState();
+                    flashEquipHint('Stake');
+                }
+                return;
+            }
+        }
+    }
+
     // Shovel pickup (works without having the shovel)
     if (!hasShovel && tentShovelMesh) {
         const shovelWorldPos = new THREE.Vector3();
@@ -457,7 +575,7 @@ function punch() {
                 hasShovel = true;
                 tentShovelMesh.parent.remove(tentShovelMesh);
                 tentShovelMesh = null;
-                currentHandItem = 'shovel';
+                addHandSlot('shovel');
                 updateAK47VisualState();
                 flashEquipHint('Shovel');
                 return;
@@ -501,6 +619,24 @@ function punch() {
 
     // Note pickup
     if (tryPickupNote(aimDir, punchRange)) return;
+
+    // Campfire punch with stake equipped — light it into a torch
+    if (currentHandItem === 'stake' && hasStake) {
+        for (const cpPos of campfirePositions) {
+            const toCampfire = cpPos.clone().sub(camera.position);
+            const proj = toCampfire.dot(aimDir);
+            if (proj <= 0 || proj > punchRange) continue;
+            const perp = toCampfire.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+            if (perp < 4) {
+                hasStake = false;
+                hasTorch = true;
+                addHandSlot('torch', 'stake');
+                updateAK47VisualState();
+                flashEquipHint('Torch');
+                return;
+            }
+        }
+    }
 
     let hitNPC = null;
     let hitIndex = -1;

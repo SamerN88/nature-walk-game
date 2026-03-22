@@ -205,9 +205,20 @@ let ak47TriggerHeld = false;
 
 // Hand-held item system
 let hasShovel = false;
-let currentHandItem = 'fist'; // 'fist' | 'shovel' | 'ak47'
+let currentHandItem = 'fist'; // 'fist' | 'shovel' | 'ak47' | 'stake' | 'torch'
 let playerShovel = null;
 let tentShovelMesh = null;
+
+// Tree / Stake / Torch system
+let trees = []; // all tree groups tracked for stake harvesting
+let hasStake = false;
+let hasTorch = false;
+let playerStakeMesh = null;    // equipped stake mesh on player
+let playerTorchMesh = null;    // equipped torch mesh on player
+let torchEquippedLight = null; // PointLight active when torch equipped
+
+// Dynamic hand slot system — slot 0 is always fist; items added in acquisition order
+let handSlots = ['fist'];
 
 // Lake digging / golden key system
 let digCount = 0;

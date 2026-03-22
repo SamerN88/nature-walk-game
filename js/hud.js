@@ -1,27 +1,25 @@
 function updateMenuPanels() {
     const controls = document.getElementById('menu-controls-list');
     if (controls) {
-        const lines = [
-            'M - Menu',
-            'I - Inventory',
-            'WASD - Move',
-            'SHIFT - Run',
-            'SPACE - Jump',
-            'Click - Punch/Interact'
-        ];
+        const lines = ['M - Menu'];
+        // Only show inventory hint once the player has something to view
+        if (inventoryItems.length > 0 || handSlots.length > 1) lines.push('I - Inventory');
+        lines.push('WASD - Move', 'SHIFT - Run', 'SPACE - Jump', 'Click - Punch/Interact');
         if (dragonGemCollected) lines.push('U - Unmount dragon');
         if (dragonBondFormed) lines.push('T - Tether dragon');
-        lines.push('1 - Fist');
-        if (hasShovel) lines.push('2 - Shovel');
-        if (ak47Collected) lines.push('3 - AK47');
         controls.innerHTML = lines.map(line => `<div>${line}</div>`).join('');
     }
 
-    const map = ['deer', 'rabbit', 'bird', 'human', 'demon'];
-    map.forEach(type => {
+    const npcTypes = ['deer', 'rabbit', 'bird', 'human'];
+    npcTypes.forEach(type => {
         const el = document.getElementById(`kills-${type}`);
         if (el) el.textContent = killBreakdown[type];
     });
+    // Demon kill row only visible after apocalypse begins
+    const demonKillRow = document.getElementById('kills-demon-row');
+    if (demonKillRow) demonKillRow.style.display = demonApocalypse ? '' : 'none';
+    const demonEl = document.getElementById('kills-demon');
+    if (demonEl) demonEl.textContent = killBreakdown.demon;
 
     const bestSection = document.getElementById('best-hell-run-section');
     if (bestSection) {

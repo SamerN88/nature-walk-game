@@ -40,6 +40,22 @@ function createPlayer() {
     playerShovel.visible = false;
     player.add(playerShovel);
 
+    playerStakeMesh = createPlayerStakeMesh(0.85);
+    playerStakeMesh.position.set(-0.44, 1.7, 0.7);
+    playerStakeMesh.rotation.set(Math.PI/3.5, 0, Math.PI);
+    playerStakeMesh.visible = false;
+    player.add(playerStakeMesh);
+
+    playerTorchMesh = createPlayerTorchMesh(0.85);
+    playerTorchMesh.position.set(-0.44, 1.7, 0.7);
+    playerTorchMesh.rotation.set(Math.PI/3.5, 0, Math.PI);
+    playerTorchMesh.visible = false;
+    player.add(playerTorchMesh);
+
+    torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 200, 1.5);
+    torchEquippedLight.position.set(0, 2.5, 1);
+    player.add(torchEquippedLight);
+
     const flashMat = new THREE.MeshBasicMaterial({
         color: AK47_BEAM_COLOR,
         transparent: true,
