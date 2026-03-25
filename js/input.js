@@ -72,7 +72,7 @@ function onKeyDown(event) {
             const slotIdx = parseInt(event.code[5]) - 1;
             if (slotIdx >= 0 && slotIdx < handSlots.length) {
                 currentHandItem = handSlots[slotIdx];
-                updateAK47VisualState();
+                syncHandItemVisuals();
                 flashEquipHint(getItemDisplayName(handSlots[slotIdx]));
             }
             break;

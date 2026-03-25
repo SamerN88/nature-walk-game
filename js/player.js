@@ -52,7 +52,7 @@ function createPlayer() {
     playerTorchMesh.visible = false;
     player.add(playerTorchMesh);
 
-    torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 200, 1.5);
+    torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 150, 1.2);
     torchEquippedLight.position.set(0, 2.5, 1);
     player.add(torchEquippedLight);
 
@@ -77,6 +77,20 @@ function createPlayer() {
     ak47MuzzleLight = new THREE.PointLight(AK47_BEAM_COLOR, 0, 26);
     ak47MuzzleLight.position.set(0, 0, 0.08);
     playerAk47Muzzle.add(ak47MuzzleLight);
+
+    // Sword (right hand side)
+    playerSwordMesh = createSwordMesh(0.6);
+    playerSwordMesh.position.set(-0.48, 1.0, 0.25);
+    playerSwordMesh.rotation.set(-3*Math.PI / 4, Math.PI / 2.5, -Math.PI);
+    playerSwordMesh.visible = false;
+    player.add(playerSwordMesh);
+
+    // Shield (left hand side)
+    playerShieldMesh = createShieldMesh(0.84);
+    playerShieldMesh.position.set(0.53, 1.15, 0.24);
+    playerShieldMesh.rotation.set(0, Math.PI / 4.5, -Math.PI / 12);
+    playerShieldMesh.visible = false;
+    player.add(playerShieldMesh);
 
     player.position.set(0, 0, 0);
     scene.add(player);

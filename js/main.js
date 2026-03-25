@@ -88,12 +88,14 @@ function init() {
     // footprints are registered in placementFootprints before tree placement.
     createClimbableStructures();
     createEnterableStructures();
+    createDragonVolcano();   // must run first — largest footprint (≥266 units), claims space before mountains/HH
+    createMountains();       // avoids volcano; must run before HH/cemetery so mountain footprints are registered
+    createHauntedHouse();
+    createCemetery();
     createTrees();
     createRocks();
     createFlowers();
     createGrass();
-    createMountains();
-    createDragonVolcano();
     createCollisionDebugVisuals();
     createDistanceDebugStake();
     createNPCs();
@@ -101,7 +103,7 @@ function init() {
     if (DEBUG_GEMS) createSecretGem();
     createDragonGem();
     createDragon();
-    updateAK47VisualState();
+    syncHandItemVisuals();
     updateKeyHUD();
     updateStats();
     updateMenuPanels();
@@ -263,7 +265,7 @@ function update(delta) {
         }
 
         const groundedOnRoof = resolveRoofCollision(previousY);
-        const supportBaseHeight = getLandSurfaceHeight(player.position.x, player.position.z);
+        const supportBaseHeight = getLandSurfaceHeight(player.position.x, player.position.z, player.position.y);
         const supportHeight = groundedOnRoof
             ? Math.max(supportBaseHeight, player.position.y)
             : supportBaseHeight;
@@ -376,6 +378,10 @@ function animate() {
         camera.position.z
     ) ? '1' : '0';
 
+    updateHauntedHouseSequence(delta);
+    updateTalisman(delta);
+    updateSwordSwipe(delta);
+    _updateSwordCooldownBar();
     updateSunShadowFocus();
     renderer.render(scene, camera);
 }

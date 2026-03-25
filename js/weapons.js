@@ -97,12 +97,12 @@ function createGoldenKeyMesh() {
 // ── Stake / Torch meshes & hand slot system ──────────────────────────────────
 
 function getItemDisplayName(item) {
-    const names = { fist: 'Fist', shovel: 'Shovel', ak47: 'AK47', stake: 'Stake', torch: 'Torch' };
+    const names = { fist: 'Fist', shovel: 'Shovel', ak47: 'AK47', stake: 'Stake', torch: 'Torch', 'sword-shield': 'Sword & Shield' };
     return names[item] || item;
 }
 
 // Adds an item to the dynamic hand slot list and auto-equips it.
-// If `replaces` is given, that item's slot is swapped in-place (e.g. stake → torch).
+// If `replaces` is given, that item's slot is swapped in-place (e.g. stake -> torch).
 function addHandSlot(itemName, replaces = null) {
     if (replaces !== null) {
         const idx = handSlots.indexOf(replaces);
@@ -179,12 +179,12 @@ function createPlayerTorchMesh(scale = 1) {
 function updateTorchLight() {
     if (!torchEquippedLight) return;
     const torchActive = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
-    torchEquippedLight.intensity = torchActive ? 10 : 0;
+    torchEquippedLight.intensity = torchActive ? 20 : 0;
 }
 
 // ── End Stake / Torch ────────────────────────────────────────────────────────
 
-function updateAK47VisualState() {
+function syncHandItemVisuals() {
     // Sync ak47Equipped from currentHandItem (DEBUG_AK47 overrides)
     if (DEBUG_AK47) {
         ak47Collected = true;
@@ -219,6 +219,170 @@ function updateAK47VisualState() {
     if (playerTorchMesh) {
         playerTorchMesh.visible = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
     }
+    if (playerSwordMesh) {
+        playerSwordMesh.visible = hasSwordShield && (currentHandItem === 'sword-shield') && !playerDead && !mountedOnDragon;
+    }
+    if (playerShieldMesh) {
+        playerShieldMesh.visible = hasSwordShield && (currentHandItem === 'sword-shield') && !playerDead && !mountedOnDragon;
+    }
+}
+
+function createSwordMesh(scale = 1) {
+    const grp = new THREE.Group();
+    const bladeMat = new THREE.MeshLambertMaterial({ color: 0xe3ecff, emissive: 0x111820, emissiveIntensity: 0.3 });
+    const goldMat  = new THREE.MeshLambertMaterial({ color: 0xc8a830, emissive: 0x4a3000, emissiveIntensity: 0.2 });
+    const gripMat  = new THREE.MeshLambertMaterial({ color: 0x171321 });
+
+    // Blade (tapered)
+    const bladeH = 3.6 * scale;
+    const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.18 * scale, bladeH, 4), bladeMat);
+    blade.position.y = bladeH / 2 + 0.55 * scale;
+    // blade.rotation.y = Math.PI / 4;
+    blade.scale.z = 0.2;
+    blade.userData.isBlade = true;
+    grp.add(blade);
+
+    // Tip
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12 * scale, 0.3 * scale, 4), bladeMat);
+    tip.position.y = bladeH + 0.7 * scale;
+    // tip.rotation.y = Math.PI / 4;
+    tip.scale.z = 0.2;
+    tip.userData.isBlade = true;
+    grp.add(tip);
+
+    // Fuller (center groove decoration on blade)
+    const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.04 * scale, bladeH * 0.85, 0.03 * scale), bladeMat);
+    fuller.position.y = bladeH / 2 + 0.55 * scale;
+    fuller.userData.isBlade = true;
+    grp.add(fuller);
+
+    // Guard (crossguard)
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(1.5 * scale, 0.12 * scale, 0.22 * scale), goldMat);
+    guard.position.y = 0.55 * scale;
+    grp.add(guard);
+
+    // Grip
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * scale, 0.1 * scale, 0.9 * scale, 8), gripMat);
+    grip.position.y = 0.1 * scale;
+    grp.add(grip);
+
+    // Pommel
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.18 * scale, 8, 6), goldMat);
+    pommel.position.y = -0.46 * scale;
+    grp.add(pommel);
+
+    enableMeshShadows(grp);
+    return grp;
+}
+
+function createShieldMesh(scale = 1) {
+    const grp = new THREE.Group();
+    const shieldMat  = new THREE.MeshLambertMaterial({ color: 0x4a3c28 });
+    const rimMat     = new THREE.MeshLambertMaterial({ color: 0xb8960a, emissive: 0x302200, emissiveIntensity: 0.2 });
+    const emblemMat  = new THREE.MeshLambertMaterial({ color: 0xd4a820, emissive: 0x402a00, emissiveIntensity: 0.3 });
+
+    // Main body (kite shield shape approximated as flat disc with scale)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.92 * scale, 0.7 * scale, 0.12 * scale, 32), shieldMat);
+    body.rotation.x = Math.PI / 2;
+    grp.add(body);
+
+    // Rim
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.88 * scale, 0.1 * scale, 6, 32), rimMat);
+    rim.position.z = 0.02 * scale;
+    grp.add(rim);
+
+    // Boss (center emblem)
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.26 * scale, 8, 6), emblemMat);
+    boss.position.z = 0.1 * scale;
+    grp.add(boss);
+
+    // Cross decoration
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.85 * scale, 0.1 * scale, 0.06 * scale), emblemMat);
+    crossH.position.z = 0.07 * scale;
+    grp.add(crossH);
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.85 * scale, 0.06 * scale), emblemMat);
+    crossV.position.z = 0.07 * scale;
+    grp.add(crossV);
+
+    enableMeshShadows(grp);
+    return grp;
+}
+
+function createSkullMesh(scale = 1) {
+    const grp = new THREE.Group();
+    const boneMat = new THREE.MeshLambertMaterial({ color: 0xd6d0b8 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x0a0808 });
+
+    // Cranium
+    const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.6 * scale, 10, 8), boneMat);
+    cranium.scale.y = 0.88;
+    cranium.position.y = 0.35 * scale;
+    grp.add(cranium);
+
+    // Jaw
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.7 * scale, 0.28 * scale, 0.55 * scale), boneMat);
+    jaw.position.set(0, 0.0 * scale, 0.05 * scale);
+    grp.add(jaw);
+
+    // Eye sockets
+    [-0.22, 0.22].forEach(ex => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16 * scale, 6, 5), darkMat);
+        eye.position.set(ex * scale, 0.42 * scale, 0.46 * scale);
+        eye.scale.z = 0.5;
+        grp.add(eye);
+    });
+
+    // Nasal cavity
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.15 * scale, 0.1 * scale), darkMat);
+    nose.position.set(0, 0.22 * scale, 0.52 * scale);
+    grp.add(nose);
+
+    // Teeth (4 small boxes)
+    for (let t = 0; t < 4; t++) {
+        const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.14 * scale, 0.08 * scale), boneMat);
+        tooth.position.set((-1.5 + t) * 0.16 * scale, 0.07 * scale, 0.5 * scale);
+        grp.add(tooth);
+    }
+
+    enableMeshShadows(grp);
+    return grp;
+}
+
+function createTalismanMesh(scale = 1) {
+    const grp = new THREE.Group();
+    const stoneMat = new THREE.MeshLambertMaterial({ color: 0x4a1a6a, emissive: 0x2a0845, emissiveIntensity: 0.6 });
+    const rimMat   = new THREE.MeshLambertMaterial({ color: 0xd4a820, emissive: 0x604000, emissiveIntensity: 0.4 });
+    const gemMat   = new THREE.MeshLambertMaterial({ color: 0xcc44ee, emissive: 0x6600aa, emissiveIntensity: 0.8 });
+
+    // Main disc
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * scale, 0.55 * scale, 0.1 * scale, 12), stoneMat);
+    disc.rotation.x = Math.PI / 2;
+    grp.add(disc);
+
+    // Outer rim (torus)
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.5 * scale, 0.08 * scale, 6, 14), rimMat);
+    grp.add(rim);
+
+    // Center gem
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22 * scale, 0), gemMat);
+    grp.add(gem);
+
+    // Rune markings (4 small rods)
+    for (let r = 0; r < 4; r++) {
+        const angle = (r / 4) * Math.PI * 2;
+        const rod = new THREE.Mesh(new THREE.BoxGeometry(0.06 * scale, 0.28 * scale, 0.06 * scale), rimMat);
+        rod.position.set(Math.cos(angle) * 0.3 * scale, Math.sin(angle) * 0.3 * scale, 0.06 * scale);
+        rod.rotation.z = angle;
+        grp.add(rod);
+    }
+
+    // Glow light
+    const glow = new THREE.PointLight(0xaa33ff, 0, 10);
+    glow.userData.isTalismanGlow = true;
+    grp.add(glow);
+
+    enableMeshShadows(grp);
+    return grp;
 }
 
 function getAk47MuzzleWorldPosition(aimDir) {
@@ -334,7 +498,7 @@ function triggerAk47ShotFX(aimDir, hits, beamEndPoint = null) {
 }
 
 function updateAK47Effects(delta) {
-    updateAK47VisualState();
+    syncHandItemVisuals();
 
     if (ak47MuzzleFlashTimer > 0) {
         ak47MuzzleFlashTimer = Math.max(0, ak47MuzzleFlashTimer - delta);
@@ -388,13 +552,13 @@ function tryInteractWithAkChest(aimDir, range) {
             hasGoldenKey = false;
             removeInventoryItem('golden-key'); // key consumed by chest
             updateKeyHUD();
-            updateAK47VisualState();
+            syncHandItemVisuals();
         }
     } else if (!akChest.collected) {
         akChest.collected = true;
         ak47Collected = true;
         addHandSlot('ak47');
-        updateAK47VisualState();
+        syncHandItemVisuals();
         flashEquipHint('AK47');
         updateMenuPanels();
     }
@@ -489,11 +653,15 @@ function punch() {
         }
     }
 
-    // Trigger punch animation
-    const ring = document.getElementById('punch-ring');
-    ring.classList.remove('punch-ring-active');
-    void ring.offsetWidth; // force reflow
-    ring.classList.add('punch-ring-active');
+    // Trigger punch animation — sword shows swipe arc instead of the radial ring
+    if (currentHandItem === 'sword-shield') {
+        triggerSwordSwipe();
+    } else {
+        const ring = document.getElementById('punch-ring');
+        ring.classList.remove('punch-ring-active');
+        void ring.offsetWidth; // force reflow
+        ring.classList.add('punch-ring-active');
+    }
 
     // Check if we can mount the dragon
     if (dragon && dragon.visible) {
@@ -542,6 +710,11 @@ function punch() {
         if (tryDig()) return;
     }
 
+    // Cemetery talisman grave digging
+    if (currentHandItem === 'shovel') {
+        if (tryDigTalismanGrave()) return;
+    }
+
     // Tree hit with shovel — 3 hits anywhere on the tree equip a wooden stake.
     // Only show splinter effects before the stake has been obtained.
     if (hasShovel && currentHandItem === 'shovel' && !hasStake && !hasTorch) {
@@ -570,7 +743,7 @@ function punch() {
                     tree.userData.treeHitCount = 0;
                     hasStake = true;
                     addHandSlot('stake');
-                    updateAK47VisualState();
+                    syncHandItemVisuals();
                     flashEquipHint('Stake');
                 }
                 return;
@@ -591,7 +764,7 @@ function punch() {
                 tentShovelMesh.parent.remove(tentShovelMesh);
                 tentShovelMesh = null;
                 addHandSlot('shovel');
-                updateAK47VisualState();
+                syncHandItemVisuals();
                 flashEquipHint('Shovel');
                 return;
             }
@@ -639,6 +812,17 @@ function punch() {
     // Note pickup
     tryPickupNote(aimDir, punchRange);
 
+    // Sword & Shield item pickup from HH floor-2 display
+    if (tryPickupSSItem(aimDir, punchRange)) return;
+
+    // Talisman pickup from cemetery grave
+    if (tryPickupTalisman(aimDir, punchRange)) return;
+
+    // Hit HH white shadow man (sword-shield only)
+    if (currentHandItem === 'sword-shield') {
+        if (tryHitHHWhiteSM(aimDir, punchRange)) return;
+    }
+
     // Campfire punch with stake equipped — light it into a torch
     if (currentHandItem === 'stake' && hasStake) {
         for (const cpPos of campfirePositions) {
@@ -650,39 +834,36 @@ function punch() {
                 hasStake = false;
                 hasTorch = true;
                 addHandSlot('torch', 'stake');
-                updateAK47VisualState();
+                syncHandItemVisuals();
                 flashEquipHint('Torch');
                 break;
             }
         }
     }
 
-    // Hit NPCs
-    let hitNPC = null;
-    let hitIndex = -1;
-    let minProjected = Infinity;
+    // Sword swipe hits up to 3 targets; regular melee hits 1
+    const isSwordAttack = currentHandItem === 'sword-shield';
+    const maxMeleeHits = isSwordAttack ? 3 : 1;
 
+    // Hit NPCs
+    const candidateNPCs = [];
     for (let i = 0; i < npcs.length; i++) {
         const npc = npcs[i];
         const toNPC = new THREE.Vector3().subVectors(npc.mesh.position, camera.position);
         const projected = toNPC.dot(aimDir);
         if (projected > 0 && projected < punchRange) {
             const perp = toNPC.clone().sub(aimDir.clone().multiplyScalar(projected)).length();
-            if (perp < 2.5 && projected < minProjected) {
-                minProjected = projected;
-                hitNPC = npc;
-                hitIndex = i;
-            }
+            if (perp < 2.5) candidateNPCs.push({ npc, dist: projected });
         }
     }
-
-    if (hitNPC) {
-        explodeNPC(hitNPC, hitIndex);
-    }
+    candidateNPCs.sort((a, b) => a.dist - b.dist);
+    candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
+        const curIdx = npcs.indexOf(h.npc);
+        if (curIdx !== -1) explodeNPC(h.npc, curIdx);
+    });
 
     // Hit demons — always checked regardless of door/NPC hit
-    let hitDemon = null, hitZIdx = -1;
-    let minZProj = Infinity;
+    const candidateDemons = [];
     const demonPunchPoint = new THREE.Vector3();
     for (let i = 0; i < demons.length; i++) {
         const z = demons[i];
@@ -693,12 +874,14 @@ function punch() {
         const proj = toZ.dot(aimDir);
         if (proj > 0 && proj < punchRange) {
             const perp = toZ.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp <= (z.gunHitRadius ?? 4.6) && proj < minZProj) {
-                minZProj = proj; hitDemon = z; hitZIdx = i;
-            }
+            if (perp <= (z.gunHitRadius ?? 4.6)) candidateDemons.push({ demon: z, dist: proj });
         }
     }
-    if (hitDemon) explodeDemon(hitDemon, hitZIdx);
+    candidateDemons.sort((a, b) => a.dist - b.dist);
+    candidateDemons.slice(0, maxMeleeHits).forEach(h => {
+        const curIdx = demons.indexOf(h.demon);
+        if (curIdx !== -1) explodeDemon(h.demon, curIdx);
+    });
 }
 
 function toggleHouseDoor(door) {

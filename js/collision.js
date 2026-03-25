@@ -579,12 +579,10 @@ function createCollisionDebugVisuals() {
 }
 
 function createDistanceDebugStake() {
-    if (!DEBUG_DISTANCE) return;
-
-    const DISTANCE = 200;
+    if (DEBUG_DISTANCE < 0) return;
 
     const x = 0;
-    const z = DISTANCE;
+    const z = DEBUG_DISTANCE;
     const baseY = getGroundHeight(x, z);
 
     const stakeHeight = 8.4;

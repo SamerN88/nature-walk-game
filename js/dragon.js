@@ -398,7 +398,7 @@ function mountDragon() {
         player.visible = true;
         dragonVelocity.set(0, 0, 0);
         updateMountedPlayerPose();
-        updateAK47VisualState();
+        syncHandItemVisuals();
     }
 }
 
@@ -415,7 +415,7 @@ function unmountDragon() {
     player.position.copy(dragon.position).add(riderOffset);
     velocity.set(0, 0, 0);
     isGrounded = false;
-    updateAK47VisualState();
+    syncHandItemVisuals();
 
     // Dragon descends back down so the player can remount
     dragonDescending = true;

@@ -570,7 +570,9 @@ function updateDemons(delta) {
             z.lunging  = true;
             z.lungeProgress = 0;
 
-            const damage = nearCampfireFlag ? DEMON_HIT_DAMAGE/2 : DEMON_HIT_DAMAGE;
+            let damage = DEMON_HIT_DAMAGE;
+            if (hasSwordShield) damage *= 0.7;
+            if (nearCampfireFlag) damage *= 0.5;
             playerHealth = Math.max(0, playerHealth - damage);
             dragonHealth = Math.max(0, dragonHealth - damage);
 

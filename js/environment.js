@@ -348,10 +348,11 @@ function createDragonVolcano() {
     }, 320) || (() => {
         const angle = Math.random() * Math.PI * 2;
         const distance = backgroundDist();
-        return {
-            x: Math.cos(angle) * distance,
-            z: Math.sin(angle) * distance
-        };
+        const x = Math.cos(angle) * distance;
+        const z = Math.sin(angle) * distance;
+        const fp = makePlacementFootprint(x, z, outerBaseRadius + 40);
+        reserveFootprint(fp);
+        return { x, z, footprint: fp };
     })();
 
     const volcanoDrop = getStructureBoundaryDrop(

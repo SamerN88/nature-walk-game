@@ -339,9 +339,9 @@ function getWaterSurfaceHeight(x, z) {
     return water ? getWaterLogicalSurfaceY(water) : -Infinity;
 }
 
-function getLandSurfaceHeight(x, z) {
+function getLandSurfaceHeight(x, z, playerY = undefined) {
     const terrainY = getDragonVolcanoTerrainFloorHeight(x, z, getGroundHeight(x, z));
-    return Math.max(terrainY, getStructureHeight(x, z));
+    return Math.max(terrainY, getStructureHeight(x, z, playerY));
 }
 
 function getMoverSurfaceHeight(x, z, allowWater = false) {
@@ -360,7 +360,7 @@ function getMoverSurfaceHeight(x, z, allowWater = false) {
 
 function getWaterTraversalState(x, z, y, entityHeight = 0) {
     const terrainY = getDragonVolcanoTerrainFloorHeight(x, z, getGroundHeight(x, z));
-    const structureY = getStructureHeight(x, z);
+    const structureY = getStructureHeight(x, z, y);
     const landY = Math.max(terrainY, structureY);
     const water = getWaterBodyAt(x, z);
 
