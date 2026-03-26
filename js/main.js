@@ -379,6 +379,8 @@ function animate() {
     ) ? '1' : '0';
 
     updateHauntedHouseSequence(delta);
+    updateHHHallDoor(delta);
+    updateSwordBladeParticles(delta);
     updateTalisman(delta);
     updateSwordSwipe(delta);
     _updateSwordCooldownBar();

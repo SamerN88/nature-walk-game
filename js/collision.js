@@ -77,6 +77,9 @@ function registerColliderMarkers(markers) {
     const worldScale = new THREE.Vector3();
     const worldEuler = new THREE.Euler();
 
+    // Collect refs so callers can remove colliders later (e.g. on HH despawn)
+    const refs = { walls: [], ceilings: [], roofColliders: [], enclosedBounds: [], structures: [] };
+
     markers.forEach(marker => {
         const collider = marker.userData.collider;
         if (!collider) return;
@@ -90,7 +93,7 @@ function registerColliderMarkers(markers) {
             const halfW = collider.halfW * worldScale.x;
             const halfD = collider.halfD * worldScale.z;
             const height = collider.height * worldScale.y;
-            addSolidWallRect(
+            const w = addSolidWallRect(
                 worldPos.x,
                 worldPos.z,
                 halfW,
@@ -100,11 +103,12 @@ function registerColliderMarkers(markers) {
                 worldEuler.y,
                 collider.extra || {}
             );
+            refs.walls.push(w);
         } else if (collider.type === 'structureBox') {
             const width = collider.width * worldScale.x;
             const height = collider.height * worldScale.y;
             const depth = collider.depth * worldScale.z;
-            addStructureBox(
+            const s = addStructureBox(
                 worldPos.x,
                 worldPos.z,
                 worldPos.y - height / 2,
@@ -114,8 +118,9 @@ function registerColliderMarkers(markers) {
                 worldEuler.y,
                 collider.extra || {}
             );
+            refs.structures.push(s);
         } else if (collider.type === 'ceilingRect') {
-            addCeilingRect(
+            const c = addCeilingRect(
                 worldPos.x,
                 worldPos.z,
                 collider.halfW * worldScale.x,
@@ -123,9 +128,10 @@ function registerColliderMarkers(markers) {
                 worldPos.y,
                 worldEuler.y
             );
+            refs.ceilings.push(c);
         } else if (collider.type === 'roofCollider') {
             const thickness = collider.thickness * worldScale.y;
-            addRoofColliderRect(
+            const r = addRoofColliderRect(
                 worldPos.x,
                 worldPos.z,
                 collider.halfW * worldScale.x,
@@ -134,16 +140,20 @@ function registerColliderMarkers(markers) {
                 worldPos.y - thickness / 2,
                 worldEuler.y
             );
+            refs.roofColliders.push(r);
         } else if (collider.type === 'enclosedBound') {
-            addEnclosedBoundRect(
+            const e = addEnclosedBoundRect(
                 worldPos.x,
                 worldPos.z,
                 collider.halfW * worldScale.x,
                 collider.halfD * worldScale.z,
                 worldEuler.y
             );
+            refs.enclosedBounds.push(e);
         }
     });
+
+    return refs;
 }
 
 function addSolidWallRect(x, z, halfW, halfD, minY, maxY, rotation = 0, extra = {}) {
@@ -167,7 +177,9 @@ function addLocalSolidWall(originX, originZ, localX, localZ, halfW, halfD, minY,
 }
 
 function addCeilingRect(x, z, halfW, halfD, y, rotation = 0) {
-    ceilings.push({ x, z, halfW, halfD, y, rotation });
+    const item = { x, z, halfW, halfD, y, rotation };
+    ceilings.push(item);
+    return item;
 }
 
 function addLocalCeiling(originX, originZ, localX, localZ, halfW, halfD, y, rotation = 0) {
@@ -176,7 +188,9 @@ function addLocalCeiling(originX, originZ, localX, localZ, halfW, halfD, y, rota
 }
 
 function addRoofColliderRect(x, z, halfW, halfD, topY, bottomY, rotation = 0) {
-    roofColliders.push({ x, z, halfW, halfD, topY, bottomY, rotation });
+    const item = { x, z, halfW, halfD, topY, bottomY, rotation };
+    roofColliders.push(item);
+    return item;
 }
 
 function addRoofColliderCircle(x, z, radius, topY, bottomY) {
@@ -189,7 +203,9 @@ function addLocalRoofCollider(originX, originZ, localX, localZ, halfW, halfD, to
 }
 
 function addEnclosedBoundRect(x, z, halfW, halfD, rotation = 0) {
-    enclosedStructureBounds.push({ x, z, halfW, halfD, rotation });
+    const item = { x, z, halfW, halfD, rotation };
+    enclosedStructureBounds.push(item);
+    return item;
 }
 
 function addLocalEnclosedBound(originX, originZ, localX, localZ, halfW, halfD, rotation = 0) {

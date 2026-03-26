@@ -284,6 +284,7 @@ function createMountains() {
         mountain.position.y = placement.height / 2;
         mountain.castShadow = true;
         mountain.receiveShadow = true;
+        mountain.userData.isMountain = true;
         mountainGroup.add(mountain);
         const mountainDrop = getStructureBoundaryDrop(
             0,
@@ -311,6 +312,7 @@ function createMountains() {
         snowCap.position.y = placement.height * 0.85;
         snowCap.castShadow = true;
         snowCap.receiveShadow = true;
+        snowCap.userData.isMountain = true;
         mountainGroup.add(snowCap);
 
         mountainGroup.position.set(placement.x, -mountainDrop, placement.z);

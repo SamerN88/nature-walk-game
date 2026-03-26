@@ -62,10 +62,16 @@ function createHauntedHouse() {
         // Sampling radius 70 covers the building's half-diagonal and a small buffer.
         const stats = sampleTerrainStats(pt.x, pt.z, 70, 3, 12);
         if (stats.range > 28) return null;   // too much height variation → slope / inside mountain
+        // Must be at least 800 units from the volcano
+        if (dragonVolcano) {
+            const dvDx = pt.x - dragonVolcano.x;
+            const dvDz = pt.z - dragonVolcano.z;
+            if (dvDx * dvDx + dvDz * dvDz < 800 * 800) return null;
+        }
         const rot = randomRotationY();
         return {
             x: pt.x, z: pt.z, rotation: rot,
-            footprint: { ...makePlacementFootprint(pt.x, pt.z, 100), noTree: true }
+            footprint: { ...makePlacementFootprint(pt.x, pt.z, 100), noTree: true, isHHOwn: true }
         };
     }, 500);
 
@@ -101,14 +107,16 @@ function createHauntedHouse() {
 
     // ── Entry stairs on south face (outside, ground → floor-1) ──────────────
     // Step 0 is the bottommost/farthest step; step N-1 is at the entrance.
+    const entryStepStructures = [];
     for (let i = 0; i < HH_N_ENT_STEPS; i++) {
         const stepLocalY  = -HH_ELEV + i * HH_ENT_STEP_H;
         const stepLocalZ  = HH_HALF_D + (HH_N_ENT_STEPS - i - 0.5) * HH_ENT_STEP_D;
         B(HH_ENT_STAIR_W, HH_ENT_STEP_H, HH_ENT_STEP_D, 0, stepLocalY, stepLocalZ, wallMat);
         // Register collision for this step (world-space, so player can walk up)
         const wStep = localToWorldXZ(ox, oz, 0, stepLocalZ, rot);
-        addStructureBox(wStep.x, wStep.z, groundY + i * HH_ENT_STEP_H,
+        const se = addStructureBox(wStep.x, wStep.z, groundY + i * HH_ENT_STEP_H,
             HH_ENT_STAIR_W, HH_ENT_STEP_H, HH_ENT_STEP_D, rot);
+        entryStepStructures.push(se);
     }
 
     // 7 extra steps below the bottom step, partially embedded in terrain to close
@@ -118,8 +126,9 @@ function createHauntedHouse() {
         const stepLocalZ = HH_HALF_D + (HH_N_ENT_STEPS + j - 0.5) * HH_ENT_STEP_D;
         B(HH_ENT_STAIR_W, HH_ENT_STEP_H, HH_ENT_STEP_D, 0, stepLocalY, stepLocalZ, wallMat);
         const wExtraStep = localToWorldXZ(ox, oz, 0, stepLocalZ, rot);
-        addStructureBox(wExtraStep.x, wExtraStep.z, groundY - j * HH_ENT_STEP_H,
+        const ee = addStructureBox(wExtraStep.x, wExtraStep.z, groundY - j * HH_ENT_STEP_H,
             HH_ENT_STAIR_W, HH_ENT_STEP_H, HH_ENT_STEP_D, rot);
+        entryStepStructures.push(ee);
     }
 
     // ── Floor 1 plate ────────────────────────────────────────────────────────
@@ -253,13 +262,41 @@ function createHauntedHouse() {
         halfW: HH_WALL_T / 2, halfD: nwFillD / 2, height: HH_F1_H, extra: { isEnclosed: true }
     }));
 
-    // Hallway door block mesh: fills the doorway opening; hidden until player exits to main room
-    const hallDoorBlockMesh = B(HH_HALL_DOOR_W, HH_F1_H, HH_WALL_T,
-        HH_HALL_DOOR_CX, 0, HH_HALL_Z - HH_WALL_T / 2, wallMat);
-    hallDoorBlockMesh.visible = false;
-    hallDoorBlockMesh.raycast = (raycaster, intersects) => {
-        if (hallDoorBlockMesh.visible) THREE.Mesh.prototype.raycast.call(hallDoorBlockMesh, raycaster, intersects);
-    };
+    // ── Hallway animated door ────────────────────────────────────────────────
+    // Hinge at the left (west) edge of the doorway. When open the door swings
+    // into the main room (south side of partition); when closed it fills the
+    // opening.  Managed by closeHHHallDoor / restoreHHHallDoor.
+    //   Open  : hhHallDoorPivot.rotation.y = -PI/2
+    //   Closed: hhHallDoorPivot.rotation.y =  0
+    const hhHallDoorPivot = new THREE.Group();
+    hhHallDoorPivot.position.set(hallDoorL, 0, HH_HALL_Z - HH_WALL_T / 2);
+    const doorWoodMat = new THREE.MeshLambertMaterial({ color: 0x1e1208 });
+    const hallDoorPanel = new THREE.Mesh(
+        new THREE.BoxGeometry(HH_HALL_DOOR_W, HH_F1_H, 0.3), doorWoodMat
+    );
+    hallDoorPanel.position.set(HH_HALL_DOOR_W / 2, HH_F1_H / 2, 0);
+    hallDoorPanel.castShadow = true;
+    hallDoorPanel.receiveShadow = true;
+    hhHallDoorPivot.add(hallDoorPanel);
+    // Raised panels for visual depth
+    const dpMat = new THREE.MeshLambertMaterial({ color: 0x130c04 });
+    const dpUpper = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_F1_H * 0.40, 0.08), dpMat);
+    dpUpper.position.set(HH_HALL_DOOR_W / 2, HH_F1_H * 0.68, 0.14);
+    hhHallDoorPivot.add(dpUpper);
+    const dpLower = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_F1_H * 0.32, 0.08), dpMat);
+    dpLower.position.set(HH_HALL_DOOR_W / 2, HH_F1_H * 0.22, 0.14);
+    hhHallDoorPivot.add(dpLower);
+    // Door hardware (iron ring handle)
+    const handleMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    const handleRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 10), handleMat);
+    handleRing.position.set(HH_HALL_DOOR_W - 0.55, HH_F1_H * 0.45, 0.22);
+    handleRing.rotation.x = Math.PI / 2;
+    handleRing.castShadow = true;
+    handleRing.receiveShadow = true;
+    hhHallDoorPivot.add(handleRing);
+    // Start open (door out of the way, in main room side)
+    hhHallDoorPivot.rotation.y = -Math.PI / 2;
+    hhGrp.add(hhHallDoorPivot);
 
     // Leg 2 (vertical arm): at x=HH_HALL_X, spans from z=HH_HALL_Z south to z=+HH_HALF_D (south outer wall)
     // Creates the west boundary of the entire east corridor (containing the staircase)
@@ -542,16 +579,19 @@ function createHauntedHouse() {
     const worldSword = createSwordMesh(0.75);
     worldSword.position.set(-2.5, HH_F1_H + 3.4, -HH_HALF_D + 0.3);
     worldSword.rotation.set(-0.3, 0.45, Math.PI - 0.1); // leaning slightly
+    worldSword.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     hhGrp.add(worldSword);
 
     const worldShield = createShieldMesh(0.95);
     worldShield.position.set(-0.2, HH_F1_H + 1.2, -HH_HALF_D + 0.3);
     worldShield.rotation.set(-0.3, 0, 0);
+    worldShield.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     hhGrp.add(worldShield);
 
     const worldSkull = createSkullMesh(0.7);
     worldSkull.position.set(1.8, HH_F1_H + 0.425, -HH_HALF_D + 2.5);
-    worldSkull.rotation.y = -Math.PI / 9
+    worldSkull.rotation.y = -Math.PI / 9;
+    worldSkull.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     hhGrp.add(worldSkull);
 
     // Merge sword+shield into a single pickup group
@@ -567,9 +607,6 @@ function createHauntedHouse() {
     hhGrp.rotation.y = rot;
     scene.add(hhGrp);
     hhGrp.updateMatrixWorld(true);
-
-    // Register collider markers (solidWalls, structureBoxes, etc.)
-    registerColliderMarkers(collMarkers);
 
     // Register stair structure boxes in world space (so player can walk up them)
     const stairStructures = [];
@@ -625,26 +662,179 @@ function createHauntedHouse() {
         rot, { isEnclosed: true, active: false }
     );
 
+    // Capture all collider refs for clean removal when the HH despawns
+    const hhColliderRefs = registerColliderMarkers(collMarkers);
+    // Also add the individually tracked walls/entries
+    hhColliderRefs.walls.push(entranceBlockWall);
+    hhColliderRefs.walls.push(hallDoorBlockWall);
+
     hauntedHouseData = {
         group: hhGrp,
         worldX: ox, worldZ: oz, worldGroundY: baseY, rotation: rot,
         stairsGroup: stairsGrp,
         stairStructures,
+        entryStepStructures,
         f2PlateAEntry, f2PlateBEntry, f2PlateCEntry,
         entranceBlockMesh: entBlockMesh,
         entranceBlockWall,
-        hallDoorBlockMesh,
         hallDoorBlockWall,
+        hhHallDoorPivot,
+        hhHallDoorAngle: -Math.PI / 2,
+        hhHallDoorTargetAngle: -Math.PI / 2,
         ssItemGrp,
         worldSword,          // used as position reference for SS pickup detection
         worldSkull,
         writingMesh: null,   // set async in writingImg.onload
+        allColliderRefs: hhColliderRefs,
     };
 
     if (DEBUG_HAUNTED_HOUSE) {
         // Place player 75 units south of the entrance (in front of the HH)
         const entPos = localToWorldXZ(ox, oz, 0, HH_HALF_D + 75, rot);
         player.position.set(entPos.x, baseY + 1, entPos.z);
+    }
+
+    // Spawn the dense dark forest that surrounds the haunted house
+    createHHForest(ox, oz, groundY);
+}
+
+// ── HH Forest tree — taller, bigger, darker than world trees ─────────────────
+function _createHHForestTree(x, z) {
+    const scale = 1.8 + Math.random() * 1.4;  // noticeably larger than world trees (0.7–1.3)
+    const tree = new THREE.Group();
+    tree.userData.ignoreCameraOcclusion = true;
+
+    const trunkMat  = new THREE.MeshLambertMaterial({ color: 0x160c06 });  // near-black dark wood
+    const trunkH = 5 * scale;
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.35 * scale, 0.55 * scale, trunkH, 8),
+        trunkMat
+    );
+    trunk.position.y = trunkH / 2;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    tree.add(trunk);
+
+    // Foliage — deep blackish-green, 4 layered cones
+    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x0b1f0b });
+    const foliageLayers = [
+        { radiusMult: 0.95, height: 4.5 * scale, yOff: trunkH + 2.0 * scale },
+        { radiusMult: 0.75, height: 4.0 * scale, yOff: trunkH + 3.8 * scale },
+        { radiusMult: 0.55, height: 3.5 * scale, yOff: trunkH + 5.2 * scale },
+        { radiusMult: 0.35, height: 2.5 * scale, yOff: trunkH + 6.4 * scale },
+    ];
+    for (const fl of foliageLayers) {
+        const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(2.8 * scale * fl.radiusMult, fl.height, 8),
+            foliageMat
+        );
+        cone.position.y = fl.yOff;
+        cone.castShadow = true;
+        cone.receiveShadow = true;
+        tree.add(cone);
+    }
+
+    // Raycast downward against terrain and mountain meshes only.
+    // isGround/isMountain tags are set in terrain.js / environment.js.
+    // Restricting to these prevents trees from landing on structures or other trees.
+    const _hhRaycaster = new THREE.Raycaster(
+        new THREE.Vector3(x, 5000, z),
+        new THREE.Vector3(0, -1, 0)
+    );
+    scene.updateMatrixWorld();
+    const _hhHits = _hhRaycaster.intersectObjects(scene.children, true).filter(h =>
+        h.object.userData.isGround === true || h.object.userData.isMountain === true
+    );
+    const surfaceY = _hhHits.length > 0 ? _hhHits[0].point.y : getGroundHeight(x, z);
+    tree.position.set(x, surfaceY, z);
+    scene.add(tree);
+}
+
+// ── Create HH forest — dense dark trees + boulders within a certain radius ─────
+function createHHForest(hhX, hhZ, hhGroundY) {
+    const INNER_CLEAR = 60;   // no-tree buffer around the house footprint
+    const OUTER_EDGE  = 400;
+    const subW = (OUTER_EDGE - INNER_CLEAR) / 4;  // width of each sub-ring
+
+    const rockMatDark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
+
+    // Four equal-width sub-rings with deterministic tree counts.
+    // Distribution from outer to inner: 10 / 20 / 50 / 20 %
+    const TOTAL_TREES = 500;
+    const rings = [
+        { inner: INNER_CLEAR + 3*subW, outer: OUTER_EDGE,           count: Math.round(TOTAL_TREES * 0.05) },
+        { inner: INNER_CLEAR + 2*subW, outer: INNER_CLEAR + 3*subW, count: Math.round(TOTAL_TREES * 0.10) },
+        { inner: INNER_CLEAR +   subW, outer: INNER_CLEAR + 2*subW, count: Math.round(TOTAL_TREES * 0.45) },
+        { inner: INNER_CLEAR,          outer: INNER_CLEAR +   subW, count: Math.round(TOTAL_TREES * 0.40) },
+    ];
+
+    const worldLimit = WORLD_SIZE - 10;
+    // Track placed tree XZ positions to enforce minimum spacing between trees.
+    const placedTreeXZ = [];
+    const TREE_MIN_SPACING = 6; // world units between any two tree centres
+    for (const ring of rings) {
+        let placed = 0;
+        let attempts = 0;
+        const maxAttempts = ring.count * 15; // generous retry budget
+        while (placed < ring.count && attempts < maxAttempts) {
+            attempts++;
+            const angle = Math.random() * Math.PI * 2;
+            const r = ring.inner + Math.random() * (ring.outer - ring.inner);
+            const wx = hhX + Math.cos(angle) * r;
+            const wz = hhZ + Math.sin(angle) * r;
+
+            if (isPointInWater(wx, wz)) continue;
+            if (Math.abs(wx) > worldLimit || Math.abs(wz) > worldLimit) continue;
+            // Skip other structures' noTree zones; ignore the HH's own footprint so
+            // INNER_CLEAR alone controls the clearance around the house.
+            if (placementFootprints.some(fp => fp.noTree && !fp.isHHOwn &&
+                    footprintsOverlap({ x: wx, z: wz, radius: 4 }, fp, 0))) continue;
+            // Reject if too close to any already-placed HH forest tree
+            if (placedTreeXZ.some(p => {
+                const dx = p.x - wx, dz = p.z - wz;
+                return dx*dx + dz*dz < TREE_MIN_SPACING * TREE_MIN_SPACING;
+            })) continue;
+
+            _createHHForestTree(wx, wz);
+            placedTreeXZ.push({ x: wx, z: wz });
+            placed++;
+        }
+    }
+
+    // Rocks: scattered throughout the forest — mix of small pebbles and boulders
+    // HH building half-diagonal ≈ sqrt(24²+25²) ≈ 34.5; add 5-unit buffer → 39.5
+    const ROCK_HH_MIN_DIST_SQ = (Math.sqrt(HH_HALF_W*HH_HALF_W + HH_HALF_D*HH_HALF_D) + 5) ** 2;
+    const ROCK_COUNT = 200;
+    for (let i = 0; i < ROCK_COUNT; i++) {
+        const angle  = Math.random() * Math.PI * 2;
+        const radius = INNER_CLEAR + Math.random() * (OUTER_EDGE - INNER_CLEAR);
+        const wx = hhX + Math.cos(angle) * radius;
+        const wz = hhZ + Math.sin(angle) * radius;
+
+        // Skip rocks within 5 units of the HH perimeter
+        const rdx = wx - hhX, rdz = wz - hhZ;
+        if (rdx*rdx + rdz*rdz < ROCK_HH_MIN_DIST_SQ) continue;
+
+        if (isPointInWater(wx, wz)) continue;
+
+        // Size varies widely: small pebbles (0.2) to large boulders (2.2)
+        const sizePow = Math.pow(Math.random(), 2);   // skew toward small
+        const rockRadius = 0.2 + sizePow * 4.0;
+
+        const rock = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(rockRadius, 0),
+            rockMatDark
+        );
+        rock.position.set(wx, getGroundHeight(wx, wz) + rockRadius * 0.4, wz);
+        rock.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        rock.scale.y = 0.5 + Math.random() * 0.6;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        scene.add(rock);
     }
 }
 
@@ -680,14 +870,25 @@ function restoreHHEntrance() {
 
 function closeHHHallDoor() {
     if (!hauntedHouseData) return;
-    hauntedHouseData.hallDoorBlockMesh.visible = true;
+    hauntedHouseData.hhHallDoorTargetAngle = 0;
+    // Activate wall collider immediately — player is in the main room at this point
     hauntedHouseData.hallDoorBlockWall.active = true;
 }
 
 function restoreHHHallDoor() {
     if (!hauntedHouseData) return;
-    hauntedHouseData.hallDoorBlockMesh.visible = false;
+    hauntedHouseData.hhHallDoorTargetAngle = -Math.PI / 2;
+    // Deactivate wall collider immediately so player can pass
     hauntedHouseData.hallDoorBlockWall.active = false;
+}
+
+// ── Animate HH hallway door each frame ────────────────────────────────────────
+function updateHHHallDoor(delta) {
+    if (!hauntedHouseData || !hauntedHouseData.hhHallDoorPivot) return;
+    const hd = hauntedHouseData;
+    if (hd.hhHallDoorAngle === hd.hhHallDoorTargetAngle) return;
+    hd.hhHallDoorAngle = moveScalarToward(hd.hhHallDoorAngle, hd.hhHallDoorTargetAngle, delta * 3.5);
+    hd.hhHallDoorPivot.rotation.y = hd.hhHallDoorAngle;
 }
 
 // ── createCemetery ───────────────────────────────────────────────────────────
@@ -1047,56 +1248,13 @@ function tryPickupSSItem(aimDir, punchRange) {
     return true;
 }
 
-// ── _setHHItemsLit: dim or restore writing and world items based on torch ─────
-// Stores original material colors in userData on first dim so they can be restored exactly.
+// ── _setHHItemsLit: show/hide writing on north wall based on torch ────────────
 function _setHHItemsLit(lit) {
     if (!hauntedHouseData) return;
     const hd = hauntedHouseData;
-
-    // Writing on north wall
     if (hd.writingMesh && hd.writingMesh.material) {
         hd.writingMesh.material.opacity = lit ? 1.0 : 0.2;
     }
-
-    // Helper: dim or restore all mesh materials in a Three.js object tree.
-    // Originals are stored on mat.userData (not obj.userData) so that shared material
-    // instances save the true original color before any modification occurs.
-    const applyToTree = (root) => {
-        if (!root) return;
-        root.traverse(obj => {
-            if (!obj.isMesh || !obj.material) return;
-            const mat = obj.material;
-            if (lit) {
-                if (mat.userData._hhOrigColor) {
-                    mat.color.copy(mat.userData._hhOrigColor);
-                }
-                if (mat.userData._hhOrigEmissive && mat.emissive) {
-                    mat.emissive.copy(mat.userData._hhOrigEmissive);
-                }
-                if (mat.userData._hhOrigEmissiveIntensity !== undefined) {
-                    mat.emissiveIntensity = mat.userData._hhOrigEmissiveIntensity;
-                }
-            } else {
-                // Save originals on first application (keyed to the material, not the mesh)
-                if (!mat.userData._hhOrigColor) {
-                    mat.userData._hhOrigColor = mat.color.clone();
-                    mat.userData._hhOrigEmissive = mat.emissive ? mat.emissive.clone() : new THREE.Color(0);
-                    mat.userData._hhOrigEmissiveIntensity = mat.emissiveIntensity ?? 1.0;
-                }
-                // Dark: multiply color by 0.1, zero out emissive
-                mat.color.setRGB(
-                    mat.userData._hhOrigColor.r * 0.1,
-                    mat.userData._hhOrigColor.g * 0.1,
-                    mat.userData._hhOrigColor.b * 0.1
-                );
-                if (mat.emissive) mat.emissive.set(0x000000);
-                mat.emissiveIntensity = 0;
-            }
-        });
-    };
-
-    applyToTree(hd.ssItemGrp);
-    applyToTree(hd.worldSkull);
 }
 
 // ── updateHauntedHouseSequence (called per-frame) ────────────────────────────
@@ -1207,6 +1365,10 @@ function updateHauntedHouseSequence(delta) {
 
 // ── Spawn white SM ───────────────────────────────────────────────────────────
 function _spawnHHWhiteSM(useFarthest) {
+    // Never spawn while a touch-reset is already pending — avoids a ghost SM appearing
+    // in a corner during the 400 ms delay before the world restarts.
+    if (hhWhiteSMData && hhWhiteSMData.touchTriggered) return;
+
     if (hhWhiteSMData && hhWhiteSMData.mesh) {
         scene.remove(hhWhiteSMData.mesh);
     }
@@ -1247,7 +1409,10 @@ function _spawnHHWhiteSM(useFarthest) {
     smGrp.position.set(wPos.x, hd.worldGroundY, wPos.z);
     scene.add(smGrp);
 
-    hhWhiteSMData = { mesh: smGrp, approachCount: hhSMApproachCount };
+    const partMeshes = smGrp.userData.partMeshes;
+    const partBaseX  = partMeshes ? partMeshes.map(m => m.position.x) : [];
+
+    hhWhiteSMData = { mesh: smGrp, approachCount: hhSMApproachCount, partMeshes, partBaseX };
     hhSMApproaching = (hhSeqTimer >= 50) && !hhWhiteSMData.justSpawned;
     hhWhiteSMData.justSpawned = true;
 
@@ -1269,6 +1434,16 @@ function _updateHHWhiteSM(delta) {
     const dist = Math.hypot(dx, dz);
     if (dist > 0.01) sm.rotation.y = Math.atan2(dx, dz);
 
+    // Body oscillation for the last 5 approaches (approachCount 6-10 → approaches 7-11)
+    const OSCILLATE_THRESHOLD = HH_SM_MAX_APPROACHES - 5; // = 6
+    if (hhSMApproachCount >= OSCILLATE_THRESHOLD &&
+            hhWhiteSMData.partMeshes && hhWhiteSMData.partBaseX.length) {
+        const osc = Math.sin(performance.now() * 0.09) * 0.25;
+        hhWhiteSMData.partMeshes.forEach((part, i) => {
+            part.position.x = hhWhiteSMData.partBaseX[i] + osc;
+        });
+    }
+
     if (!hhSMApproaching) return;  // frozen phase
 
     const speed = HH_SM_V0 * Math.pow(HH_SM_ACCEL, hhSMApproachCount);
@@ -1280,28 +1455,20 @@ function _updateHHWhiteSM(delta) {
     // Hover slightly above ground
     sm.position.y = hauntedHouseData.worldGroundY + Math.sin(performance.now() / 400) * 0.15;
 
-    // Touch detection
-    if (dist < 2.0) {
-        if (!hasTalisman || currentHandItem !== 'sword-shield') {
-            // Player dies
-            scene.remove(sm);
-            hhWhiteSMData = null;
-            setTimeout(() => hardReset(), 400);
-        }
-        // With talisman + sword: handled by hit, not touch
-        // Still: if player gets touched even with talisman, they die
-        else {
-            scene.remove(sm);
-            hhWhiteSMData = null;
-            setTimeout(() => hardReset(), 400);
-        }
+    // Touch detection — SM touched player; trigger world reset.
+    // Do NOT remove the SM so it keeps following until the reset fires.
+    if (dist < 2.0 && !hhWhiteSMData.touchTriggered) {
+        hhWhiteSMData.touchTriggered = true;
+        setTimeout(() => hardReset(), 400);
     }
 }
 
 // ── Sword hit against HH white SM ────────────────────────────────────────────
 function tryHitHHWhiteSM(aimDir, punchRange) {
     if (!hhWhiteSMData || !hhWhiteSMData.mesh) return false;
-    if (!hhSMApproaching) return false;  // can't hit during frozen phase
+    if (!hhSMApproaching) return false;             // can't hit during frozen phase
+    if (!hasTalisman) return false;                 // talisman required — without it hits do nothing
+    if (hhWhiteSMData.touchTriggered) return false; // reset already triggered; ignore input
 
     // Vector from camera to SM center (offset up to torso/head height)
     const smPos = hhWhiteSMData.mesh.position.clone();
@@ -1339,6 +1506,79 @@ function _upgradeSwordBlade() {
     playerSwordMesh.traverse(obj => {
         if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
     });
+    _startSwordBladeParticles();
+}
+
+// ── Start light-blue particles orbiting the blade and drifting upward ─────────
+// Particles are parented to playerSwordMesh so they follow it automatically.
+// Coordinates are in sword-local space:
+//   Y = 0 is group origin; blade bottom ≈ 0.33, blade top ≈ 2.49 (at scale 0.6)
+function _startSwordBladeParticles() {
+    if (!playerSwordMesh) return;
+
+    // Remove any existing particle group
+    if (playerSwordMesh.userData.bladeParticleGroup) {
+        playerSwordMesh.remove(playerSwordMesh.userData.bladeParticleGroup);
+    }
+
+    const pGrp = new THREE.Group();
+    pGrp.userData.particles = [];
+
+    const scale = 0.6;                // matches playerSwordMesh scale
+    const bladeBottom = 0.55 * scale; // guard top ≈ blade start
+    const bladeLen    = 3.6 * scale;  // blade height geometry
+    const NUM = 24;
+
+    for (let i = 0; i < NUM; i++) {
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0x88d8ff,
+            transparent: true,
+            opacity: 0.65 + Math.random() * 0.35,
+            depthWrite: false
+        });
+        const radius = 0.018 + Math.random() * 0.018;
+        const p = new THREE.Mesh(new THREE.SphereGeometry(radius, 4, 4), mat);
+        p.frustumCulled = false;
+
+        const pData = {
+            mesh:        p,
+            orbitRadius: 0.09 + Math.random() * 0.07,
+            phase:       (i / NUM) * Math.PI * 2 + Math.random() * 0.4,
+            angSpeed:    2.5 + Math.random() * 2.0,
+            height:      bladeBottom + Math.random() * bladeLen,
+            upSpeed:     0.35 + Math.random() * 0.25,
+            bladeBottom, bladeLen
+        };
+        pGrp.userData.particles.push(pData);
+        pGrp.add(p);
+    }
+
+    playerSwordMesh.userData.bladeParticleGroup = pGrp;
+    playerSwordMesh.add(pGrp);
+}
+
+// ── Per-frame particle update (called from main.js update loop) ───────────────
+function updateSwordBladeParticles(delta) {
+    if (!playerSwordMesh) return;
+    const pGrp = playerSwordMesh.userData.bladeParticleGroup;
+    if (!pGrp) return;
+
+    // Only animate when sword is visible
+    pGrp.visible = playerSwordMesh.visible;
+    if (!pGrp.visible) return;
+
+    for (const pd of pGrp.userData.particles) {
+        pd.phase  += delta * pd.angSpeed;
+        pd.height += delta * pd.upSpeed;
+        if (pd.height > pd.bladeBottom + pd.bladeLen) {
+            pd.height = pd.bladeBottom;  // wrap to bottom of blade
+        }
+        pd.mesh.position.set(
+            Math.cos(pd.phase) * pd.orbitRadius,
+            pd.height,
+            Math.sin(pd.phase) * pd.orbitRadius
+        );
+    }
 }
 
 // ── Flashbang effect ──────────────────────────────────────────────────────────
@@ -1441,6 +1681,49 @@ function _despawnHauntedHouse() {
 
     // Remove the whole building
     scene.remove(hd.group);
+
+    // ── Remove / deactivate all collision geometry ───────────────────────────
+    const refs = hd.allColliderRefs;
+    if (refs) {
+        // Solid walls: deactivate (keeps array stable, just skips collision checks)
+        for (const w of refs.walls) { if (w) w.active = false; }
+
+        // Ceilings, roof colliders, enclosed bounds: splice from global arrays
+        for (const c of refs.ceilings) {
+            const idx = ceilings.indexOf(c);
+            if (idx !== -1) ceilings.splice(idx, 1);
+        }
+        for (const r of refs.roofColliders) {
+            const idx = roofColliders.indexOf(r);
+            if (idx !== -1) roofColliders.splice(idx, 1);
+        }
+        for (const e of refs.enclosedBounds) {
+            const idx = enclosedStructureBounds.indexOf(e);
+            if (idx !== -1) enclosedStructureBounds.splice(idx, 1);
+        }
+        // Structure boxes registered via collMarkers
+        for (const s of refs.structures) {
+            const idx = structures.indexOf(s);
+            if (idx !== -1) structures.splice(idx, 1);
+        }
+    }
+
+    // Floor-2 plates
+    for (const s of [hd.f2PlateAEntry, hd.f2PlateBEntry, hd.f2PlateCEntry]) {
+        if (!s) continue;
+        const idx = structures.indexOf(s);
+        if (idx !== -1) structures.splice(idx, 1);
+    }
+    // Internal stair structures
+    for (const s of (hd.stairStructures || [])) {
+        const idx = structures.indexOf(s);
+        if (idx !== -1) structures.splice(idx, 1);
+    }
+    // Entry step structures (outside south stairs)
+    for (const s of (hd.entryStepStructures || [])) {
+        const idx = structures.indexOf(s);
+        if (idx !== -1) structures.splice(idx, 1);
+    }
 
     // Place skull on ground
     hhSkullOnGround = createSkullMesh(1.1);

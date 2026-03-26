@@ -32,6 +32,7 @@ function createGround() {
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.userData.ignoreCameraOcclusion = true;
+    ground.userData.isGround = true;
     ground.receiveShadow = true;
     scene.add(ground);
     groundMesh = ground;
