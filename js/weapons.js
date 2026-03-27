@@ -308,45 +308,6 @@ function createShieldMesh(scale = 1) {
     return grp;
 }
 
-function createSkullMesh(scale = 1) {
-    const grp = new THREE.Group();
-    const boneMat = new THREE.MeshLambertMaterial({ color: 0xd6d0b8 });
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x0a0808 });
-
-    // Cranium
-    const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.6 * scale, 10, 8), boneMat);
-    cranium.scale.y = 0.88;
-    cranium.position.y = 0.35 * scale;
-    grp.add(cranium);
-
-    // Jaw
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.7 * scale, 0.28 * scale, 0.55 * scale), boneMat);
-    jaw.position.set(0, 0.0 * scale, 0.05 * scale);
-    grp.add(jaw);
-
-    // Eye sockets
-    [-0.22, 0.22].forEach(ex => {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.16 * scale, 6, 5), darkMat);
-        eye.position.set(ex * scale, 0.42 * scale, 0.46 * scale);
-        eye.scale.z = 0.5;
-        grp.add(eye);
-    });
-
-    // Nasal cavity
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.12 * scale, 0.15 * scale, 0.1 * scale), darkMat);
-    nose.position.set(0, 0.22 * scale, 0.52 * scale);
-    grp.add(nose);
-
-    // Teeth (4 small boxes)
-    for (let t = 0; t < 4; t++) {
-        const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.14 * scale, 0.08 * scale), boneMat);
-        tooth.position.set((-1.5 + t) * 0.16 * scale, 0.07 * scale, 0.5 * scale);
-        grp.add(tooth);
-    }
-
-    enableMeshShadows(grp);
-    return grp;
-}
 
 function createTalismanMesh(scale = 1) {
     const grp = new THREE.Group();

@@ -519,6 +519,7 @@ function createHauntedHouse() {
         const ridge = new THREE.Mesh(new THREE.BoxGeometry(slabThick * 1.2, slabThick * 0.9, slabDepth), roofMat);
         ridge.position.set(0, gBase + rise, 0);
         ridge.castShadow = true;
+        ridge.receiveShadow = true;
         hhGrp.add(ridge); //DEBUG
 
         // Roof slope collision: approximate each slope panel with N flat horizontal segments.
@@ -561,7 +562,7 @@ function createHauntedHouse() {
             map: tex, transparent: true, alphaTest: 0.05,
             color: 0xbd1919, side: THREE.DoubleSide, depthWrite: false  // OG color: 0xccb89a
         });
-        const aspectRatio = 5/13;
+        const aspectRatio = 8.5/13;
         const width = 25;
         const wMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width*aspectRatio), wMat);
         wMesh.position.set(-1.5, HH_F1_H + 7.5, -HH_HALF_D + 0.35);
@@ -577,29 +578,30 @@ function createHauntedHouse() {
 
     // ── World display items: sword, shield, skull (floor 2 near north wall) ──
     const worldSword = createSwordMesh(0.75);
-    worldSword.position.set(-2.5, HH_F1_H + 3.4, -HH_HALF_D + 0.3);
+    worldSword.position.set(-2.9, HH_F1_H + 3.4, -HH_HALF_D + 0.3);
     worldSword.rotation.set(-0.3, 0.45, Math.PI - 0.1); // leaning slightly
-    worldSword.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+    worldSword.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     hhGrp.add(worldSword);
 
     const worldShield = createShieldMesh(0.95);
     worldShield.position.set(-0.2, HH_F1_H + 1.2, -HH_HALF_D + 0.3);
     worldShield.rotation.set(-0.3, 0, 0);
-    worldShield.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+    worldShield.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     hhGrp.add(worldShield);
 
-    const worldSkull = createSkullMesh(0.7);
-    worldSkull.position.set(1.8, HH_F1_H + 0.425, -HH_HALF_D + 2.5);
-    worldSkull.rotation.y = -Math.PI / 9;
-    worldSkull.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-    hhGrp.add(worldSkull);
+    const worldSkeleton = createSkeletonMesh(1.2);
+    // Sitting against the north wall on floor 2; skeleton faces south (+z).
+    worldSkeleton.position.set(-2, HH_F1_H + 0.4, -HH_HALF_D + 0.8);
+    worldSkeleton.rotation.y = 0;
+    worldSkeleton.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    hhGrp.add(worldSkeleton);
 
     // Merge sword+shield into a single pickup group
     const ssItemGrp = new THREE.Group();
     ssItemGrp.add(worldSword);
     ssItemGrp.add(worldShield);
     hhGrp.add(ssItemGrp);
-    // (worldSkull stays separate — it survives when HH despawns)
+    // (worldSkeleton stays separate — it survives when HH despawns)
 
     // ── Position and register ─────────────────────────────────────────────────
     // Group origin = floor-1 surface level; torch required to see interior.
@@ -683,7 +685,7 @@ function createHauntedHouse() {
         hhHallDoorTargetAngle: -Math.PI / 2,
         ssItemGrp,
         worldSword,          // used as position reference for SS pickup detection
-        worldSkull,
+        worldSkeleton,
         writingMesh: null,   // set async in writingImg.onload
         allColliderRefs: hhColliderRefs,
     };
@@ -692,6 +694,21 @@ function createHauntedHouse() {
         // Place player 75 units south of the entrance (in front of the HH)
         const entPos = localToWorldXZ(ox, oz, 0, HH_HALF_D + 75, rot);
         player.position.set(entPos.x, baseY + 1, entPos.z);
+    }
+
+    if (DEBUG_DESPAWN_HH) {
+        // Capture skeleton world position before despawn clears hauntedHouseData
+        const skelPos = new THREE.Vector3();
+        hauntedHouseData.worldSkeleton.getWorldPosition(skelPos);
+        // Mark sequence as complete so state is consistent
+        hhSeqPhase = 'complete';
+        hasSwordShield = true;
+        // Remove the HH and place skeleton + boulder on the world floor
+        _despawnHauntedHouse();
+        // Place player 10 units in front of the skeleton (facing it head-on)
+        const px = skelPos.x + Math.sin(rot) * 10;
+        const pz = skelPos.z + Math.cos(rot) * 10;
+        player.position.set(px, getGroundHeight(px, pz) + 1, pz);
     }
 
     // Spawn the dense dark forest that surrounds the haunted house
@@ -1248,13 +1265,33 @@ function tryPickupSSItem(aimDir, punchRange) {
     return true;
 }
 
+// ── _blacken: swap all mesh materials to black (or restore originals) ─────────
+const _hhBlackMat = new THREE.MeshLambertMaterial({ color: 0x000000 });
+function _blacken(obj, darken) {
+    if (!obj) return;
+    obj.traverse(function(m) {
+        if (!m.isMesh) return;
+        if (darken) {
+            if (!m.userData._origMat) m.userData._origMat = m.material;
+            m.material = _hhBlackMat;
+        } else {
+            if (m.userData._origMat) {
+                m.material = m.userData._origMat;
+                m.userData._origMat = null;
+            }
+        }
+    });
+}
+
 // ── _setHHItemsLit: show/hide writing on north wall based on torch ────────────
 function _setHHItemsLit(lit) {
     if (!hauntedHouseData) return;
     const hd = hauntedHouseData;
     if (hd.writingMesh && hd.writingMesh.material) {
-        hd.writingMesh.material.opacity = lit ? 1.0 : 0.2;
+        hd.writingMesh.material.opacity = lit ? 1.0 : 0.05;
     }
+    _blacken(hd.ssItemGrp, !lit);
+    _blacken(hd.worldSkeleton, !lit);
 }
 
 // ── updateHauntedHouseSequence (called per-frame) ────────────────────────────
@@ -1293,7 +1330,7 @@ function updateHauntedHouseSequence(delta) {
         // Requires z < HH_HALL_Z (confirmed in north corridor, not main room or east corridor)
         // and x < HH_HALL_X - 6 (6 units west of the east corridor entry wall).
         const inNorthCorridor = (localPos.z < HH_HALL_Z && localY < HH_F1_H - 1);
-        const committedToHallway = (localPos.x < HH_HALL_X - 6);
+        const committedToHallway = (localPos.x < HH_HALL_X - 9);
         if (inNorthCorridor && committedToHallway) {
             removeHHStairs();
             hhSeqPhase = 'hallway_exit';
@@ -1674,9 +1711,9 @@ function _despawnHauntedHouse() {
     if (!hauntedHouseData) return;
     const hd = hauntedHouseData;
 
-    // Get skull world position before removing group
+    // Get skeleton world position before removing group
     const skullWorld = new THREE.Vector3();
-    hd.worldSkull.getWorldPosition(skullWorld);
+    hd.worldSkeleton.getWorldPosition(skullWorld);
     const skullGroundY = getGroundHeight(skullWorld.x, skullWorld.z);
 
     // Remove the whole building
@@ -1725,10 +1762,33 @@ function _despawnHauntedHouse() {
         if (idx !== -1) structures.splice(idx, 1);
     }
 
-    // Place skull on ground
-    hhSkullOnGround = createSkullMesh(1.1);
-    hhSkullOnGround.position.set(skullWorld.x, skullGroundY + 0.3, skullWorld.z);
+    // Place skeleton on ground (sitting against where the wall was)
+    hhSkullOnGround = createSkeletonMesh(1.2);
+    hhSkullOnGround.position.set(skullWorld.x, skullGroundY, skullWorld.z);
+    // Inherit the HH rotation so the skeleton still faces the same direction
+    hhSkullOnGround.rotation.y = hd.rotation;
     scene.add(hhSkullOnGround);
+
+    // Spawn a boulder directly behind the skeleton for it to rest against.
+    // The skeleton faces its local +z; world +z after rotation.y = hd.rotation is
+    // (sin(rot), 0, cos(rot)), so the back direction is (-sin(rot), 0, -cos(rot)).
+    // Rock radius 1.8; center placed 2.2 units back so its surface meets the
+    // skeleton's spine lean (~0.4 units behind root): 0.4 + 1.8 ≈ 2.2.
+    // Style matches the HH forest boulders: dark dodecahedron, detail 0.
+    const rot = hd.rotation;
+    const rockRadius = 1.8;
+    const rockBackDist = 2.0;
+    const rockX = skullWorld.x - Math.sin(rot) * rockBackDist;
+    const rockZ = skullWorld.z - Math.cos(rot) * rockBackDist;
+    const rockGroundY = getGroundHeight(rockX, rockZ);
+    const boulderMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
+    const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(rockRadius, 0), boulderMat);
+    boulder.position.set(rockX, rockGroundY + rockRadius * 0.4, rockZ);
+    boulder.rotation.set(0.6, rot + 0.9, 0.3);   // fixed but natural-looking orientation
+    boulder.scale.y = 0.75;
+    boulder.castShadow = true;
+    boulder.receiveShadow = true;
+    scene.add(boulder);
 
     hauntedHouseData = null;
     hhLastTorchState = null;  // force re-evaluation of torch state on next HH spawn
