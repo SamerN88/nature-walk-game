@@ -1073,10 +1073,81 @@ function updateGoldenKey(delta) {
 
 // ── Lightning strike effect (aurafied sword) ──────────────────────────────────
 
-function triggerLightningStrike(targetPos) {
+function triggerLightningStrike(targetPos, options = {}) {
+    const boltHeight = 800;
+    const boltDurationSec = 1.5;
+    
+    const killRadius = options.killRadius ?? 50;
+    const sphereRadiusFactor = options.sphereRadiusFactor ?? 0.7;
+    const ringRadiusFactor = options.ringRadiusFactor ?? 1;
+    const sphereEndRadius = options.sphereEndRadius ?? (killRadius * sphereRadiusFactor);
+    const ringEndRadius = options.ringEndRadius ?? (killRadius * ringRadiusFactor);
+    const baseSphereRadius = 1;
+    const baseRingOuterRadius = 1.8;
+    const sphereEndScale = Math.max(1, sphereEndRadius / baseSphereRadius);
+    const ringEndScale = Math.max(1, ringEndRadius / baseRingOuterRadius);
+
     const strikeY = targetPos.y;
-    const skyY    = targetPos.y + 260;
+    const skyY    = targetPos.y + boltHeight;
     const boltGroup = new THREE.Group();
+    boltGroup.userData.ignoreCameraOcclusion = true;
+    const centerBoltPts = [new THREE.Vector3(targetPos.x, skyY, targetPos.z)];
+    const centerBoltSegments = Math.floor(boltHeight/50);
+    const jitterAmp = 28;
+    const jitterTaper = 0.45;
+    for (let s = 1; s < centerBoltSegments; s++) {
+        const t = s / centerBoltSegments;
+        centerBoltPts.push(new THREE.Vector3(
+            targetPos.x + (Math.random() - 0.5) * jitterAmp * (1 - t * jitterTaper),
+            skyY + (strikeY - skyY) * t,
+            targetPos.z + (Math.random() - 0.5) * jitterAmp * (1 - t * jitterTaper)
+        ));
+    }
+    centerBoltPts.push(new THREE.Vector3(targetPos.x, strikeY, targetPos.z));
+    const addSegmentedCenterBolt = (radius, radialSegments, material) => {
+        for (let i = 0; i < centerBoltPts.length - 1; i++) {
+            const start = centerBoltPts[i];
+            const end = centerBoltPts[i + 1];
+            const segmentVec = end.clone().sub(start);
+            const segmentLen = segmentVec.length();
+            if (segmentLen <= 1e-5) continue;
+
+            const segment = new THREE.Mesh(
+                new THREE.CylinderGeometry(radius, radius, segmentLen, radialSegments, 1, true),
+                material
+            );
+            segment.position.copy(start).add(end).multiplyScalar(0.5);
+            segment.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                segmentVec.normalize()
+            );
+            segment.frustumCulled = false;
+            segment.userData.ignoreCameraOcclusion = true;
+            boltGroup.add(segment);
+        }
+    };
+
+    // Center beam: pure white core plus a pale outer shell, matching the shrine
+    // beacon's layered beam treatment while keeping the existing line bolts intact.
+    const outerBoltMat = new THREE.MeshBasicMaterial({
+        color: 0xc7faff,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    outerBoltMat.userData.baseOpacity = outerBoltMat.opacity;
+    addSegmentedCenterBolt(0.7, 10, outerBoltMat);
+
+    const coreBoltMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1.0,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    coreBoltMat.userData.baseOpacity = coreBoltMat.opacity;
+    addSegmentedCenterBolt(0.24, 8, coreBoltMat);
 
     // Three overlapping bolt-line passes: bright white main + two cyan glow variants
     const boltDefs = [
@@ -1086,54 +1157,54 @@ function triggerLightningStrike(targetPos) {
         { jitter: 12, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
         { jitter:  8, color: 0x88ddff, opacity: 0.65 },
-        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  6, color: 0xc7efff, opacity: 0.5 },
         { jitter:  4, color: 0xffffff, opacity: 0.35 },
-        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter:  2, color: 0xc7efff, opacity: 0.2 },
         { jitter: 12, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
         { jitter:  8, color: 0x88ddff, opacity: 1.0 },
         { jitter:  6, color: 0xaaddff, opacity: 1.0 },
         { jitter:  4, color: 0xffffff, opacity: 1.0 },
-        { jitter:  2, color: 0xfffb88, opacity: 1.0 },
+        { jitter:  2, color: 0xc7efff, opacity: 1.0 },
 
         { jitter: 18, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
         { jitter: 18, color: 0x88ddff, opacity: 0.65 },
-        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  6, color: 0xc7efff, opacity: 0.5 },
         { jitter:  4, color: 0xffffff, opacity: 0.35 },
-        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter:  2, color: 0xc7efff, opacity: 0.2 },
         { jitter: 12, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
         { jitter:  8, color: 0x88ddff, opacity: 1.0 },
         { jitter:  6, color: 0xaaddff, opacity: 1.0 },
         { jitter:  4, color: 0xffffff, opacity: 1.0 },
-        { jitter:  12, color: 0xfffb88, opacity: 1.0 },
+        { jitter:  12, color: 0xc7efff, opacity: 1.0 },
 
         { jitter: 12, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
         { jitter:  8, color: 0x88ddff, opacity: 0.65 },
-        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  6, color: 0xc7efff, opacity: 0.5 },
         { jitter:  4, color: 0xffffff, opacity: 0.35 },
-        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter:  2, color: 0xc7efff, opacity: 0.2 },
         { jitter: 12, color: 0xffffff, opacity: 1.0 },
         { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
         { jitter:  8, color: 0x88ddff, opacity: 1.0 },
-        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
-        { jitter:  4, color: 0xffffff, opacity: 1.0 },
-        { jitter:  2, color: 0xfffb88, opacity: 1.0 },
+        { jitter:  25, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  25, color: 0xffffff, opacity: 1.0 },
+        { jitter:  25, color: 0xc7efff, opacity: 1.0 },
 
-        { jitter: 18, color: 0xffffff, opacity: 1.0 },
-        { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
-        { jitter: 18, color: 0x88ddff, opacity: 0.65 },
-        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
-        { jitter:  4, color: 0xffffff, opacity: 0.35 },
-        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
-        { jitter: 12, color: 0xffffff, opacity: 1.0 },
-        { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
-        { jitter:  8, color: 0x88ddff, opacity: 1.0 },
-        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
-        { jitter:  4, color: 0xffffff, opacity: 1.0 },
-        { jitter:  12, color: 0xfffb88, opacity: 1.0 },
+        { jitter:  32, color: 0xffffff, opacity: 1.0 },
+        { jitter:  32, color: 0xbbeeff, opacity: 0.8 },
+        { jitter:  32, color: 0x88ddff, opacity: 0.65 },
+        { jitter:  32, color: 0xc7efff, opacity: 0.5 },
+        { jitter:  32, color: 0xffffff, opacity: 0.35 },
+        { jitter:  32, color: 0xc7efff, opacity: 0.2 },
+        { jitter:  45, color: 0xffffff, opacity: 1.0 },
+        { jitter:  45, color: 0xbbeeff, opacity: 1.0 },
+        { jitter:  45, color: 0x88ddff, opacity: 1.0 },
+        { jitter:  45, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  45, color: 0xffffff, opacity: 1.0 },
+        { jitter:  45, color: 0xc7efff, opacity: 1.0 },
     ];
     for (const def of boltDefs) {
         const pts = [new THREE.Vector3(targetPos.x, skyY, targetPos.z)];
@@ -1153,6 +1224,7 @@ function triggerLightningStrike(targetPos) {
         mat.userData.baseOpacity = def.opacity;
         const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
         line.frustumCulled = false;
+        line.userData.ignoreCameraOcclusion = true;
         boltGroup.add(line);
     }
     scene.add(boltGroup);
@@ -1171,25 +1243,27 @@ function triggerLightningStrike(targetPos) {
     const blastMesh = new THREE.Mesh(
         new THREE.SphereGeometry(1, 20, 16),
         new THREE.MeshBasicMaterial({
-            color: 0x88eeff, transparent: true, opacity: 0.6,
+            color: 0x78f1ff, transparent: true, opacity: 0.6,
             depthWrite: false, side: THREE.DoubleSide
         })
     );
     blastMesh.position.copy(targetPos);
     blastMesh.frustumCulled = false;
+    blastMesh.userData.ignoreCameraOcclusion = true;
     scene.add(blastMesh);
 
     // Flat ground shockwave ring
     const ringMesh = new THREE.Mesh(
         new THREE.RingGeometry(0.5, 1.8, 48),
         new THREE.MeshBasicMaterial({
-            color: 0x44ccff, transparent: true, opacity: 0.9,
+            color: 0xe0fcff, transparent: true, opacity: 0.9,
             depthWrite: false, side: THREE.DoubleSide
         })
     );
     ringMesh.rotation.x = -Math.PI / 2;
     ringMesh.position.set(targetPos.x, strikeY + 0.15, targetPos.z);
     ringMesh.frustumCulled = false;
+    ringMesh.userData.ignoreCameraOcclusion = true;
     scene.add(ringMesh);
 
     // Screen flash
@@ -1203,12 +1277,13 @@ function triggerLightningStrike(targetPos) {
         }, 60);
     }
 
-    // Immediately kill all NPCs/demons within 25 units
-    _lightningAoeKill(targetPos, 25);
+    // Immediately kill all NPCs/demons within a given radius
+    _lightningAoeKill(targetPos, killRadius);
 
     lightningEffects.push({
         boltGroup, strikeLight, skyLight, blastMesh, ringMesh,
-        elapsed: 0, duration: 1.5
+        elapsed: 0, duration: boltDurationSec,
+        sphereEndScale, ringEndScale
     });
 }
 
@@ -1242,13 +1317,13 @@ function updateLightningEffects(delta) {
         ef.strikeLight.intensity = 12 * fadeOut;
         ef.skyLight.intensity    = 4  * fadeOut;
 
-        // Expand blast sphere (grows to ~22-unit radius)
-        const blastScale = 1 + t * 21;
+        // Expand blast sphere to the requested end radius.
+        const blastScale = 1 + t * ((ef.sphereEndScale ?? 22) - 1);
         ef.blastMesh.scale.setScalar(blastScale);
         ef.blastMesh.material.opacity = 0.6 * Math.max(0, 1 - t * 1.4);
 
-        // Expand ground ring
-        const ringScale = 1 + t * 18;
+        // Expand ground ring so its outer radius reaches the requested end radius.
+        const ringScale = 1 + t * ((ef.ringEndScale ?? 19) - 1);
         ef.ringMesh.scale.setScalar(ringScale);
         ef.ringMesh.material.opacity = 0.9 * fadeOut;
 
