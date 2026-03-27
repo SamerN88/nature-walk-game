@@ -24,6 +24,9 @@ const DEBUG_HAUNTED_HOUSE = false; // spawn player 75 units from HH entrance at 
 const DEBUG_DESPAWN_HH = false;   // skip straight to post-despawn state: skeleton + boulder on world floor, HH gone
 const DEBUG_CEMETERY = false;      // spawn player 75 units from cemetery entrance at start
 const DEBUG_TALISMAN = false;      // start with talisman already in inventory
+const DEBUG_INF_JUMP = false;  // gives player infinite jump
+const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
+const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
 
 // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
 const FALL_TO_CUTSCENE = true;

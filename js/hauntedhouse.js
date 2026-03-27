@@ -8,6 +8,8 @@ const HH_WALL_T = 0.6;
 const HH_F1_H = 13.5;          // floor 1 ceiling height (9 × 1.5)
 const HH_F2_H = 12;            // floor 2 wall height above floor 1 (8 × 1.5)
 const HH_GABLE_RISE = 18;      // gable peak rise above floor-2 walls (12 × 1.5)
+const HH_F2_FLOOR_T = HH_GABLE_RISE / 8; // 2.25; matches each stepped gable roof slab thickness
+const HH_F2_SURFACE_Y = HH_F1_H + HH_F2_FLOOR_T;
 const HH_ENT_W = 4.2;          // entrance opening width
 const HH_ENT_H = 5.5;          // entrance opening height (~2.75× player height)
 const HH_HALL_X = 17;          // east corridor at x=17 (HH_HALF_W − 7, keeps corridor width = 7)
@@ -103,7 +105,15 @@ function createHauntedHouse() {
     // ── Foundation slab: elevates house above terrain, same color as walls ──
     // Top is flush with floor-1. Extended 51 units downward to stay grounded on uneven terrain.
     const foundDepth = HH_ELEV + 1 + 50;   // 56: original 6 + 50 extra underground
-    B(HH_W + 4, foundDepth, HH_D + 4, 0, -foundDepth + 0.1, 0, wallMat);
+    const foundBottomY = -foundDepth + 0.1;
+    const foundCenterY = foundBottomY + foundDepth / 2;
+    B(HH_W + 4, foundDepth, HH_D + 4, 0, foundBottomY, 0, wallMat);
+    // The foundation itself should be a primitive support volume so the outer lip
+    // collides at the slab height instead of via tall perimeter wall proxies.
+    collMarkers.push(createColliderMarker(hhGrp, 'structureBox', {
+        localX: 0, localY: foundCenterY, localZ: 0,
+        width: HH_W + 4, height: foundDepth, depth: HH_D + 4
+    }));
 
     // ── Entry stairs on south face (outside, ground → floor-1) ──────────────
     // Step 0 is the bottommost/farthest step; step N-1 is at the entrance.
@@ -138,12 +148,16 @@ function createHauntedHouse() {
     }));
 
     // ── Floor 1 outer walls ──────────────────────────────────────────────────
+    const hhOuterWallTopY = HH_F2_SURFACE_Y + HH_F2_H;
+    const hhOuterWallH = hhOuterWallTopY;
+    const hhOuterWallCollisionCenterY = (hhOuterWallTopY - HH_ELEV) / 2;
+    const hhOuterWallCollisionH = hhOuterWallTopY + HH_ELEV;
     // North wall
     // Collision extends downward by HH_ELEV to seal the foundation ledge (prevents ledge phase-through)
-    B(HH_W + HH_WALL_T * 2, HH_F1_H, HH_WALL_T, 0, 0, -(HH_HALF_D + HH_WALL_T / 2), wallMat);
+    B(HH_W + HH_WALL_T * 2, hhOuterWallH, HH_WALL_T, 0, 0, -(HH_HALF_D + HH_WALL_T / 2), wallMat);
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: 0, localY: (HH_F1_H - HH_ELEV) / 2, localZ: -(HH_HALF_D + HH_WALL_T / 2),
-        halfW: HH_HALF_W + HH_WALL_T, halfD: HH_WALL_T / 2, height: HH_F1_H + HH_ELEV,
+        localX: 0, localY: hhOuterWallCollisionCenterY, localZ: -(HH_HALF_D + HH_WALL_T / 2),
+        halfW: HH_HALF_W + HH_WALL_T, halfD: HH_WALL_T / 2, height: hhOuterWallCollisionH,
         extra: { isEnclosed: true }
     }));
 
@@ -151,78 +165,36 @@ function createHauntedHouse() {
     const swWidth = HH_HALF_W - HH_ENT_W / 2;
     const swLX = -(HH_ENT_W / 2 + swWidth / 2);
     const swRX =  (HH_ENT_W / 2 + swWidth / 2);
-    B(swWidth, HH_F1_H, HH_WALL_T, swLX, 0, HH_HALF_D + HH_WALL_T / 2, wallMat);
-    B(swWidth, HH_F1_H, HH_WALL_T, swRX, 0, HH_HALF_D + HH_WALL_T / 2, wallMat);
-    B(HH_ENT_W, HH_F1_H - HH_ENT_H, HH_WALL_T, 0, HH_ENT_H, HH_HALF_D + HH_WALL_T / 2, wallMat);
+    B(swWidth, hhOuterWallH, HH_WALL_T, swLX, 0, HH_HALF_D + HH_WALL_T / 2, wallMat);
+    B(swWidth, hhOuterWallH, HH_WALL_T, swRX, 0, HH_HALF_D + HH_WALL_T / 2, wallMat);
+    B(HH_ENT_W, hhOuterWallTopY - HH_ENT_H, HH_WALL_T, 0, HH_ENT_H, HH_HALF_D + HH_WALL_T / 2, wallMat);
     // South left/right also extended downward (entrance gap stays open at ground level)
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: swLX, localY: (HH_F1_H - HH_ELEV) / 2, localZ: HH_HALF_D + HH_WALL_T / 2,
-        halfW: swWidth / 2, halfD: HH_WALL_T / 2, height: HH_F1_H + HH_ELEV, extra: { isEnclosed: true }
+        localX: swLX, localY: hhOuterWallCollisionCenterY, localZ: HH_HALF_D + HH_WALL_T / 2,
+        halfW: swWidth / 2, halfD: HH_WALL_T / 2, height: hhOuterWallCollisionH, extra: { isEnclosed: true }
     }));
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: swRX, localY: (HH_F1_H - HH_ELEV) / 2, localZ: HH_HALF_D + HH_WALL_T / 2,
-        halfW: swWidth / 2, halfD: HH_WALL_T / 2, height: HH_F1_H + HH_ELEV, extra: { isEnclosed: true }
+        localX: swRX, localY: hhOuterWallCollisionCenterY, localZ: HH_HALF_D + HH_WALL_T / 2,
+        halfW: swWidth / 2, halfD: HH_WALL_T / 2, height: hhOuterWallCollisionH, extra: { isEnclosed: true }
     }));
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: 0, localY: HH_ENT_H + (HH_F1_H - HH_ENT_H) / 2, localZ: HH_HALF_D + HH_WALL_T / 2,
-        halfW: HH_ENT_W / 2, halfD: HH_WALL_T / 2, height: HH_F1_H - HH_ENT_H, extra: { isEnclosed: true }
+        localX: 0, localY: HH_ENT_H + (hhOuterWallTopY - HH_ENT_H) / 2, localZ: HH_HALF_D + HH_WALL_T / 2,
+        halfW: HH_ENT_W / 2, halfD: HH_WALL_T / 2, height: hhOuterWallTopY - HH_ENT_H, extra: { isEnclosed: true }
     }));
 
     // West wall (collision extended downward to seal foundation ledge)
-    B(HH_WALL_T, HH_F1_H, HH_D + HH_WALL_T * 2, -(HH_HALF_W + HH_WALL_T / 2), 0, 0, wallMat);
+    B(HH_WALL_T, hhOuterWallH, HH_D + HH_WALL_T * 2, -(HH_HALF_W + HH_WALL_T / 2), 0, 0, wallMat);
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: -(HH_HALF_W + HH_WALL_T / 2), localY: (HH_F1_H - HH_ELEV) / 2, localZ: 0,
-        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: HH_F1_H + HH_ELEV, extra: { isEnclosed: true }
+        localX: -(HH_HALF_W + HH_WALL_T / 2), localY: hhOuterWallCollisionCenterY, localZ: 0,
+        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: hhOuterWallCollisionH, extra: { isEnclosed: true }
     }));
 
     // East wall (collision extended downward to seal foundation ledge)
-    B(HH_WALL_T, HH_F1_H, HH_D + HH_WALL_T * 2, HH_HALF_W + HH_WALL_T / 2, 0, 0, wallMat);
+    B(HH_WALL_T, hhOuterWallH, HH_D + HH_WALL_T * 2, HH_HALF_W + HH_WALL_T / 2, 0, 0, wallMat);
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: HH_HALF_W + HH_WALL_T / 2, localY: (HH_F1_H - HH_ELEV) / 2, localZ: 0,
-        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: HH_F1_H + HH_ELEV, extra: { isEnclosed: true }
+        localX: HH_HALF_W + HH_WALL_T / 2, localY: hhOuterWallCollisionCenterY, localZ: 0,
+        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: hhOuterWallCollisionH, extra: { isEnclosed: true }
     }));
-
-    // ── Slab face solid walls — placed at the actual slab outer edges ─────────
-    // These cover the full height from 3 units below ground to the top of floor-1,
-    // making the slab's exterior faces truly solid so players can't phase through
-    // the ledge or any part of the visible slab geometry.
-    // Height band: localY ∈ [−(HH_ELEV+3), +HH_F1_H]
-    {
-        const slabH  = HH_F1_H + HH_ELEV + 3;          // 21.5 — full coverage
-        const slabCY = (HH_F1_H - HH_ELEV - 3) / 2;    //  2.75 — band center
-        const slabHW = HH_HALF_W + 2;                   // 26 — slab half-width
-        const slabHD = HH_HALF_D + 2;                   // 22 — slab half-depth
-
-        // N slab face
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: 0, localY: slabCY, localZ: -slabHD,
-            halfW: slabHW, halfD: HH_WALL_T / 2, height: slabH
-        }));
-        // E slab face
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: slabHW, localY: slabCY, localZ: 0,
-            halfW: HH_WALL_T / 2, halfD: slabHD, height: slabH
-        }));
-        // W slab face
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: -slabHW, localY: slabCY, localZ: 0,
-            halfW: HH_WALL_T / 2, halfD: slabHD, height: slabH
-        }));
-        // S slab face: two pieces flanking the entrance gap.
-        // Slab is 2 units wider than inner walls on each side, so pieces span
-        // from x=±slabHW to ±(HH_ENT_W/2) (wider than the inner wall pieces).
-        const slabSwW  = slabHW - HH_ENT_W / 2;                 // 26 − 4.2 = 21.8
-        const slabSwLX = -(HH_ENT_W / 2 + slabSwW / 2);         // −15.1
-        const slabSwRX =  (HH_ENT_W / 2 + slabSwW / 2);         // +15.1
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: slabSwLX, localY: slabCY, localZ: slabHD,
-            halfW: slabSwW / 2, halfD: HH_WALL_T / 2, height: slabH
-        }));
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: slabSwRX, localY: slabCY, localZ: slabHD,
-            halfW: slabSwW / 2, halfD: HH_WALL_T / 2, height: slabH
-        }));
-    }
 
     // ── L-shaped partition ────────────────────────────────────────────────────
     // Leg 1 (horizontal arm): full width from x=-HH_HALF_W to x=HH_HALL_X, with a doorway gap.
@@ -230,6 +202,7 @@ function createHauntedHouse() {
     // Once through the doorway the player can only turn right (east) toward the stairs.
     const hallDoorL = HH_HALL_DOOR_CX - HH_HALL_DOOR_W / 2;  // left edge of doorway
     const hallDoorR = HH_HALL_DOOR_CX + HH_HALL_DOOR_W / 2;  // right edge of doorway
+    const stairwellWallTopY = HH_F2_SURFACE_Y - 0.1;
     // NW fill dimensions (the solid corner west of the doorway, north of partition)
     const nwFillW   = hallDoorL - (-HH_HALF_W);               // x width of NW fill
     const nwFillD   = HH_HALL_Z - (-HH_HALF_D);               // z depth of north corridor
@@ -248,10 +221,10 @@ function createHauntedHouse() {
     // Right wall piece: right edge of doorway → east corridor wall
     const hPartRW  = HH_HALL_X - hallDoorR;
     const hPartRCX = (hallDoorR + HH_HALL_X) / 2;
-    B(hPartRW, HH_F1_H, HH_WALL_T, hPartRCX, 0, HH_HALL_Z - HH_WALL_T / 2, wallMat);
+    B(hPartRW, stairwellWallTopY, HH_WALL_T, hPartRCX, 0, HH_HALL_Z - HH_WALL_T / 2, wallMat);
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: hPartRCX, localY: HH_F1_H / 2, localZ: HH_HALL_Z - HH_WALL_T / 2,
-        halfW: hPartRW / 2, halfD: HH_WALL_T / 2, height: HH_F1_H, extra: { isEnclosed: true }
+        localX: hPartRCX, localY: stairwellWallTopY / 2, localZ: HH_HALL_Z - HH_WALL_T / 2,
+        halfW: hPartRW / 2, halfD: HH_WALL_T / 2, height: stairwellWallTopY, extra: { isEnclosed: true }
     }));
 
     // NW fill: solid block filling the inaccessible northwest corner
@@ -302,10 +275,10 @@ function createHauntedHouse() {
     // Creates the west boundary of the entire east corridor (containing the staircase)
     const vPartLen = HH_HALF_D - HH_HALL_Z;           // 25 - (-19) = 44
     const vPartCZ  = (HH_HALL_Z + HH_HALF_D) / 2;    // (-19 + 25) / 2 = 3
-    B(HH_WALL_T, HH_F1_H, vPartLen, HH_HALL_X + HH_WALL_T / 2, 0, vPartCZ, wallMat);
+    B(HH_WALL_T, stairwellWallTopY, vPartLen, HH_HALL_X + HH_WALL_T / 2, 0, vPartCZ, wallMat);
     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: HH_HALL_X + HH_WALL_T / 2, localY: HH_F1_H / 2, localZ: vPartCZ,
-        halfW: HH_WALL_T / 2, halfD: vPartLen / 2, height: HH_F1_H, extra: { isEnclosed: true }
+        localX: HH_HALL_X + HH_WALL_T / 2, localY: stairwellWallTopY / 2, localZ: vPartCZ,
+        halfW: HH_WALL_T / 2, halfD: vPartLen / 2, height: stairwellWallTopY, extra: { isEnclosed: true }
     }));
 
     // ── Entrance block mesh (initially hidden; activates when SS is picked up) ──
@@ -339,24 +312,46 @@ function createHauntedHouse() {
         step.receiveShadow = true;
         stairsGrp.add(step);
     }
+    const topStepLZC = HH_HALL_Z + stairShift + (HH_STAIR_STEPS + 0.5) * stepDepth;
+    const topStep = new THREE.Mesh(new THREE.BoxGeometry(stepW - 0.2, HH_F2_FLOOR_T, stepDepth), floorMat);
+    topStep.position.set(stairCX + 0.2, HH_F1_H + HH_F2_FLOOR_T / 2, topStepLZC);
+    topStep.castShadow = true;
+    topStep.receiveShadow = true;
+    stairsGrp.add(topStep);
 
     // ── Floor 2 plate (three sections; skip staircase zone x=[5,12], z=[-4,4]) ──
-    // NOTE: structureBoxes for floor-2 are NOT registered here — registered later
-    // via addStructureBox() with minPlayerY so they only activate once the player
-    // has climbed the stairs, preventing teleport-to-floor-2 on ground-floor entry.
+    // NOTE: floor-2 standing is handled by roofColliders from above. The separate
+    // underside ceiling strips below act as the floor-1 ceiling and block upward
+    // jumps before the player ever reaches the slab.
 
     // Section A: main room x=[-24,+17], full depth z=[-20,+20]
     const f2AW = HH_HALF_W + HH_HALL_X;           // 41
     const f2ACX = (-HH_HALF_W + HH_HALL_X) / 2;   // -3.5
-    B(f2AW, 0.4, HH_D, f2ACX, HH_F1_H, 0, floorMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
-        localX: f2ACX, localY: HH_F1_H, localZ: 0,
-        halfW: f2AW / 2, halfD: HH_HALF_D
-    }));
+    const f2UndersideCeilingY = HH_F1_H - 0.01;
+    const addFloor1CeilingStrips = (localCX, localCZ, width, depth) => {
+        // Dedicated floor-1 ceiling immediately under the floor-2 slab.
+        // Strip sections avoid edge tunneling and match the working underside-only
+        // ceilingRect usage elsewhere in the haunted house.
+        const targetStripW = HH_HALF_W / 8;
+        const stripCount = Math.max(1, Math.ceil(width / targetStripW));
+        const stripW = width / stripCount;
+        const startX = localCX - width / 2 + stripW / 2;
+        for (let i = 0; i < stripCount; i++) {
+            collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
+                localX: startX + i * stripW,
+                localY: f2UndersideCeilingY,
+                localZ: localCZ,
+                halfW: stripW / 2,
+                halfD: depth / 2
+            }));
+        }
+    };
+    B(f2AW, HH_F2_FLOOR_T, HH_D, f2ACX, HH_F1_H, 0, floorMat);
+    addFloor1CeilingStrips(f2ACX, 0, f2AW, HH_D);
     // roofCollider blocks jumping through the slab from floor-1 (more robust than ceilingRect alone)
     collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
-        localX: f2ACX, localY: HH_F1_H + 0.2, localZ: 0,
-        halfW: f2AW / 2, halfD: HH_HALF_D, thickness: 0.4
+        localX: f2ACX, localY: HH_F1_H + HH_F2_FLOOR_T / 2, localZ: 0,
+        halfW: f2AW / 2, halfD: HH_HALF_D, thickness: HH_F2_FLOOR_T
     }));
 
     // Section B: northeast nook x=[17,24], z=[-20, HH_HALL_Z]
@@ -364,13 +359,11 @@ function createHauntedHouse() {
     const f2BD = HH_HALF_D + HH_HALL_Z;            // 25 + (-19) = 6
     const f2BCX = (HH_HALL_X + HH_HALF_W) / 2;    // 20.5
     const f2BCZ = (-HH_HALF_D + HH_HALL_Z) / 2;   // (-25 + -19)/2 = -22
-    B(f2BW, 0.4, f2BD, f2BCX, HH_F1_H, f2BCZ, floorMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
-        localX: f2BCX, localY: HH_F1_H, localZ: f2BCZ, halfW: f2BW / 2, halfD: f2BD / 2
-    }));
+    B(f2BW, HH_F2_FLOOR_T, f2BD, f2BCX, HH_F1_H, f2BCZ, floorMat);
+    addFloor1CeilingStrips(f2BCX, f2BCZ, f2BW, f2BD);
     collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
-        localX: f2BCX, localY: HH_F1_H + 0.2, localZ: f2BCZ,
-        halfW: f2BW / 2, halfD: f2BD / 2, thickness: 0.4
+        localX: f2BCX, localY: HH_F1_H + HH_F2_FLOOR_T / 2, localZ: f2BCZ,
+        halfW: f2BW / 2, halfD: f2BD / 2, thickness: HH_F2_FLOOR_T
     }));
 
     // Section C: southeast area x=[17,24], z=[HH_STAIR_S_Z+stairShift, +20]
@@ -379,41 +372,17 @@ function createHauntedHouse() {
     const f2CD = HH_HALF_D - HH_STAIR_S_Z - stairShift;
     const f2CCX = (HH_HALL_X + HH_HALF_W) / 2;                    // 20.5
     const f2CCZ = (HH_STAIR_S_Z + stairShift + HH_HALF_D) / 2;
-    B(f2CW, 0.4, f2CD, f2CCX, HH_F1_H, f2CCZ, floorMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
-        localX: f2CCX, localY: HH_F1_H, localZ: f2CCZ, halfW: f2CW / 2, halfD: f2CD / 2
-    }));
+    B(f2CW, HH_F2_FLOOR_T, f2CD, f2CCX, HH_F1_H, f2CCZ, floorMat);
+    addFloor1CeilingStrips(f2CCX, f2CCZ, f2CW, f2CD);
     collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
-        localX: f2CCX, localY: HH_F1_H + 0.2, localZ: f2CCZ,
-        halfW: f2CW / 2, halfD: f2CD / 2, thickness: 0.4
+        localX: f2CCX, localY: HH_F1_H + HH_F2_FLOOR_T / 2, localZ: f2CCZ,
+        halfW: f2CW / 2, halfD: f2CD / 2, thickness: HH_F2_FLOOR_T
     }));
 
     // ── Floor 2 outer walls ──────────────────────────────────────────────────
-    const f2Y = HH_F1_H;
-    // North wall
-    B(HH_W + HH_WALL_T * 2, HH_F2_H, HH_WALL_T, 0, f2Y, -(HH_HALF_D + HH_WALL_T / 2), wallMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: 0, localY: f2Y + HH_F2_H / 2, localZ: -(HH_HALF_D + HH_WALL_T / 2),
-        halfW: HH_HALF_W + HH_WALL_T, halfD: HH_WALL_T / 2, height: HH_F2_H, extra: { isEnclosed: true }
-    }));
-    // South wall
-    B(HH_W + HH_WALL_T * 2, HH_F2_H, HH_WALL_T, 0, f2Y, HH_HALF_D + HH_WALL_T / 2, wallMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: 0, localY: f2Y + HH_F2_H / 2, localZ: HH_HALF_D + HH_WALL_T / 2,
-        halfW: HH_HALF_W + HH_WALL_T, halfD: HH_WALL_T / 2, height: HH_F2_H, extra: { isEnclosed: true }
-    }));
-    // West wall
-    B(HH_WALL_T, HH_F2_H, HH_D + HH_WALL_T * 2, -(HH_HALF_W + HH_WALL_T / 2), f2Y, 0, wallMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: -(HH_HALF_W + HH_WALL_T / 2), localY: f2Y + HH_F2_H / 2, localZ: 0,
-        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: HH_F2_H, extra: { isEnclosed: true }
-    }));
-    // East wall
-    B(HH_WALL_T, HH_F2_H, HH_D + HH_WALL_T * 2, HH_HALF_W + HH_WALL_T / 2, f2Y, 0, wallMat);
-    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-        localX: HH_HALF_W + HH_WALL_T / 2, localY: f2Y + HH_F2_H / 2, localZ: 0,
-        halfW: HH_WALL_T / 2, halfD: HH_HALF_D + HH_WALL_T, height: HH_F2_H, extra: { isEnclosed: true }
-    }));
+    // Outer shell is already continuous via the two-story wall meshes above.
+    // Keep f2Y as the second-floor wall base for roof/gable placement.
+    const f2Y = HH_F2_SURFACE_Y;
 
     // ── Gable triangular end walls (east + west) ─────────────────────────────
     // The gable ridge runs N-S (z axis). East/west ends are triangular above f2Y+HH_F2_H.
@@ -471,24 +440,6 @@ function createHauntedHouse() {
     makeGableTriangle('north');
     makeGableTriangle('south');
 
-    // ── Gable end-wall collision (blocks player from phasing through gable triangles) ──
-    // The triangular prism meshes have no inherent collision; add rectangular solidWall
-    // approximations covering the full gable height above the floor-2 walls.
-    {
-        const gableBase = f2Y + HH_F2_H;                   // local Y where gable triangle begins
-        const gableCY   = gableBase + HH_GABLE_RISE / 2;   // center of gable height range
-        // North gable end
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: 0, localY: gableCY, localZ: -(HH_HALF_D + HH_WALL_T / 2),
-            halfW: HH_HALF_W, halfD: HH_WALL_T / 2, height: HH_GABLE_RISE
-        }));
-        // South gable end
-        collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
-            localX: 0, localY: gableCY, localZ: HH_HALF_D + HH_WALL_T / 2,
-            halfW: HH_HALF_W, halfD: HH_WALL_T / 2, height: HH_GABLE_RISE
-        }));
-    }
-
     // ── Roof panels (two sloping slabs) ──────────────────────────────────────
     {
         const gBase = f2Y + HH_F2_H;
@@ -522,29 +473,113 @@ function createHauntedHouse() {
         ridge.receiveShadow = true;
         hhGrp.add(ridge); //DEBUG
 
-        // Roof slope collision: approximate each slope panel with N flat horizontal segments.
-        // Each segment's bottomY matches the slope surface at the low (eave) end of its x-strip,
-        // and topY matches the slope at the high (ridge) end. This prevents jumping through the
-        // slope from inside and allows landing on it from outside.
-        const slopeN = 6;
-        const stripW = halfRun / slopeN;
-        const slabHalfD = slabDepth / 2;
-        for (let k = 0; k < slopeN; k++) {
-            const yLo = gBase + rise * k / slopeN;
-            const yHi = gBase + rise * (k + 1) / slopeN;
-            const midY = (yLo + yHi) / 2;
-            const thick = yHi - yLo;
-            // distFromCenter: distance from ridge (x=0) to the center of strip k
-            // k=0 is eave-most (largest distance), k=slopeN-1 is ridge-most (smallest)
-            const distFromCenter = (slopeN - k - 0.5) * stripW;
-            collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
-                localX: -distFromCenter, localY: midY, localZ: 0,
-                halfW: stripW / 2, halfD: slabHalfD, thickness: thick
-            }));
-            collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
-                localX:  distFromCenter, localY: midY, localZ: 0,
-                halfW: stripW / 2, halfD: slabHalfD, thickness: thick
-            }));
+        // Gable roof: 8 stepped roofColliders (horizontal slabs) + 7 riser pairs (vertical walls).
+        // Each step approximates one horizontal band of the visual slope.
+        // Step 0 = innermost (ridge, tallest), Step 7 = outermost (eave, shortest).
+        //
+        // STEP_T = STEP_H = 2.25.  This must exceed 2.0 (the resolveRoofCollision outer-face
+        // tolerance) so that after the inner-face pushes the player to bottomY−0.01, their
+        // previousY on the next frame is more than 2 units below topY — preventing the outer
+        // face from falsely snapping them up through the ceiling.
+        {
+            const N      = 8;
+            const STEP_W = HH_HALF_W / N;           // 3 units wide
+            const STEP_H = HH_GABLE_RISE / N;       // 2.25 units tall
+            const STEP_T = STEP_H;                  // slab thickness (must be > 2.0)
+            const gB     = HH_F2_SURFACE_Y + HH_F2_H; // local-Y base of gable zone
+
+            for (let i = 0; i < N; i++) {
+                const topY_l = gB + HH_GABLE_RISE * (1.0 - i / N);
+                const slabCY = topY_l - STEP_T / 2;
+                const stepCX = (i + 0.5) * STEP_W;
+
+                // Left-half slab
+                collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
+                    localX: -stepCX, localY: slabCY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: HH_HALF_D, thickness: STEP_T
+                }));
+                // Right-half slab
+                collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
+                    localX:  stepCX, localY: slabCY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: HH_HALF_D, thickness: STEP_T
+                }));
+
+                // Riser wall between step i and step i+1.
+                // The outermost boundary (i = N−1) is sealed by the E/W gable solidWalls above.
+                if (i < N - 1) {
+                    const riserX  = (i + 1) * STEP_W;
+                    const botY_l  = gB + HH_GABLE_RISE * (1.0 - (i + 1) / N);
+                    const riserCY = (topY_l + botY_l) / 2 - 0.2;
+
+                    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                        localX: -riserX, localY: riserCY, localZ: 0,
+                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                    }));
+                    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                        localX:  riserX, localY: riserCY, localZ: 0,
+                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                    }));
+                }
+
+                // Stepped strips on the north/south gable faces fill the missing
+                // triangle collision area from each roof step down to the gable base.
+                const gableStripH = topY_l - gB;
+                const gableStripCY = gB + gableStripH / 2;
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: -stepCX, localY: gableStripCY, localZ: -(HH_HALF_D + HH_WALL_T / 2),
+                    halfW: STEP_W / 2, halfD: HH_WALL_T / 2, height: gableStripH
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX:  stepCX, localY: gableStripCY, localZ: -(HH_HALF_D + HH_WALL_T / 2),
+                    halfW: STEP_W / 2, halfD: HH_WALL_T / 2, height: gableStripH
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: -stepCX, localY: gableStripCY, localZ: HH_HALF_D + HH_WALL_T / 2,
+                    halfW: STEP_W / 2, halfD: HH_WALL_T / 2, height: gableStripH
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX:  stepCX, localY: gableStripCY, localZ: HH_HALF_D + HH_WALL_T / 2,
+                    halfW: STEP_W / 2, halfD: HH_WALL_T / 2, height: gableStripH
+                }));
+            }
+
+            // Inner slabs + risers: underside mirror of the outer steps. Each inner
+            // horizontal collider is a ceilingRect placed at the underside of the
+            // matching outer slab, so the collision surface is on the bottom face
+            // rather than on top.
+            for (let j = 0; j < N; j++) {
+                const outer_topY_l = gB + HH_GABLE_RISE * (1.0 - j / N);
+                const inner_ceilingY = outer_topY_l - STEP_T;
+                const stepCX = (j + 0.5) * STEP_W;
+
+                // Left-half inner slab (underside only)
+                collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
+                    localX: -stepCX, localY: inner_ceilingY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: HH_HALF_D
+                }));
+                // Right-half inner slab (underside only)
+                collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
+                    localX:  stepCX, localY: inner_ceilingY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: HH_HALF_D
+                }));
+
+                // Inner riser at the underside step face between inner step j and j+1.
+                if (j < N - 1) {
+                    const inner_riserX  = (j + 1) * STEP_W;
+                    const next_outer_topY_l = gB + HH_GABLE_RISE * (1.0 - (j + 1) / N);
+                    const next_inner_ceilingY = next_outer_topY_l - STEP_T;
+                    const inner_riserCY = (inner_ceilingY + next_inner_ceilingY) / 2;
+
+                    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                        localX: -inner_riserX, localY: inner_riserCY, localZ: 0,
+                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                    }));
+                    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                        localX:  inner_riserX, localY: inner_riserCY, localZ: 0,
+                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                    }));
+                }
+            }
         }
     }
 
@@ -565,7 +600,7 @@ function createHauntedHouse() {
         const aspectRatio = 8.5/13;
         const width = 25;
         const wMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width*aspectRatio), wMat);
-        wMesh.position.set(-1.5, HH_F1_H + 7.5, -HH_HALF_D + 0.35);
+        wMesh.position.set(-1.5, HH_F2_SURFACE_Y + 7.1, -HH_HALF_D + 0.35);
         wMesh.renderOrder = 2;
         hhGrp.add(wMesh);
         // Store mesh and apply current torch state immediately
@@ -578,20 +613,20 @@ function createHauntedHouse() {
 
     // ── World display items: sword, shield, skull (floor 2 near north wall) ──
     const worldSword = createSwordMesh(0.75);
-    worldSword.position.set(-2.9, HH_F1_H + 3.4, -HH_HALF_D + 0.3);
+    worldSword.position.set(-2.9, HH_F2_SURFACE_Y + 3.0, -HH_HALF_D + 0.3);
     worldSword.rotation.set(-0.3, 0.45, Math.PI - 0.1); // leaning slightly
     worldSword.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     hhGrp.add(worldSword);
 
     const worldShield = createShieldMesh(0.95);
-    worldShield.position.set(-0.2, HH_F1_H + 1.2, -HH_HALF_D + 0.3);
+    worldShield.position.set(-0.2, HH_F2_SURFACE_Y + 0.8, -HH_HALF_D + 0.3);
     worldShield.rotation.set(-0.3, 0, 0);
     worldShield.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     hhGrp.add(worldShield);
 
     const worldSkeleton = createSkeletonMesh(1.2);
     // Sitting against the north wall on floor 2; skeleton faces south (+z).
-    worldSkeleton.position.set(-2, HH_F1_H + 0.4, -HH_HALF_D + 0.8);
+    worldSkeleton.position.set(-2, HH_F2_SURFACE_Y, -HH_HALF_D + 0.8);
     worldSkeleton.rotation.y = 0;
     worldSkeleton.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     hhGrp.add(worldSkeleton);
@@ -623,27 +658,31 @@ function createHauntedHouse() {
         );
         stairStructures.push(entry);
     }
+    const topStepWorld = localToWorldXZ(ox, oz, stairCX, topStepLZC, rot);
+    const topStepEntry = addStructureBox(
+        topStepWorld.x, topStepWorld.z, baseY + HH_F1_H,
+        stepW, HH_F2_FLOOR_T, stepDepth, rot
+    );
+    stairStructures.push(topStepEntry);
 
-    // Register floor-2 plate structure boxes.
-    // minPlayerY prevents the floor-2 platform from snapping the player upward
-    // on ground-floor entry — it only activates once the player has climbed the
-    // internal stairs to near floor-2 height.
-    const f2MinY = baseY + HH_F1_H - 1;
+    // Register floor-2 slab AABBs for blocking/debug use, but keep them out of the
+    // generic land-support height path. Legitimate standing on floor 2 comes from the
+    // roofCollider top faces above, never from support snapping while below the slab.
 
     const f2PlateA_world = localToWorldXZ(ox, oz, f2ACX, 0, rot);
     const f2PlateAEntry = addStructureBox(
         f2PlateA_world.x, f2PlateA_world.z, baseY + HH_F1_H,
-        f2AW, 0.4, HH_D, rot, { minPlayerY: f2MinY }
+        f2AW, HH_F2_FLOOR_T, HH_D, rot, { skipSupportHeight: true }
     );
     const f2PlateB_world = localToWorldXZ(ox, oz, f2BCX, f2BCZ, rot);
     const f2PlateBEntry = addStructureBox(
         f2PlateB_world.x, f2PlateB_world.z, baseY + HH_F1_H,
-        f2BW, 0.4, f2BD, rot, { minPlayerY: f2MinY }
+        f2BW, HH_F2_FLOOR_T, f2BD, rot, { skipSupportHeight: true }
     );
     const f2PlateC_world = localToWorldXZ(ox, oz, f2CCX, f2CCZ, rot);
     const f2PlateCEntry = addStructureBox(
         f2PlateC_world.x, f2PlateC_world.z, baseY + HH_F1_H,
-        f2CW, 0.4, f2CD, rot, { minPlayerY: f2MinY }
+        f2CW, HH_F2_FLOOR_T, f2CD, rot, { skipSupportHeight: true }
     );
 
     // Create entrance block wall entry (inactive initially)
@@ -751,16 +790,15 @@ function _createHHForestTree(x, z) {
         tree.add(cone);
     }
 
-    // Raycast downward against terrain and mountain meshes only.
-    // isGround/isMountain tags are set in terrain.js / environment.js.
-    // Restricting to these prevents trees from landing on structures or other trees.
+    // Raycast downward against the terrain mesh only (isGround tag set in terrain.js).
+    // Trees land on the world ground surface; if that happens to be inside a mountain, that's fine.
     const _hhRaycaster = new THREE.Raycaster(
         new THREE.Vector3(x, 5000, z),
         new THREE.Vector3(0, -1, 0)
     );
     scene.updateMatrixWorld();
     const _hhHits = _hhRaycaster.intersectObjects(scene.children, true).filter(h =>
-        h.object.userData.isGround === true || h.object.userData.isMountain === true
+        h.object.userData.isGround === true
     );
     const surfaceY = _hhHits.length > 0 ? _hhHits[0].point.y : getGroundHeight(x, z);
     tree.position.set(x, surfaceY, z);
@@ -1316,7 +1354,7 @@ function updateHauntedHouseSequence(delta) {
         if (!hasTorch) return;
         const inside = (Math.abs(localPos.x) < HH_HALF_W + 1 &&
                         Math.abs(localPos.z) < HH_HALF_D + 1 &&
-                        localY < HH_F1_H + HH_F2_H + 2);
+                        localY < HH_F2_SURFACE_Y + HH_F2_H + 2);
         if (inside) hhSeqPhase = 'active';
         return;
     }
@@ -1340,10 +1378,17 @@ function updateHauntedHouseSequence(delta) {
 
     // ── Phase: hallway_exit — stairs gone; wait for player to clear doorway, then seal it ──
     if (hhSeqPhase === 'hallway_exit') {
-        // Close the hallway door only when the player is guaranteed inside the main room:
-        // 5+ units south of the partition (z > HH_HALL_Z + 5) AND west of the east corridor
-        // (x < HH_HALL_X), so they cannot be in the hallway or east corridor.
-        if (localPos.z > HH_HALL_Z + 5 && localPos.x < HH_HALL_X) {
+        // Close the hallway door only when the player is guaranteed to be inside
+        // the floor-1 main room volume, not merely above it on floor 2.
+        const inFloor1MainRoom = (
+            localPos.x > -HH_HALF_W + 1 &&
+            localPos.x < HH_HALL_X - 1 &&
+            localPos.z > HH_HALL_Z + 5 &&
+            localPos.z < HH_HALF_D - 1 &&
+            localY > -0.5 &&
+            localY < HH_F1_H - 1
+        );
+        if (inFloor1MainRoom) {
             closeHHHallDoor();
             hhSeqPhase = 'timer';
             hhSeqTimer = 0;
@@ -1536,14 +1581,55 @@ function tryHitHHWhiteSM(aimDir, punchRange) {
     return true;
 }
 
+
 // ── Upgrade sword blade to MeshBasicMaterial after HH sequence victory ────────
 function _upgradeSwordBlade() {
+    if (!playerSwordMesh) return;
+    // Save original blade material on first upgrade so we can restore it later
+    if (!playerSwordMesh.userData.originalBladeMaterial) {
+        playerSwordMesh.traverse(obj => {
+            if (obj.isMesh && obj.userData.isBlade && !playerSwordMesh.userData.originalBladeMaterial) {
+                playerSwordMesh.userData.originalBladeMaterial = obj.material;
+            }
+        });
+    }
+    const basicMat = new THREE.MeshBasicMaterial({ color: 0xe3ecff });
+    playerSwordMesh.traverse(obj => {
+        if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
+    });
+    _startSwordBladeParticles();
+    swordAuraActive = true;
+    swordPostAuraKills = 0;
+}
+
+// ── Deactivate sword aura (called when lightning fires) ───────────────────────
+function _deactivateSwordAura() {
+    swordAuraActive = false;
+    if (!playerSwordMesh) return;
+    // Restore original blade material
+    const origMat = playerSwordMesh.userData.originalBladeMaterial;
+    if (origMat) {
+        playerSwordMesh.traverse(obj => {
+            if (obj.isMesh && obj.userData.isBlade) obj.material = origMat;
+        });
+    }
+    // Remove blade particles
+    if (playerSwordMesh.userData.bladeParticleGroup) {
+        playerSwordMesh.remove(playerSwordMesh.userData.bladeParticleGroup);
+        playerSwordMesh.userData.bladeParticleGroup = null;
+    }
+}
+
+// ── Reactivate sword aura after 100 kills ─────────────────────────────────────
+function _reactivateSwordAura() {
     if (!playerSwordMesh) return;
     const basicMat = new THREE.MeshBasicMaterial({ color: 0xe3ecff });
     playerSwordMesh.traverse(obj => {
         if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
     });
     _startSwordBladeParticles();
+    swordAuraActive = true;
+    swordPostAuraKills = 0;
 }
 
 // ── Start light-blue particles orbiting the blade and drifting upward ─────────
@@ -1652,25 +1738,40 @@ function triggerSwordSwipe() {
     const geo = new THREE.RingGeometry(HH_SWIPE_INNER_R, HH_SWIPE_OUTER_R, 18, 1, 0, swipeSector);
     const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff, transparent: true, opacity: 0.55,
-        side: THREE.DoubleSide, depthWrite: false,
+        side: THREE.DoubleSide, depthWrite: false, depthTest: false,
         blending: THREE.AdditiveBlending, fog: false
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;  // lay ring flat (horizontal)
+    mesh.rotation.x = -Math.PI / 2;  // ring sector lies flat in XZ relative to group
     mesh.position.z = 0;
     mesh.frustumCulled = false;
     mesh.renderOrder = 80;
     swordSwipeGroup.add(mesh);
+    swordSwipeGroup.userData.ignoreCameraOcclusion = true;  // camera raycaster ignores this group
     swordSwipeGroup.position.copy(player.position);
     swordSwipeGroup.position.y += 1.4;
-    // Sweep ±70° relative to where the crosshair/camera is pointing
+
+    // Quaternion approach: Q_total = Q_cam * Q_sweep
+    // Q_cam is fixed at trigger time (yaw+pitch, no roll). Q_sweep rotates around world Y.
+    // This keeps pitch tilt strictly forward/backward — never side-to-side during the sweep.
+    // Pitch is clamped to a maximum of 0 so the swipe never tilts below horizontal:
+    //   cameraPitch < 0 = looking up  → swipe tilts up   (allowed)
+    //   cameraPitch > 0 = looking down → swipe stays flat (clamped to 0)
     const swipeArc = 90 * Math.PI / 180;
-    swordSwipeGroup.rotation.y = cameraYaw - Math.PI/2 - swipeArc;
-    swordSwipeGroup.userData.startYaw = cameraYaw - Math.PI/2 - swipeArc;
-    swordSwipeGroup.userData.endYaw   = cameraYaw - swipeArc/2;
-    // swordSwipeGroup.userData.startYaw = cameraYaw - Math.PI/2 - swipeArc;
-    // swordSwipeGroup.userData.endYaw   = cameraYaw - Math.PI/2;
-    swordSwipeGroup.userData.swipeMesh = mesh;
+    const startSweep = cameraYaw - Math.PI/2 - swipeArc;
+    const endSweep   = cameraYaw - swipeArc/2;
+    const swipePitch = Math.max(-Math.PI/2, 1.25 * Math.min(0, cameraPitch));   // clamp: no downward tilt, no tilting past 90 deg (the 1.25 just makes it look better)
+    const Q_cam = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(swipePitch, cameraYaw, 0, 'YXZ')
+    );
+    const Q_init = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), startSweep - cameraYaw);
+    swordSwipeGroup.quaternion.multiplyQuaternions(Q_cam, Q_init);
+
+    swordSwipeGroup.userData.Q_cam      = Q_cam;
+    swordSwipeGroup.userData.startSweep = startSweep;
+    swordSwipeGroup.userData.endSweep   = endSweep;
+    swordSwipeGroup.userData.baseYaw    = cameraYaw;
+    swordSwipeGroup.userData.swipeMesh  = mesh;
     scene.add(swordSwipeGroup);
     swordSwipeTimer = HH_SWIPE_DURATION;
 }
@@ -1684,9 +1785,16 @@ function updateSwordSwipe(delta) {
         return;
     }
     const t = 1 - swordSwipeTimer / HH_SWIPE_DURATION;
-    const startY = swordSwipeGroup.userData.startYaw;
-    const endY   = swordSwipeGroup.userData.endYaw;
-    swordSwipeGroup.rotation.y = startY + (endY - startY) * t;
+    const startSweep = swordSwipeGroup.userData.startSweep;
+    const endSweep   = swordSwipeGroup.userData.endSweep;
+    const baseYaw    = swordSwipeGroup.userData.baseYaw;
+    const Q_cam      = swordSwipeGroup.userData.Q_cam;
+
+    // Animate sweep around world Y, then apply camera orientation on top
+    const sweepAngle = startSweep + (endSweep - startSweep) * t;
+    const Q_sweep = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), sweepAngle - baseYaw);
+    swordSwipeGroup.quaternion.multiplyQuaternions(Q_cam, Q_sweep);
+
     swordSwipeGroup.position.copy(player.position);
     swordSwipeGroup.position.y += 1.4;
     const mesh = swordSwipeGroup.userData.swipeMesh;

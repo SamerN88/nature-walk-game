@@ -571,7 +571,7 @@ function updateDemons(delta) {
             z.lungeProgress = 0;
 
             let damage = DEMON_HIT_DAMAGE;
-            if (hasSwordShield) damage *= 0.7;
+            if (hasSwordShield && currentHandItem === 'sword-shield') damage *= 0.7;
             if (nearCampfireFlag) damage *= 0.5;
             playerHealth = Math.max(0, playerHealth - damage);
             dragonHealth = Math.max(0, dragonHealth - damage);
@@ -726,7 +726,7 @@ function showDeathScreen() {
     } else if (fightBtn && hardBtn) {
         fightBtn.textContent = '💀 RESPAWN (+50 DEMONS)';
         fightBtn.onclick = respawnWithMoreDemons;
-        hardBtn.textContent  = '⚡ RESTART WORLD';
+        hardBtn.textContent  = '🌍 RESTART WORLD';
         hardBtn.onclick = hardReset;
     }
 

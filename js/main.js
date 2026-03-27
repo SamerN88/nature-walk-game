@@ -103,6 +103,15 @@ function init() {
     if (DEBUG_GEMS) createSecretGem();
     createDragonGem();
     createDragon();
+    if (DEBUG_SWORD_THUNDER || DEBUG_SWORD_THUNDER_INF) {
+        // Sword + aurafied blade in inventory
+        hasSwordShield = true;
+        addHandSlot('sword-shield');
+        _upgradeSwordBlade(); // sets swordAuraActive = true, applies BasicMat + particles
+        // Demon shrine at origin
+        createShrine();
+    }
+
     syncHandItemVisuals();
     updateKeyHUD();
     updateStats();
@@ -381,6 +390,7 @@ function animate() {
     updateHauntedHouseSequence(delta);
     updateHHHallDoor(delta);
     updateSwordBladeParticles(delta);
+    updateLightningEffects(delta);
     updateTalisman(delta);
     updateSwordSwipe(delta);
     _updateSwordCooldownBar();
@@ -402,8 +412,20 @@ deathScreen.addEventListener('click', e => {
 
 // Start game
 document.getElementById('start-btn').addEventListener('click', () => {
-    document.getElementById('start-screen').style.display = 'none';
-    init();
-    animate();
-    renderer.domElement.requestPointerLock();
+    const btn = document.getElementById('start-btn');
+    // Lock exact dimensions before replacing text so size never changes
+    btn.style.width  = btn.offsetWidth  + 'px';
+    btn.style.height = btn.offsetHeight + 'px';
+    btn.style.padding = '0';
+    btn.innerHTML = '<span class="btn-spinner"></span>';
+    btn.classList.add('loading');
+    // Two rAF calls guarantee the browser paints the spinner before the blocking init()
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            init();
+            document.getElementById('start-screen').style.display = 'none';
+            animate();
+            renderer.domElement.requestPointerLock();
+        });
+    });
 });

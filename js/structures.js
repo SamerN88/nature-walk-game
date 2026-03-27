@@ -324,12 +324,16 @@ function getStructureHeight(x, z, playerY = undefined) {
             const local = worldToLocalXZ(x, z, s.x, s.z, s.rotation || 0);
             if (Math.abs(local.x) <= s.width / 2 &&
                 Math.abs(local.z) <= s.depth / 2) {
-                // minPlayerY: only apply this platform if player is already near its level.
-                // Prevents multi-story buildings from snapping the player to upper floors on entry.
-                if (s.minPlayerY !== undefined && playerY !== undefined && playerY < s.minPlayerY) {
+                if (s.skipSupportHeight) {
                     height = -Infinity;
                 } else {
-                    height = s.y + s.height;
+                    // minPlayerY: only apply this platform if player is already near its level.
+                    // Prevents multi-story buildings from snapping the player to upper floors on entry.
+                    if (s.minPlayerY !== undefined && playerY !== undefined && playerY < s.minPlayerY) {
+                        height = -Infinity;
+                    } else {
+                        height = s.y + s.height;
+                    }
                 }
             }
         } else if (s.type === 'sphere') {

@@ -818,10 +818,6 @@ function punch() {
         }
     }
     candidateNPCs.sort((a, b) => a.dist - b.dist);
-    candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
-        const curIdx = npcs.indexOf(h.npc);
-        if (curIdx !== -1) explodeNPC(h.npc, curIdx);
-    });
 
     // Hit demons — always checked regardless of door/NPC hit
     const candidateDemons = [];
@@ -839,10 +835,59 @@ function punch() {
         }
     }
     candidateDemons.sort((a, b) => a.dist - b.dist);
-    candidateDemons.slice(0, maxMeleeHits).forEach(h => {
-        const curIdx = demons.indexOf(h.demon);
-        if (curIdx !== -1) explodeDemon(h.demon, curIdx);
-    });
+
+    if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)) {
+        // Aurafied sword: strike the nearest hit target with lightning; AoE handles all kills
+        const nearestNPC = candidateNPCs[0];
+        const nearestDemon = candidateDemons[0];
+        const firstTarget = (nearestNPC && nearestDemon)
+            ? (nearestNPC.dist < nearestDemon.dist ? nearestNPC : nearestDemon)
+            : (nearestNPC || nearestDemon);
+
+        if (firstTarget) {
+            const strikePos = (firstTarget.npc || firstTarget.demon).mesh.position.clone();
+            triggerLightningStrike(strikePos);
+            if (!DEBUG_SWORD_THUNDER_INF) _deactivateSwordAura();
+            swordPostAuraKills = 0;
+            // Lightning AoE kills everything — skip normal hit loop
+        } else {
+            // Swing missed — aura stays charged; standard (empty) hit path
+            candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
+                const curIdx = npcs.indexOf(h.npc);
+                if (curIdx !== -1) explodeNPC(h.npc, curIdx);
+            });
+            candidateDemons.slice(0, maxMeleeHits).forEach(h => {
+                const curIdx = demons.indexOf(h.demon);
+                if (curIdx !== -1) explodeDemon(h.demon, curIdx);
+            });
+        }
+    } else {
+        // Normal kill path; track sword kills toward 100-kill aura recharge
+        let swordKillsThisSwing = 0;
+
+        candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
+            const curIdx = npcs.indexOf(h.npc);
+            if (curIdx !== -1) {
+                explodeNPC(h.npc, curIdx);
+                if (isSwordAttack) swordKillsThisSwing++;
+            }
+        });
+        candidateDemons.slice(0, maxMeleeHits).forEach(h => {
+            const curIdx = demons.indexOf(h.demon);
+            if (curIdx !== -1) {
+                explodeDemon(h.demon, curIdx);
+                if (isSwordAttack) swordKillsThisSwing++;
+            }
+        });
+
+        if (isSwordAttack && hasSwordShield && swordKillsThisSwing > 0) {
+            swordPostAuraKills += swordKillsThisSwing;
+            if (swordPostAuraKills >= 100) {
+                swordPostAuraKills -= 100;
+                _reactivateSwordAura();
+            }
+        }
+    }
 }
 
 function toggleHouseDoor(door) {
@@ -1026,3 +1071,194 @@ function updateGoldenKey(delta) {
     }
 }
 
+// ── Lightning strike effect (aurafied sword) ──────────────────────────────────
+
+function triggerLightningStrike(targetPos) {
+    const strikeY = targetPos.y;
+    const skyY    = targetPos.y + 260;
+    const boltGroup = new THREE.Group();
+
+    // Three overlapping bolt-line passes: bright white main + two cyan glow variants
+    const boltDefs = [
+        // { jitter: 10, color: 0xffffff, opacity: 1.0 },
+        // { jitter:  6, color: 0x88ddff, opacity: 0.65 },
+        // { jitter:  4, color: 0xffffff, opacity: 0.35 },
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
+        { jitter:  8, color: 0x88ddff, opacity: 0.65 },
+        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  4, color: 0xffffff, opacity: 0.35 },
+        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
+        { jitter:  8, color: 0x88ddff, opacity: 1.0 },
+        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  4, color: 0xffffff, opacity: 1.0 },
+        { jitter:  2, color: 0xfffb88, opacity: 1.0 },
+
+        { jitter: 18, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
+        { jitter: 18, color: 0x88ddff, opacity: 0.65 },
+        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  4, color: 0xffffff, opacity: 0.35 },
+        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
+        { jitter:  8, color: 0x88ddff, opacity: 1.0 },
+        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  4, color: 0xffffff, opacity: 1.0 },
+        { jitter:  12, color: 0xfffb88, opacity: 1.0 },
+
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
+        { jitter:  8, color: 0x88ddff, opacity: 0.65 },
+        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  4, color: 0xffffff, opacity: 0.35 },
+        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
+        { jitter:  8, color: 0x88ddff, opacity: 1.0 },
+        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  4, color: 0xffffff, opacity: 1.0 },
+        { jitter:  2, color: 0xfffb88, opacity: 1.0 },
+
+        { jitter: 18, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 0.8 },
+        { jitter: 18, color: 0x88ddff, opacity: 0.65 },
+        { jitter:  6, color: 0xfffb88, opacity: 0.5 },
+        { jitter:  4, color: 0xffffff, opacity: 0.35 },
+        { jitter:  2, color: 0xfffb88, opacity: 0.2 },
+        { jitter: 12, color: 0xffffff, opacity: 1.0 },
+        { jitter: 10, color: 0xbbeeff, opacity: 1.0 },
+        { jitter:  8, color: 0x88ddff, opacity: 1.0 },
+        { jitter:  6, color: 0xaaddff, opacity: 1.0 },
+        { jitter:  4, color: 0xffffff, opacity: 1.0 },
+        { jitter:  12, color: 0xfffb88, opacity: 1.0 },
+    ];
+    for (const def of boltDefs) {
+        const pts = [new THREE.Vector3(targetPos.x, skyY, targetPos.z)];
+        const SEGS = 14;
+        for (let s = 1; s < SEGS; s++) {
+            const t = s / SEGS;
+            pts.push(new THREE.Vector3(
+                targetPos.x + (Math.random() - 0.5) * def.jitter * (1 - t * 0.55),
+                skyY + (strikeY - skyY) * t,
+                targetPos.z + (Math.random() - 0.5) * def.jitter * (1 - t * 0.55)
+            ));
+        }
+        pts.push(new THREE.Vector3(targetPos.x, strikeY, targetPos.z));
+        const mat = new THREE.LineBasicMaterial({
+            color: def.color, transparent: true, opacity: def.opacity, depthWrite: false
+        });
+        mat.userData.baseOpacity = def.opacity;
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+        line.frustumCulled = false;
+        boltGroup.add(line);
+    }
+    scene.add(boltGroup);
+
+    // Bright impact point light
+    const strikeLight = new THREE.PointLight(0xaaddff, 12, 80);
+    strikeLight.position.set(targetPos.x, strikeY + 3, targetPos.z);
+    scene.add(strikeLight);
+
+    // Wide sky flash light
+    const skyLight = new THREE.PointLight(0xffffff, 4, 600);
+    skyLight.position.set(targetPos.x, skyY * 0.4 + strikeY * 0.6, targetPos.z);
+    scene.add(skyLight);
+
+    // Expanding energy blast sphere
+    const blastMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 20, 16),
+        new THREE.MeshBasicMaterial({
+            color: 0x88eeff, transparent: true, opacity: 0.6,
+            depthWrite: false, side: THREE.DoubleSide
+        })
+    );
+    blastMesh.position.copy(targetPos);
+    blastMesh.frustumCulled = false;
+    scene.add(blastMesh);
+
+    // Flat ground shockwave ring
+    const ringMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.5, 1.8, 48),
+        new THREE.MeshBasicMaterial({
+            color: 0x44ccff, transparent: true, opacity: 0.9,
+            depthWrite: false, side: THREE.DoubleSide
+        })
+    );
+    ringMesh.rotation.x = -Math.PI / 2;
+    ringMesh.position.set(targetPos.x, strikeY + 0.15, targetPos.z);
+    ringMesh.frustumCulled = false;
+    scene.add(ringMesh);
+
+    // Screen flash
+    const flashEl = document.getElementById('lightning-flash');
+    if (flashEl) {
+        flashEl.style.transition = 'none';
+        flashEl.style.opacity = '0.8';
+        setTimeout(() => {
+            flashEl.style.transition = 'opacity 0.25s ease-out';
+            flashEl.style.opacity = '0';
+        }, 60);
+    }
+
+    // Immediately kill all NPCs/demons within 25 units
+    _lightningAoeKill(targetPos, 25);
+
+    lightningEffects.push({
+        boltGroup, strikeLight, skyLight, blastMesh, ringMesh,
+        elapsed: 0, duration: 1.5
+    });
+}
+
+function _lightningAoeKill(centerPos, radius) {
+    // Iterate backwards so splicing doesn't skip entries
+    for (let i = demons.length - 1; i >= 0; i--) {
+        if (demons[i].mesh.position.distanceTo(centerPos) <= radius) {
+            explodeDemon(demons[i], i);
+        }
+    }
+    for (let i = npcs.length - 1; i >= 0; i--) {
+        if (npcs[i].mesh.position.distanceTo(centerPos) <= radius) {
+            explodeNPC(npcs[i], i);
+        }
+    }
+}
+
+function updateLightningEffects(delta) {
+    for (let i = lightningEffects.length - 1; i >= 0; i--) {
+        const ef = lightningEffects[i];
+        ef.elapsed += delta;
+        const t        = Math.min(ef.elapsed / ef.duration, 1.0);
+        const fadeOut  = 1.0 - t;
+
+        // Fade bolt lines
+        for (const line of ef.boltGroup.children) {
+            line.material.opacity = (line.material.userData.baseOpacity || 1.0) * fadeOut;
+        }
+
+        // Fade lights
+        ef.strikeLight.intensity = 12 * fadeOut;
+        ef.skyLight.intensity    = 4  * fadeOut;
+
+        // Expand blast sphere (grows to ~22-unit radius)
+        const blastScale = 1 + t * 21;
+        ef.blastMesh.scale.setScalar(blastScale);
+        ef.blastMesh.material.opacity = 0.6 * Math.max(0, 1 - t * 1.4);
+
+        // Expand ground ring
+        const ringScale = 1 + t * 18;
+        ef.ringMesh.scale.setScalar(ringScale);
+        ef.ringMesh.material.opacity = 0.9 * fadeOut;
+
+        if (ef.elapsed >= ef.duration) {
+            scene.remove(ef.boltGroup);
+            scene.remove(ef.strikeLight);
+            scene.remove(ef.skyLight);
+            scene.remove(ef.blastMesh);
+            scene.remove(ef.ringMesh);
+            lightningEffects.splice(i, 1);
+        }
+    }
+}

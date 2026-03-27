@@ -187,7 +187,7 @@ let dragonVelocity = new THREE.Vector3();
 const mountedPlayerLocalOffset = new THREE.Vector3(3, 1.8, 0);
 let dragonIsWhite = false;
 let isGrounded = false;
-let infiniteJump = true; //DEBUG: set to true for testing
+let infiniteJump = DEBUG_INF_JUMP;
 let nearCampfireFlag = false;
 let campfireShieldTimer = 0;  // seconds remaining of campfire shield after leaving range
 let enclosedStructureBounds = []; // footprints of houses/caves/tents — dragon avoids landing on these
@@ -285,3 +285,8 @@ let talismanBaseY = 0;
 let hhSkullOnGround = null;
 let swordSwipeGroup = null;
 let swordSwipeTimer = 0;
+
+// ── Sword aura charge system ──────────────────────────────────────────────────
+let swordAuraActive = false;      // true when sword blade is charged / aurafied
+let swordPostAuraKills = 0;       // kills since aura was last discharged (toward next 100-kill recharge)
+let lightningEffects = [];        // active lightning strike visual effects
