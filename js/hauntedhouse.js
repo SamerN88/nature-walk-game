@@ -45,6 +45,7 @@ const CEM_POST_H = 7;
 const CEM_POST_R = 0.55;
 const CEM_GRAVE_DIGS = 10;
 const CEM_MIN_DIST_FROM_HH = 500;
+const TALISMAN_ICON_SRC = 'images/talisman.png';
 
 // ── Floor-1 corner positions (local x,z) for SM spawning ────────────────────
 const HH_CORNERS = [
@@ -1188,7 +1189,7 @@ function createCemetery() {
 
     if (DEBUG_TALISMAN) {
         hasTalisman = true;
-        addInventoryItem('talisman', 'Talisman', null, { type: 'object', itemKey: 'talisman' });
+        addInventoryItem('talisman', 'Talisman', TALISMAN_ICON_SRC, { type: 'object', itemKey: 'talisman' });
     }
 }
 
@@ -1270,7 +1271,7 @@ function tryPickupTalisman(aimDir, punchRange) {
     hasTalisman = true;
     scene.remove(talismanItemMesh);
     talismanItemMesh = null;
-    addInventoryItem('talisman', 'Talisman', null, { type: 'object', itemKey: 'talisman' });
+    addInventoryItem('talisman', 'Talisman', TALISMAN_ICON_SRC, { type: 'object', itemKey: 'talisman' });
     flashEquipHint('TALISMAN FOUND');
     return true;
 }

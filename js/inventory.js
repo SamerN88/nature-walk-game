@@ -270,6 +270,27 @@ function toggleInventory() {
 
 let viewingNoteItem = null;
 
+function setupHiDPICanvas(canvas, cssWidth, cssHeight, maxDpr = 2) {
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, maxDpr));
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    if (cssWidth > 0) canvas.style.width = cssWidth + 'px';
+    if (cssHeight > 0) canvas.style.height = cssHeight + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+    return ctx;
+}
+
+function drawContainedImage(ctx, img, boxWidth, boxHeight) {
+    const scale = Math.min(boxWidth / img.width, boxHeight / img.height);
+    const drawW = img.width * scale;
+    const drawH = img.height * scale;
+    ctx.drawImage(img, (boxWidth - drawW) / 2, (boxHeight - drawH) / 2, drawW, drawH);
+}
+
 function renderInventoryGrid() {
     const grid  = document.getElementById('inventory-grid');
     const panel = document.getElementById('inventory-panel');
@@ -283,27 +304,29 @@ function renderInventoryGrid() {
         el.title = item.name;
 
         if (item.type === 'object') {
-            // 3D icon — no label, no background, square canvas matching note slot size
-            const iconSrc = _renderItemIconDataURL(item.itemKey);
-            const TW = 256, TH = 256;
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = TW;
-            thumbCanvas.height = TH;
-            thumbCanvas.style.width = '62px';
-            thumbCanvas.style.height = '62px';
-            thumbCanvas.style.display = 'block';
-            thumbCanvas.style.borderRadius = '3px';
-            const tctx = thumbCanvas.getContext('2d');
-            const tImg = new Image();
-            tImg.onload = () => {
-                tctx.clearRect(0, 0, TW, TH);
-                // Center the image with letterboxing, no background fill
-                const s = Math.min(TW / tImg.width, TH / tImg.height);
-                const dw = tImg.width * s, dh = tImg.height * s;
-                tctx.drawImage(tImg, (TW - dw) / 2, (TH - dh) / 2, dw, dh);
-            };
-            tImg.src = iconSrc;
-            el.appendChild(thumbCanvas);
+            // Static object art stays crisp as a plain <img>; rendered 3D items still use the canvas path.
+            if (item.imgSrc) {
+                const img = document.createElement('img');
+                img.className = 'inv-object-image';
+                img.src = item.imgSrc;
+                img.alt = item.name;
+                img.draggable = false;
+                el.appendChild(img);
+            } else {
+                const iconSrc = _renderItemIconDataURL(item.itemKey);
+                const SLOT_SIZE = 62;
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.style.display = 'block';
+                thumbCanvas.style.borderRadius = '3px';
+                const tctx = setupHiDPICanvas(thumbCanvas, SLOT_SIZE, SLOT_SIZE, 3);
+                const tImg = new Image();
+                tImg.onload = () => {
+                    tctx.clearRect(0, 0, SLOT_SIZE, SLOT_SIZE);
+                    drawContainedImage(tctx, tImg, SLOT_SIZE, SLOT_SIZE);
+                };
+                tImg.src = iconSrc;
+                el.appendChild(thumbCanvas);
+            }
             el.addEventListener('click', () => openItemViewer(item));
         } else {
             // Render a torn-edge parchment thumbnail in a small canvas
@@ -356,17 +379,27 @@ function openNoteViewer(item) {
 }
 
 function openItemViewer(item) {
-    // Reuse the note-viewer container but render the 3D icon into the canvas
-    // without parchment — just the object on a transparent/dark background.
+    // Reuse the note-viewer container to show either the supplied object image
+    // or the rendered 3D icon on a plain dark background.
     viewingNoteItem = item;
     const viewer = document.getElementById('note-viewer');
     const canvas = document.getElementById('note-viewer-canvas');
     if (!viewer || !canvas) return;
 
     const VW = 480, VH = 480;
-    canvas.width = VW;
-    canvas.height = VH;
-    const vctx = canvas.getContext('2d');
+    const vctx = setupHiDPICanvas(canvas, VW, VH, 3);
+
+    if (item.imgSrc) {
+        vctx.fillStyle = 'rgba(18,18,22,1)';
+        vctx.fillRect(0, 0, VW, VH);
+        const vImg = new Image();
+        vImg.onload = () => {
+            drawContainedImage(vctx, vImg, VW, VH);
+        };
+        vImg.src = item.imgSrc;
+        viewer.style.display = 'flex';
+        return;
+    }
 
     // Render the 3D icon at high resolution for the viewer
     _getIconRenderer();

@@ -593,17 +593,29 @@
             background: rgba(48,48,54,0.6);
             border: 1px solid rgba(75,75,82,0.45);
             border-radius: 8px;
+            width: 80px;
+            height: 80px;
+            box-sizing: border-box;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            padding: 10px 12px;
+            padding: 5px;
             transition: background 0.05s, transform 0.05s;
             user-select: none;
         }
         .inv-item:hover {
             background: rgba(72,72,80,0.75);
             transform: scale(1.03);
+        }
+        .inv-object-image {
+            width: 62px;
+            height: 62px;
+            object-fit: contain;
+            display: block;
+            border-radius: 3px;
+            user-select: none;
+            -webkit-user-drag: none;
         }
 
         /* ── Handheld panel (bottom of screen) ── */
@@ -806,7 +818,7 @@
         </div>
         <!-- Handheld items: bottom of screen -->
         <div id="handheld-panel">
-            <div class="handheld-bar-title">Handheld</div>
+            <div class="handheld-bar-title">Hotbar</div>
             <div id="handheld-slots-row"></div>
         </div>
         <!-- Hover tooltip -->
