@@ -10,6 +10,8 @@ const HH_F2_H = 12;            // floor 2 wall height above floor 1 (8 × 1.5)
 const HH_GABLE_RISE = 18;      // gable peak rise above floor-2 walls (12 × 1.5)
 const HH_F2_FLOOR_T = HH_GABLE_RISE / 8; // 2.25; matches each stepped gable roof slab thickness
 const HH_F2_SURFACE_Y = HH_F1_H + HH_F2_FLOOR_T;
+const HH_ROOF_EAVE_OVERHANG = 6.6;
+const HH_ROOF_END_OVERHANG = 6.6;
 const HH_ENT_W = 4.2;          // entrance opening width
 const HH_ENT_H = 5.5;          // entrance opening height (~2.75× player height)
 const HH_HALL_X = 17;          // east corridor at x=17 (HH_HALF_W − 7, keeps corridor width = 7)
@@ -93,8 +95,9 @@ function createHauntedHouse() {
     const wallMat  = new THREE.MeshLambertMaterial({ color: 0x343242 });
     const floorMat = new THREE.MeshLambertMaterial({ color: 0x16141c });
     const roofMat  = new THREE.MeshLambertMaterial({ color: 0x000000 });
-    // Gable end-walls need DoubleSide so both faces shade consistently
-    const gableMat = new THREE.MeshLambertMaterial({ color: 0x343242, side: THREE.DoubleSide });
+    // Gable end-walls share the wall material color, but need DoubleSide for consistent shading.
+    const gableMat = wallMat.clone();
+    gableMat.side = THREE.DoubleSide;
 
     // ── Helper: add visual box to group ──────────────────────────────────────
     const B = (w, h, d, lx, ly, lz, mat) => {
@@ -449,11 +452,15 @@ function createHauntedHouse() {
         const gBase = f2Y + HH_F2_H;
         const halfRun = HH_HALF_W;
         const rise = HH_GABLE_RISE;
-        const slabLen = Math.sqrt(halfRun * halfRun + rise * rise);
+        const roofOverhang = HH_ROOF_EAVE_OVERHANG;
+        const roofEndOverhang = HH_ROOF_END_OVERHANG;
+        const slabLen = Math.sqrt(halfRun * halfRun + rise * rise) + roofOverhang;
         const slabAngle = Math.atan2(rise, halfRun);
-        const slabDepth = HH_D + HH_WALL_T * 2;
-        const slabCY = gBase + rise / 2;
-        const slabCX = halfRun / 2;
+        const slabDepth = HH_D + HH_WALL_T * 2 + roofEndOverhang * 2;
+        const overhangShiftX = Math.cos(slabAngle) * roofOverhang * 0.5;
+        const overhangShiftY = Math.sin(slabAngle) * roofOverhang * 0.5;
+        const slabCY = gBase + rise / 2 - overhangShiftY;
+        const slabCX = halfRun / 2 + overhangShiftX;
         const slabThick = 0.8;
 
         const westSlab = new THREE.Mesh(new THREE.BoxGeometry(slabLen, slabThick, slabDepth), roofMat);
@@ -491,6 +498,8 @@ function createHauntedHouse() {
             const STEP_H = HH_GABLE_RISE / N;       // 2.25 units tall
             const STEP_T = STEP_H;                  // slab thickness (must be > 2.0)
             const gB     = HH_F2_SURFACE_Y + HH_F2_H; // local-Y base of gable zone
+            const roofHalfD = HH_HALF_D + HH_WALL_T + HH_ROOF_END_OVERHANG;
+            const extraEaveSteps = 2;
 
             for (let i = 0; i < N; i++) {
                 const topY_l = gB + HH_GABLE_RISE * (1.0 - i / N);
@@ -500,12 +509,12 @@ function createHauntedHouse() {
                 // Left-half slab
                 collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
                     localX: -stepCX, localY: slabCY, localZ: 0,
-                    halfW: STEP_W / 2, halfD: HH_HALF_D, thickness: STEP_T
+                    halfW: STEP_W / 2, halfD: roofHalfD, thickness: STEP_T
                 }));
                 // Right-half slab
                 collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
                     localX:  stepCX, localY: slabCY, localZ: 0,
-                    halfW: STEP_W / 2, halfD: HH_HALF_D, thickness: STEP_T
+                    halfW: STEP_W / 2, halfD: roofHalfD, thickness: STEP_T
                 }));
 
                 // Riser wall between step i and step i+1.
@@ -517,11 +526,11 @@ function createHauntedHouse() {
 
                     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
                         localX: -riserX, localY: riserCY, localZ: 0,
-                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                        halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
                     }));
                     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
                         localX:  riserX, localY: riserCY, localZ: 0,
-                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                        halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
                     }));
                 }
 
@@ -547,6 +556,30 @@ function createHauntedHouse() {
                 }));
             }
 
+            for (let e = 0; e < extraEaveSteps; e++) {
+                const eaveStepCX = HH_HALF_W + STEP_W * (e + 0.5);
+                const eaveTopY = gB - e * STEP_H;
+                const eaveSlabCY = eaveTopY - STEP_T / 2;
+                collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
+                    localX: -eaveStepCX, localY: eaveSlabCY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: roofHalfD, thickness: STEP_T
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'roofCollider', {
+                    localX: eaveStepCX, localY: eaveSlabCY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: roofHalfD, thickness: STEP_T
+                }));
+                const eaveRiserX = HH_HALF_W + e * STEP_W;
+                const eaveRiserCY = eaveTopY + STEP_H / 2 - 0.2;
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: -eaveRiserX, localY: eaveRiserCY, localZ: 0,
+                    halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: eaveRiserX, localY: eaveRiserCY, localZ: 0,
+                    halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
+                }));
+            }
+
             // Inner slabs + risers: underside mirror of the outer steps. Each inner
             // horizontal collider is a ceilingRect placed at the underside of the
             // matching outer slab, so the collision surface is on the bottom face
@@ -559,12 +592,12 @@ function createHauntedHouse() {
                 // Left-half inner slab (underside only)
                 collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
                     localX: -stepCX, localY: inner_ceilingY, localZ: 0,
-                    halfW: STEP_W / 2, halfD: HH_HALF_D
+                    halfW: STEP_W / 2, halfD: roofHalfD
                 }));
                 // Right-half inner slab (underside only)
                 collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
                     localX:  stepCX, localY: inner_ceilingY, localZ: 0,
-                    halfW: STEP_W / 2, halfD: HH_HALF_D
+                    halfW: STEP_W / 2, halfD: roofHalfD
                 }));
 
                 // Inner riser at the underside step face between inner step j and j+1.
@@ -576,13 +609,36 @@ function createHauntedHouse() {
 
                     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
                         localX: -inner_riserX, localY: inner_riserCY, localZ: 0,
-                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                        halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
                     }));
                     collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
                         localX:  inner_riserX, localY: inner_riserCY, localZ: 0,
-                        halfW: HH_WALL_T / 2, halfD: HH_HALF_D, height: STEP_H
+                        halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
                     }));
                 }
+            }
+
+            for (let e = 0; e < extraEaveSteps; e++) {
+                const eaveStepCX = HH_HALF_W + STEP_W * (e + 0.5);
+                const innerEaveCeilingY = gB - STEP_T - e * STEP_H;
+                collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
+                    localX: -eaveStepCX, localY: innerEaveCeilingY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: roofHalfD
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'ceilingRect', {
+                    localX: eaveStepCX, localY: innerEaveCeilingY, localZ: 0,
+                    halfW: STEP_W / 2, halfD: roofHalfD
+                }));
+                const innerEaveRiserX = HH_HALF_W + e * STEP_W;
+                const innerEaveRiserCY = innerEaveCeilingY + STEP_H / 2;
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: -innerEaveRiserX, localY: innerEaveRiserCY, localZ: 0,
+                    halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
+                }));
+                collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+                    localX: innerEaveRiserX, localY: innerEaveRiserCY, localZ: 0,
+                    halfW: HH_WALL_T / 2, halfD: roofHalfD, height: STEP_H
+                }));
             }
         }
     }
@@ -812,14 +868,14 @@ function _createHHForestTree(x, z) {
 // ── Create HH forest — dense dark trees + boulders within a certain radius ─────
 function createHHForest(hhX, hhZ, hhGroundY) {
     const INNER_CLEAR = 60;   // no-tree buffer around the house footprint
-    const OUTER_EDGE  = 400;
+    const OUTER_EDGE  = 300;
     const subW = (OUTER_EDGE - INNER_CLEAR) / 4;  // width of each sub-ring
 
     const rockMatDark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
 
     // Four equal-width sub-rings with deterministic tree counts.
     // Distribution from outer to inner: 10 / 20 / 50 / 20 %
-    const TOTAL_TREES = 500;
+    const TOTAL_TREES = 300;
     const rings = [
         { inner: INNER_CLEAR + 3*subW, outer: OUTER_EDGE,           count: Math.round(TOTAL_TREES * 0.05) },
         { inner: INNER_CLEAR + 2*subW, outer: INNER_CLEAR + 3*subW, count: Math.round(TOTAL_TREES * 0.10) },
