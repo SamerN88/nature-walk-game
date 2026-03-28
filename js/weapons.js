@@ -311,34 +311,141 @@ function createShieldMesh(scale = 1) {
 
 function createTalismanMesh(scale = 1) {
     const grp = new THREE.Group();
-    const stoneMat = new THREE.MeshLambertMaterial({ color: 0x4a1a6a, emissive: 0x2a0845, emissiveIntensity: 0.6 });
-    const rimMat   = new THREE.MeshLambertMaterial({ color: 0xd4a820, emissive: 0x604000, emissiveIntensity: 0.4 });
-    const gemMat   = new THREE.MeshLambertMaterial({ color: 0xcc44ee, emissive: 0x6600aa, emissiveIntensity: 0.8 });
+    const goldMat = new THREE.MeshLambertMaterial({
+        color: 0xd6a43a,
+        emissive: 0x5a3900,
+        emissiveIntensity: 0.35
+    });
+    const goldDarkMat = new THREE.MeshLambertMaterial({
+        color: 0x8b6120,
+        emissive: 0x352100,
+        emissiveIntensity: 0.2
+    });
+    const purpleMat = new THREE.MeshLambertMaterial({
+        color: 0x4d245f,
+        emissive: 0x2b0d35,
+        emissiveIntensity: 0.65
+    });
+    const gemMat = new THREE.MeshLambertMaterial({
+        color: 0xb78ac8,
+        emissive: 0x4d255e,
+        emissiveIntensity: 0.95
+    });
 
-    // Main disc
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.55 * scale, 0.55 * scale, 0.1 * scale, 12), stoneMat);
-    disc.rotation.x = Math.PI / 2;
-    grp.add(disc);
-
-    // Outer rim (torus)
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.5 * scale, 0.08 * scale, 6, 14), rimMat);
-    grp.add(rim);
-
-    // Center gem
-    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22 * scale, 0), gemMat);
-    grp.add(gem);
-
-    // Rune markings (4 small rods)
-    for (let r = 0; r < 4; r++) {
-        const angle = (r / 4) * Math.PI * 2;
-        const rod = new THREE.Mesh(new THREE.BoxGeometry(0.06 * scale, 0.28 * scale, 0.06 * scale), rimMat);
-        rod.position.set(Math.cos(angle) * 0.3 * scale, Math.sin(angle) * 0.3 * scale, 0.06 * scale);
-        rod.rotation.z = angle;
-        grp.add(rod);
+    function makeTriPoints(width, height) {
+        return [
+            new THREE.Vector2(0, height / 2),
+            new THREE.Vector2(-width / 2, -height / 2),
+            new THREE.Vector2(width / 2, -height / 2),
+        ];
     }
+
+    function tracePolygon(path, points) {
+        path.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) path.lineTo(points[i].x, points[i].y);
+        path.closePath();
+    }
+
+    function makeTriangleMesh(width, height, depth, mat) {
+        const shape = new THREE.Shape();
+        tracePolygon(shape, makeTriPoints(width, height));
+        const geom = new THREE.ExtrudeGeometry(shape, {
+            depth,
+            bevelEnabled: true,
+            bevelSize: depth * 0.12,
+            bevelThickness: depth * 0.12,
+            bevelSegments: 1
+        });
+        geom.translate(0, 0, -depth / 2);
+        return new THREE.Mesh(geom, mat);
+    }
+
+    function makeTriangleFrameMesh(width, height, depth, frame, mat) {
+        const outer = makeTriPoints(width, height);
+        const innerW = Math.max(0.08, width - frame * 2);
+        const innerH = Math.max(0.08, height - frame * 2);
+        const innerScaleX = innerW / width;
+        const innerScaleY = innerH / height;
+        const inner = outer.map(p => new THREE.Vector2(p.x * innerScaleX, p.y * innerScaleY));
+
+        const shape = new THREE.Shape();
+        tracePolygon(shape, outer);
+        const hole = new THREE.Path();
+        tracePolygon(hole, inner.slice().reverse());
+        shape.holes.push(hole);
+
+        const geom = new THREE.ExtrudeGeometry(shape, {
+            depth,
+            bevelEnabled: true,
+            bevelSize: depth * 0.1,
+            bevelThickness: depth * 0.1,
+            bevelSegments: 1
+        });
+        geom.translate(0, 0, -depth / 2);
+        return new THREE.Mesh(geom, mat);
+    }
+
+    const backPlate = makeTriangleMesh(1.46 * scale, 1.24 * scale, 0.08 * scale, purpleMat);
+    backPlate.position.z = -0.04 * scale;
+    backPlate.position.y -= 0.04 * scale
+    grp.add(backPlate);
+
+    const outerFrame = makeTriangleFrameMesh(1.68 * scale, 1.48 * scale, 0.12 * scale, 0.15 * scale, goldMat);
+    outerFrame.position.z = 0.03 * scale;
+    grp.add(outerFrame);
+
+    // Small solid apex triangle at very top of emblem face
+    const apexTri = makeTriangleMesh(0.26 * scale, 0.20 * scale, 0.07 * scale, goldMat);
+    apexTri.position.set(0, 0.57 * scale, 0.07 * scale);
+    grp.add(apexTri);
+
+    // Inner triangle frame (~65% of outer)
+    const innerFrame = makeTriangleFrameMesh(1.08 * scale, 0.95 * scale, 0.08 * scale, 0.09 * scale, goldMat);
+    innerFrame.position.set(0, -0.18 * scale, 0.04 * scale);
+    grp.add(innerFrame);
+
+    // Hourglass / "black widow" symbol: two triangle outlines touching tip-to-tip.
+    // Upper inverted + lower upright share their apex at y ≈ -0.08*scale.
+    const hgW = 0.62 * scale, hgH = 0.38 * scale, hgD = 0.08 * scale, hgF = 0.07 * scale;
+    const hgZ = 0.095 * scale;
+    // Upper triangle flipped so apex points down; center placed so apex lands at -0.08*scale
+    const hourglassTop = makeTriangleFrameMesh(hgW, hgH, hgD, hgF, goldMat);
+    hourglassTop.position.set(0, -0.05 * scale, hgZ); // apex-down at 0.11 - hgH/2 = -0.08 ✓
+    hourglassTop.rotation.z = Math.PI;
+    grp.add(hourglassTop);
+    // Lower triangle apex points up; center placed so apex lands at -0.08*scale
+    const hourglassBot = makeTriangleFrameMesh(hgW, hgH, hgD, hgF, goldMat);
+    hourglassBot.position.set(0, -0.36 * scale, hgZ); // apex-up at -0.27 + hgH/2 = -0.08 ✓
+    grp.add(hourglassBot);
+
+    const hanger = new THREE.Mesh(new THREE.TorusGeometry(0.13 * scale, 0.035 * scale, 10, 20), goldDarkMat);
+    hanger.position.set(0, 0.885 * scale, 0.03 * scale);
+    grp.add(hanger);
+
+    const hangerCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * scale, 0.09 * scale, 0.13 * scale, 10), goldMat);
+    hangerCollar.position.set(0, 0.74 * scale, 0.03 * scale);
+    grp.add(hangerCollar);
+
+    const stemTop = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.1 * scale, 0.16 * scale, 10), goldMat);
+    stemTop.position.set(0, -0.8 * scale, 0.02 * scale);
+    grp.add(stemTop);
+
+    const stemMid = new THREE.Mesh(new THREE.CylinderGeometry(0.085 * scale, 0.055 * scale, 0.18 * scale, 10), goldDarkMat);
+    stemMid.position.set(0, -0.95 * scale, 0.02 * scale);
+    grp.add(stemMid);
+
+    const gemCap = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * scale, 0.1 * scale, 0.1 * scale, 10), goldMat);
+    gemCap.position.set(0, -1.07 * scale, 0.02 * scale);
+    grp.add(gemCap);
+
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.15 * scale, 0), gemMat);
+    gem.position.set(0, -1.19 * scale, 0.02 * scale);
+    gem.scale.y = 1.35;
+    grp.add(gem);
 
     // Glow light
     const glow = new THREE.PointLight(0xaa33ff, 0, 10);
+    glow.position.set(0, -0.12 * scale, 0.4 * scale);
     glow.userData.isTalismanGlow = true;
     grp.add(glow);
 
@@ -967,14 +1074,22 @@ function spawnWoodSplinterEffect(hitPoint) {
     digParticles.push({ meshes, velocities, life: 0, maxLife: 0.7 });
 }
 
-function spawnDigParticles(x, y, z) {
+function spawnDigParticles(x, y, z, colorHex) {
     const count = 18;
     const meshes = [];
     const velocities = [];
+    const baseHSL = { h: 0, s: 0, l: 0 };
+    if (colorHex !== undefined) new THREE.Color(colorHex).getHSL(baseHSL);
     for (let i = 0; i < count; i++) {
         const size = 0.12 + Math.random() * 0.18;
+        const color = colorHex !== undefined
+            ? new THREE.Color().setHSL(
+                baseHSL.h + (Math.random() - 0.5) * 0.02,
+                baseHSL.s + (Math.random() - 0.5) * 0.08,
+                baseHSL.l + Math.random() * 0.06)
+            : new THREE.Color().setHSL(0.07 + Math.random() * 0.05, 0.6, 0.28 + Math.random() * 0.1);
         const mat = new THREE.MeshLambertMaterial({
-            color: new THREE.Color().setHSL(0.07 + Math.random() * 0.05, 0.6, 0.28 + Math.random() * 0.1),
+            color,
             transparent: true,
             opacity: 1
         });

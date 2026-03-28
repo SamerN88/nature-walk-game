@@ -48,6 +48,59 @@ function createGround() {
     scene.add(path);
 }
 
+function flattenTerrainRotatedRect(worldX, worldZ, halfW, halfD, rotation = 0, targetHeight = null, blend = 0) {
+    if (!groundMesh || !terrainHeights) {
+        return targetHeight !== null ? targetHeight : getBaseTerrainHeight(worldX, worldZ);
+    }
+
+    const resolvedTargetHeight = targetHeight !== null ? targetHeight : getGroundHeight(worldX, worldZ);
+    const geometry = groundMesh.geometry;
+    const positions = geometry.attributes.position.array;
+    const n = TERRAIN_SEGS + 1;
+    const blendWidth = Math.max(0, blend);
+    let changed = false;
+
+    for (let i = 0; i < positions.length; i += 3) {
+        const localX = positions[i];
+        const localY = positions[i + 1];
+        const vertexWorldZ = -localY;
+        const local = worldToLocalXZ(localX, vertexWorldZ, worldX, worldZ, rotation);
+
+        const dx = Math.abs(local.x) - halfW;
+        const dz = Math.abs(local.z) - halfD;
+        const outsideDist = Math.max(dx, dz);
+        if (outsideDist > blendWidth) continue;
+
+        let influence = 1;
+        if (outsideDist > 0) {
+            if (blendWidth <= 0) continue;
+            influence = 1 - smoothstep01(outsideDist / blendWidth);
+        }
+        if (influence <= 0) continue;
+
+        const currentHeight = positions[i + 2];
+        const nextHeight = currentHeight + (resolvedTargetHeight - currentHeight) * influence;
+        if (Math.abs(nextHeight - currentHeight) < 1e-5) continue;
+
+        positions[i + 2] = nextHeight;
+
+        const ix = Math.round((localX + WORLD_SIZE) / (WORLD_SIZE * 2) * TERRAIN_SEGS);
+        const iy = Math.round((localY + WORLD_SIZE) / (WORLD_SIZE * 2) * TERRAIN_SEGS);
+        if (ix >= 0 && ix < n && iy >= 0 && iy < n) {
+            terrainHeights[iy * n + ix] = nextHeight;
+        }
+        changed = true;
+    }
+
+    if (!changed) return resolvedTargetHeight;
+
+    geometry.attributes.position.needsUpdate = true;
+    geometry.computeVertexNormals();
+    geometry.attributes.normal.needsUpdate = true;
+    geometry.computeBoundingSphere();
+    return resolvedTargetHeight;
+}
+
 function getBaseTerrainHeight(worldX, worldZ) {
     return Math.sin(worldX * 0.02) * Math.cos(worldZ * 0.02) * 5 +
            Math.sin(worldX * 0.05) * Math.cos(worldZ * 0.03) * 2;
@@ -158,4 +211,3 @@ function getGroundHeight(worldX, worldZ) {
         return h00 * (1 - tx) + h10 * (tx - ty) + h11 * ty;
     }
 }
-

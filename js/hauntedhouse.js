@@ -45,6 +45,9 @@ const CEM_POST_H = 7;
 const CEM_POST_R = 0.55;
 const CEM_GRAVE_DIGS = 10;
 const CEM_MIN_DIST_FROM_HH = 500;
+const CEM_Y_OFFSET = 0.5;
+const CEM_TERRAIN_FLAT_MARGIN = 20;
+const CEM_TERRAIN_FLAT_BLEND = 30;
 const TALISMAN_ICON_SRC = 'images/talisman.png';
 
 // ── Floor-1 corner positions (local x,z) for SM spawning ────────────────────
@@ -972,15 +975,28 @@ function createCemetery() {
     if (!placement) { console.warn('Cemetery: no placement found'); return; }
 
     const { x: ox, z: oz, rotation: rot } = placement;
-    const groundY = getGroundHeight(ox, oz);
-
+    // Flatten a slightly larger area than the cemetery footprint so the visible
+    // terrain stays level despite the coarse 30-unit terrain grid spacing.
+    const cemeteryTerrainY = flattenTerrainRotatedRect(
+        ox,
+        oz,
+        CEM_HALF + CEM_TERRAIN_FLAT_MARGIN,
+        CEM_HALF + CEM_TERRAIN_FLAT_MARGIN,
+        rot,
+        getGroundHeight(ox, oz),
+        CEM_TERRAIN_FLAT_BLEND
+    );
+    const groundY = cemeteryTerrainY;
+    const cemeteryFloorYShift = -0.2; // tune to shift entire cemetery up/down (stone posts are exempt)
+    const cemeteryFloorY = groundY + CEM_Y_OFFSET + cemeteryFloorYShift;
     const cemGrp = new THREE.Group();
-    const cColliders = [];
 
     const ironMat  = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
     const stoneMat = new THREE.MeshLambertMaterial({ color: 0x5a5a62 });
     const dirtMat  = new THREE.MeshLambertMaterial({ color: 0x3a2e22 });
-    const darkStone = new THREE.MeshLambertMaterial({ color: 0x383840 });
+    const graveMat = new THREE.MeshLambertMaterial({ color: 0x555568 });
+    const graveDirtMat = new THREE.MeshLambertMaterial({ color: 0x2a180f });
+    const walkwayMat = new THREE.MeshLambertMaterial({ color: 0x66666f });
 
     // Helper
     const CB = (w, h, d, lx, ly, lz, mat) => {
@@ -991,14 +1007,68 @@ function createCemetery() {
         cemGrp.add(m);
         return m;
     };
+    const addCemeteryWall = (localX, localZ, halfW, halfD, minY, maxY, localRotation = 0, extra = {}) => {
+        const world = localToWorldXZ(ox, oz, localX, localZ, rot);
+        return addSolidWallRect(world.x, world.z, halfW, halfD, cemeteryFloorY + minY, cemeteryFloorY + maxY, rot + localRotation, extra);
+    };
+    const addCemeteryCeiling = (localX, localZ, halfW, halfD, localY, localRotation = 0) => {
+        const world = localToWorldXZ(ox, oz, localX, localZ, rot);
+        return addCeilingRect(world.x, world.z, halfW, halfD, cemeteryFloorY + localY, rot + localRotation);
+    };
+    const makeGraveDirtSpotMesh = () => {
+        const dirtShape = new THREE.Shape();
+        const pts = [
+            new THREE.Vector2(-1.45, -0.46),
+            new THREE.Vector2(-0.82, -0.62),
+            new THREE.Vector2(0.14, -0.58),
+            new THREE.Vector2(1.18, -0.44),
+            new THREE.Vector2(1.54, -0.14),
+            new THREE.Vector2(1.48, 0.16),
+            new THREE.Vector2(0.72, 0.38),
+            new THREE.Vector2(-0.18, 0.44),
+            new THREE.Vector2(-1.02, 0.3),
+            new THREE.Vector2(-1.5, 0.04),
+        ];
+        dirtShape.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) dirtShape.lineTo(pts[i].x, pts[i].y);
+        dirtShape.closePath();
+        const mesh = new THREE.Mesh(new THREE.ShapeGeometry(dirtShape), graveDirtMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.rotation.z = -Math.PI / 2;
+        mesh.receiveShadow = true;
+        return mesh;
+    };
+    const makeTombCapMesh = () => {
+        const capShape = new THREE.Shape();
+        capShape.absarc(0, 0, 0.6, Math.PI, 0, false);
+        capShape.lineTo(0.6, 0);
+        capShape.lineTo(-0.6, 0);
+        capShape.closePath();
+        const geom = new THREE.ExtrudeGeometry(capShape, {
+            depth: 0.3,
+            bevelEnabled: false
+        });
+        geom.translate(0, 0, -0.15);
+        const mesh = new THREE.Mesh(geom, graveMat);
+        mesh.scale.y = 0.5;
+        mesh.rotation.z = Math.PI;
+        mesh.castShadow = true;
+        mesh.receiveShadow = false;
+        return mesh;
+    };
 
-    // ── Ground slab ─────────────────────────────────────────────────────────
-    CB(CEM_HALF * 2, 0.25, CEM_HALF * 2, 0, -0.25, 0, dirtMat);
+    // ── Ground slab and walkways (5-unit thickness avoids terrain gaps) ──────
+    CB(CEM_HALF * 2, 5, CEM_HALF * 2, 0, -5, 0, dirtMat);
+    CB(4.4, 5, CEM_HALF * 2 - 2.4, 0, 0.08 - 5, 0, walkwayMat);
+    CB(CEM_HALF * 2 - 2.4, 5, 4.4, 0, 0.08 - 5, 0, walkwayMat);
+    // Register as climbable surfaces so the player walks on their top faces
+    addLocalStructureBox(ox, oz, 0, 0, cemeteryFloorY - 5,        CEM_HALF * 2,        5, CEM_HALF * 2,        rot);
+    addLocalStructureBox(ox, oz, 0, 0, cemeteryFloorY + 0.08 - 5, 4.4,                 5, CEM_HALF * 2 - 2.4,  rot);
+    addLocalStructureBox(ox, oz, 0, 0, cemeteryFloorY + 0.08 - 5, CEM_HALF * 2 - 2.4, 5, 4.4,                  rot);
 
     // ── Fence posts: 4 corners + 2 per side (at 1/3 and 2/3 of each side) ───
     const postPositions = [];
-    const sideLen = CEM_HALF * 2;
-    const third = sideLen / 3;
+    const third = CEM_HALF * 2 / 3;
 
     // 4 corners
     for (const [px, pz] of [[-CEM_HALF, -CEM_HALF], [CEM_HALF, -CEM_HALF],
@@ -1015,31 +1085,30 @@ function createCemetery() {
 
     for (const pp of postPositions) {
         const post = new THREE.Mesh(new THREE.CylinderGeometry(CEM_POST_R, CEM_POST_R, CEM_POST_H, 8), stoneMat);
-        post.position.set(pp.x, CEM_POST_H / 2, pp.z);
+        post.position.set(pp.x, CEM_POST_H / 2 - 1 - cemeteryFloorYShift, pp.z);
         post.castShadow = true;
         cemGrp.add(post);
         // Post cap
         const cap = new THREE.Mesh(new THREE.BoxGeometry(CEM_POST_R * 2.2, CEM_POST_R, CEM_POST_R * 2.2), stoneMat);
-        cap.position.set(pp.x, CEM_POST_H + CEM_POST_R / 2, pp.z);
+        cap.position.set(pp.x, CEM_POST_H + CEM_POST_R / 2 - 1 - cemeteryFloorYShift, pp.z);
         cemGrp.add(cap);
     }
 
     // ── Fence panels (iron rails between posts) ───────────────────────────────
     const fenceRailH = 0.12;
-    const railMat = ironMat;
 
     const addFencePanel = (x1, z1, x2, z2) => {
         const dx = x2 - x1, dz = z2 - z1;
         const len = Math.hypot(dx, dz);
-        const angle = Math.atan2(dx, dz);
+        const angle = Math.atan2(dz, dx);
         const cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
         // Top rail
-        const rTop = new THREE.Mesh(new THREE.BoxGeometry(len, fenceRailH, fenceRailH), railMat);
+        const rTop = new THREE.Mesh(new THREE.BoxGeometry(len, fenceRailH, fenceRailH), ironMat);
         rTop.position.set(cx, CEM_FENCE_H - 0.3, cz);
         rTop.rotation.y = angle;
         cemGrp.add(rTop);
         // Bottom rail
-        const rBot = new THREE.Mesh(new THREE.BoxGeometry(len, fenceRailH, fenceRailH), railMat);
+        const rBot = new THREE.Mesh(new THREE.BoxGeometry(len, fenceRailH, fenceRailH), ironMat);
         rBot.position.set(cx, 0.8, cz);
         rBot.rotation.y = angle;
         cemGrp.add(rBot);
@@ -1049,17 +1118,10 @@ function createCemetery() {
             const t = (p + 0.5) / numPickets;
             const px = x1 + t * dx;
             const pz = z1 + t * dz;
-            const picket = new THREE.Mesh(new THREE.BoxGeometry(0.08, CEM_FENCE_H, 0.08), railMat);
+            const picket = new THREE.Mesh(new THREE.BoxGeometry(0.08, CEM_FENCE_H, 0.08), ironMat);
             picket.position.set(px, CEM_FENCE_H / 2, pz);
             cemGrp.add(picket);
         }
-        // Wall collider for this panel
-        const wallX = cx, wallZ = cz;
-        cColliders.push(createColliderMarker(cemGrp, 'solidWall', {
-            localX: cx, localY: CEM_FENCE_H / 2, localZ: cz,
-            halfW: len / 2 + 0.1, halfD: 0.2, height: CEM_FENCE_H,
-            localRotation: angle
-        }));
     };
 
     // ── Fence panels around the 4 sides (gap on south side for entrance) ──────
@@ -1073,118 +1135,238 @@ function createCemetery() {
     // East side: full
     addFencePanel( CEM_HALF, -CEM_HALF, CEM_HALF, CEM_HALF);
 
-    // ── Entrance sign ─────────────────────────────────────────────────────────
-    const signW = CEM_ENT_HALF_W * 2 + 1.5;
-    const signH = 2.2;
-    const signBoard = CB(signW, signH, 0.35, 0, CEM_POST_H - 0.5, CEM_HALF + 0.05, ironMat);
+    // ── Stone step perimeter at base of fence ─────────────────────────────────
+    const cemStepW   = 0.4;   // thinner than posts (diam 1.1), thicker than rails (0.08)
+    const cemStepH   = 0.1;   // top surface height above floor
+    const cemStepExt = 5;     // extends this far downward to avoid terrain gaps
+    const cemStepLY  = cemStepH - cemStepExt; // bottom at cemStepH - cemStepExt, top at cemStepH
+    const southPieceW  = CEM_HALF - CEM_ENT_HALF_W;
+    const southPieceCX = (CEM_HALF + CEM_ENT_HALF_W) / 2;
+    CB(CEM_HALF * 2, cemStepExt, cemStepW,  0,            cemStepLY, -CEM_HALF, stoneMat); // North
+    CB(southPieceW,  cemStepExt, cemStepW, -southPieceCX, cemStepLY,  CEM_HALF, stoneMat); // South left
+    CB(southPieceW,  cemStepExt, cemStepW,  southPieceCX, cemStepLY,  CEM_HALF, stoneMat); // South right
+    CB(cemStepW, cemStepExt, CEM_HALF * 2, -CEM_HALF, cemStepLY, 0, stoneMat);            // West
+    CB(cemStepW, cemStepExt, CEM_HALF * 2,  CEM_HALF, cemStepLY, 0, stoneMat);            // East
 
-    // Draw text onto canvas for the sign
-    const signCanvas = document.createElement('canvas');
-    signCanvas.width = 512; signCanvas.height = 128;
-    const sctx = signCanvas.getContext('2d');
-    sctx.fillStyle = '#1a1a1a';
-    sctx.fillRect(0, 0, 512, 128);
-    sctx.fillStyle = '#c8c8b0';
-    sctx.font = 'bold 18px serif';
-    sctx.textAlign = 'center';
-    sctx.textBaseline = 'middle';
-    sctx.fillText('QUOD TU ES, EGO FUI;', 256, 44);
-    sctx.fillText('QUOD EGO SUM, TU ERIS.', 256, 84);
-    const signTex = new THREE.CanvasTexture(signCanvas);
-    const signFaceMat = new THREE.MeshBasicMaterial({ map: signTex, side: THREE.DoubleSide });
-    const signFace = new THREE.Mesh(new THREE.PlaneGeometry(signW - 0.1, signH - 0.2), signFaceMat);
+    // ── Entrance sign ─────────────────────────────────────────────────────────
+    const signW = CEM_ENT_HALF_W * 2;
+    const signH = 2.2;
+    CB(signW, signH, 0.35, 0, CEM_POST_H - 0.5, CEM_HALF + 0.05, graveMat); // stone-gray backing
+    // Cemetery maxim sign face: base64 PNG with transparent background + dark text
+    const signTex = new THREE.TextureLoader().load(IMAGE_CEMETERY_MAXIM);
+    const signFaceMat = new THREE.MeshBasicMaterial({
+        map: signTex,
+        color: 0xffd7a0,
+        transparent: true,
+        alphaTest: 0.05,
+        side: THREE.DoubleSide
+    });
+    const signFace = new THREE.Mesh(new THREE.PlaneGeometry(signW - 1.4, signH - 1.2), signFaceMat);
     signFace.position.set(0, CEM_POST_H - 0.5 + signH / 2, CEM_HALF + 0.24);
     cemGrp.add(signFace);
 
-    // ── Tombstones (3x3 grid inside cemetery) ────────────────────────────────
-    const graveMat = new THREE.MeshLambertMaterial({ color: 0x555568 });
-    const gravePositions = [
-        [-14, -16], [-7, -16], [0, -16], [8, -16],
-        [-14,  -8], [-7,  -8], [0,  -8], [8,  -8],
-        [-14,   0],
-    ];
-    for (const [gx, gz] of gravePositions) {
-        // Base slab
-        const tslab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 0.8), graveMat);
-        tslab.position.set(gx, 0.1, gz);
-        cemGrp.add(tslab);
-        // Stone
-        const tstone = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.3), graveMat);
-        tstone.position.set(gx, 1.2, gz + 0.1);
-        tstone.castShadow = true;
-        cemGrp.add(tstone);
-        // Rounded top
-        const tcap = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.3, 8, 1, false, 0, Math.PI), graveMat);
-        tcap.position.set(gx, 2.45, gz + 0.1);
-        tcap.rotation.x = Math.PI / 2;
-        cemGrp.add(tcap);
+    // ── Narrow stone supports flanking the entrance, holding the sign ─────────
+    const signPostR = 0.3;  // thinner than regular posts (CEM_POST_R=0.55)
+    const signPostH = CEM_POST_H - 0.5 + signH + 1; // spans from -1 below floor to sign top
+    const signPostCY = signPostH / 2 - 1 - cemeteryFloorYShift; // exempt from floor shift
+    for (const sx of [-CEM_ENT_HALF_W, CEM_ENT_HALF_W]) {
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(signPostR, signPostR, signPostH, 8), stoneMat);
+        sp.position.set(sx, signPostCY, CEM_HALF);
+        sp.castShadow = true;
+        cemGrp.add(sp);
     }
-
-    // ── Talisman grave (far left = northwest corner, local: x≈-18, z≈-18) ───
-    const tgX = -17, tgZ = -17;
-    // Base slab (larger, slightly disturbed)
-    const tgSlab = CB(2.2, 0.2, 1.2, tgX, 0, tgZ, dirtMat);
-    // Tombstone for the talisman grave
-    const tgStone = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.5, 0.35), darkStone);
-    tgStone.position.set(tgX, 1.35, tgZ + 0.15);
-    tgStone.castShadow = true;
-    cemGrp.add(tgStone);
-    const tgCap = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.35, 8, 1, false, 0, Math.PI), darkStone);
-    tgCap.position.set(tgX, 2.77, tgZ + 0.15);
-    tgCap.rotation.x = Math.PI / 2;
-    cemGrp.add(tgCap);
 
     // ── Small stone room (northeast corner: x≈+16, z≈-16) ────────────────────
     const srX = 16, srZ = -16, srS = 8, srH = 6;
+    const srDoorW = 2.2, srDoorH = 3.6;
     const srMat = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
-    // Walls: 4 sides, no door on east/south/north but open on south (-z side)
+    const srSouthZ = srZ + srS / 2;
+    const srSouthSideW = (srS + 0.6 - srDoorW) / 2;
+    const srSouthLeftX = srX - (srDoorW / 2 + srSouthSideW / 2);
+    const srSouthRightX = srX + (srDoorW / 2 + srSouthSideW / 2);
+
+    // ── Graves ───────────────────────────────────────────────────────────────
+    const gravePitch = 4.5;
+    const tgX = -18, tgZ = -18;
+    let tgSlab = null;
+
+    const addGrave = (gx, gz, isTalisman = false) => {
+        const gravePatch = CB(2.35, 0.08, 3.1, gx, -0.08, gz, dirtMat);
+        if (isTalisman) tgSlab = gravePatch;
+
+        const dirtSpot = makeGraveDirtSpotMesh();
+        dirtSpot.position.set(gx, 0.03, gz + 0.8);
+        cemGrp.add(dirtSpot);
+
+        const tstone = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.3), graveMat);
+        tstone.position.set(gx, 0.9, gz - 1.0);
+        tstone.castShadow = true;
+        tstone.receiveShadow = false;
+        cemGrp.add(tstone);
+
+        const tcap = makeTombCapMesh();
+        tcap.position.set(gx, 2.0, gz - 1.0);
+        cemGrp.add(tcap);
+    };
+
+    let cemeteryGraveCount = 0;
+    for (let gz = -18; gz <= 18.001; gz += gravePitch) {
+        for (let gx = -18; gx <= 18.001; gx += gravePitch) {
+            const isOnWalkway = Math.abs(gx) < 0.1 || Math.abs(gz) < 0.1;
+            if (isOnWalkway) continue;
+
+            const overlapsRoom = gx > srX - srS / 2 - 1.6 &&
+                gx < srX + srS / 2 + 1.6 &&
+                gz > srZ - srS / 2 - 1.8 &&
+                gz < srZ + srS / 2 + 1.8;
+            if (overlapsRoom) continue;
+
+            const roundedX = Math.round(gx * 10) / 10;
+            const roundedZ = Math.round(gz * 10) / 10;
+            const isTalisman = roundedX === tgX && roundedZ === tgZ;
+            addGrave(roundedX, roundedZ, isTalisman);
+            cemeteryGraveCount++;
+        }
+    }
+
+    // Walls with a south-facing doorway toward the cemetery interior
     CB(srS + 0.6, srH, 0.6, srX, 0, srZ - srS / 2, srMat);            // North wall
-    CB(srS + 0.6, srH, 0.6, srX, 0, srZ + srS / 2, srMat);            // South wall
+    CB(srSouthSideW, srH, 0.6, srSouthLeftX, 0, srSouthZ, srMat);     // South wall left
+    CB(srSouthSideW, srH, 0.6, srSouthRightX, 0, srSouthZ, srMat);    // South wall right
+    CB(srDoorW, srH - srDoorH, 0.6, srX, srDoorH, srSouthZ, srMat);   // Door lintel
     CB(0.6, srH, srS, srX - srS / 2, 0, srZ, srMat);                  // West wall
     CB(0.6, srH, srS, srX + srS / 2, 0, srZ, srMat);                  // East wall
     // Roof
     CB(srS + 1.2, 0.5, srS + 1.2, srX, srH, srZ, srMat);
-    // Floor
-    CB(srS, 0.2, srS, srX, -0.2, srZ, srMat);
-    // Collision walls for stone room
-    cColliders.push(createColliderMarker(cemGrp, 'solidWall', {
-        localX: srX, localY: srH / 2, localZ: srZ - srS / 2,
-        halfW: srS / 2 + 0.3, halfD: 0.3, height: srH, extra: { isEnclosed: false }
-    }));
-    cColliders.push(createColliderMarker(cemGrp, 'solidWall', {
-        localX: srX, localY: srH / 2, localZ: srZ + srS / 2,
-        halfW: srS / 2 + 0.3, halfD: 0.3, height: srH, extra: { isEnclosed: false }
-    }));
-    cColliders.push(createColliderMarker(cemGrp, 'solidWall', {
-        localX: srX - srS / 2, localY: srH / 2, localZ: srZ,
-        halfW: 0.3, halfD: srS / 2, height: srH, extra: { isEnclosed: false }
-    }));
-    cColliders.push(createColliderMarker(cemGrp, 'solidWall', {
-        localX: srX + srS / 2, localY: srH / 2, localZ: srZ,
-        halfW: 0.3, halfD: srS / 2, height: srH, extra: { isEnclosed: false }
-    }));
+    // Floor (raised 0.1 above cemetery slab to eliminate Z-fighting)
+    CB(srS, 0.2, srS, srX, -0.1, srZ, srMat);
+    // ── Stone room oil lamp ───────────────────────────────────────────────────
+    const hhMetalMat = new THREE.MeshLambertMaterial({ color: 0x1c1208 }); // very dark rustic metal
+    const hhGlassMat = new THREE.MeshLambertMaterial({
+        color: 0xffaa44, emissive: 0xff9500, emissiveIntensity: 0.85,
+        transparent: true, opacity: 0.75
+    });
+    const lamp = new THREE.Group();
+    // Wide flared base foot
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.25, 0.06, 12), hhMetalMat);
+    foot.position.y = 0.03;
+    lamp.add(foot);
+    // Fuel reservoir (squat cylinder sitting on base)
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.22, 0.18, 10), hhMetalMat);
+    tank.position.y = 0.12;
+    tank.castShadow = true;
+    lamp.add(tank);
+    // Burner collar (narrows from tank to chimney)
+    const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 0.06, 10), hhMetalMat);
+    burner.position.y = 0.24;
+    lamp.add(burner);
+    // Glass chimney (emissive, slightly tapered)
+    const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.52, 12), hhGlassMat);
+    chimney.position.y = 0.53;
+    lamp.add(chimney);
+    // Cross braces visible through the glass (X pattern)
+    for (const rz of [Math.PI / 5, -Math.PI / 5]) {
+        const brace = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.34, 4), hhMetalMat);
+        brace.rotation.z = rz;
+        brace.position.y = 0.50;
+        lamp.add(brace);
+    }
+    // Chimney top ring
+    const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.04, 6, 12), hhMetalMat);
+    topRing.rotation.x = Math.PI / 2;
+    topRing.position.y = 0.84;
+    lamp.add(topRing);
+    // Vent cap
+    const ventCap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.10, 0.05, 8), hhMetalMat);
+    ventCap.position.y = 0.89;
+    lamp.add(ventCap);
 
-    cemGrp.position.set(ox, groundY, oz);
+    // Top cap body
+    const topCapBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8), hhMetalMat);
+    topCapBody.position.y = 0.77;
+    lamp.add(topCapBody);
+
+    // Side support arms (wire frame brackets flanking the chimney, base to top ring)
+    for (const sx of [-0.17, 0.17]) {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.59, 6), hhMetalMat);
+        arm.position.set(sx, 0.505, 0);
+        lamp.add(arm);
+        // Small bracket connecting arm to tank collar
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(sx) * 2, 0.025, 0.025), hhMetalMat);
+        bracket.position.set(0, 0.22, 0);
+        lamp.add(bracket);
+    }
+
+    // Bail handle — thin wire loop arching upward
+    const bailRadius = 0.13;
+    const bailTube = 0.013;
+    const bailY = 0.95;
+
+    const bail = new THREE.Mesh(
+    new THREE.TorusGeometry(bailRadius, bailTube, 6, 20, Math.PI),
+    hhMetalMat
+    );
+    bail.position.set(0, bailY, 0);
+    lamp.add(bail);
+
+    // Vertical extensions from bail ends down to lamp
+    const bailDropTop = bailY;
+    const bailDropBottom = 0.83; // where they meet the lamp
+    const bailDropLen = bailDropTop - bailDropBottom;
+    const bailDropY = bailDropBottom + bailDropLen / 2;
+
+    for (const sx of [-bailRadius, bailRadius]) {
+    const drop = new THREE.Mesh(
+        new THREE.CylinderGeometry(bailTube, bailTube, bailDropLen, 6),
+        hhMetalMat
+    );
+    drop.position.set(sx, bailDropY, 0);
+    lamp.add(drop);
+    }
+
+    // Point light inside chimney
+    const lampLight = new THREE.PointLight(0xFF6600, 5.0, 40, 2);
+    lampLight.position.y = 0.53;
+    lamp.add(lampLight);
+    // NW corner of the room (floor raised by 0.1)
+    lamp.position.set(srX - srS / 2 + 0.75, 0.1, srZ - srS / 2 + 0.75);
+    cemGrp.add(lamp);
+    // Robust collision for the room and fence, registered directly in world space.
+    addCemeteryWall(0.5 * (-CEM_HALF - CEM_ENT_HALF_W), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
+    addCemeteryWall(0.5 * (CEM_ENT_HALF_W + CEM_HALF), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
+    addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
+    addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
+    addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
+    addCemeteryWall(srX, srZ - srS / 2, srS / 2 + 0.3, 0.9, 0, srH);         // North wall
+    addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, 0.9, 0, srH);  // South left
+    addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, 0.9, 0, srH); // South right
+    addCemeteryWall(srX, srSouthZ, srDoorW / 2, 0.9, srDoorH, srH);          // Lintel above door
+    addCemeteryWall(srX - srS / 2, srZ, srS / 2, 0.9, 0, srH, Math.PI / 2); // West wall
+    addCemeteryWall(srX + srS / 2, srZ, srS / 2, 0.9, 0, srH, Math.PI / 2); // East wall
+    addCemeteryCeiling(srX, srZ, srS / 2 + 0.5, srS / 2 + 0.5, srH);         // Roof
+
+    cemGrp.position.set(ox, cemeteryFloorY, oz);
     cemGrp.rotation.y = rot;
     scene.add(cemGrp);
     cemGrp.updateMatrixWorld(true);
-    registerColliderMarkers(cColliders);
 
     // Compute talisman grave world position for dig detection
     const tgWorld = localToWorldXZ(ox, oz, tgX, tgZ, rot);
     cemeteryData = {
         group: cemGrp,
-        worldX: ox, worldZ: oz, worldGroundY: groundY, rotation: rot,
+        worldX: ox, worldZ: oz, worldGroundY: cemeteryFloorY, rotation: rot,
         talismanGraveWorldX: tgWorld.x,
         talismanGraveWorldZ: tgWorld.z,
         talismanGraveLocalX: tgX,
         talismanGraveLocalZ: tgZ,
+        talismanGraveCoverMesh: tgSlab,
+        graveCount: cemeteryGraveCount,
     };
 
     if (DEBUG_CEMETERY) {
         // Place player 75 units south of the cemetery entrance
         const entPos = localToWorldXZ(ox, oz, 0, CEM_HALF + 75, rot);
-        player.position.set(entPos.x, groundY + 1, entPos.z);
+        player.position.set(entPos.x, cemeteryFloorY + 1, entPos.z);
     }
 
     if (DEBUG_TALISMAN) {
@@ -1206,29 +1388,45 @@ function tryDigTalismanGrave() {
     spawnDigParticles(
         cemeteryData.talismanGraveWorldX + (Math.random() - 0.5) * 1.5,
         cemeteryData.worldGroundY,
-        cemeteryData.talismanGraveWorldZ + (Math.random() - 0.5) * 1.5
+        cemeteryData.talismanGraveWorldZ + (Math.random() - 0.5) * 1.5,
+        0x2a180f  // match the dark grave dirt patch color
     );
 
     if (talismanGraveDigCount >= CEM_GRAVE_DIGS) {
-        // Create depression mesh
-        const depMat = new THREE.MeshLambertMaterial({ color: 0x241c14 });
-        talismanGraveMesh = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.4), depMat);
+        if (cemeteryData.talismanGraveCoverMesh) {
+            cemeteryData.talismanGraveCoverMesh.visible = false;
+        }
+
+        // Create a shallow grave depression aligned in cemetery-local space.
+        const depOuterMat = new THREE.MeshLambertMaterial({ color: 0x241c14 });
+        const depInnerMat = new THREE.MeshLambertMaterial({ color: 0x16100c });
+        talismanGraveMesh = new THREE.Group();
+        const depOuter = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.24, 1.18), depOuterMat);
+        depOuter.position.y = -0.14;
+        depOuter.receiveShadow = true;
+        talismanGraveMesh.add(depOuter);
+        const depInner = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.16, 0.74), depInnerMat);
+        depInner.position.y = -0.18;
+        depInner.receiveShadow = true;
+        talismanGraveMesh.add(depInner);
         talismanGraveMesh.position.set(
-            cemeteryData.talismanGraveWorldX,
-            cemeteryData.worldGroundY - 0.25,
-            cemeteryData.talismanGraveWorldZ
+            cemeteryData.talismanGraveLocalX,
+            0,
+            cemeteryData.talismanGraveLocalZ
         );
-        talismanGraveMesh.receiveShadow = true;
-        scene.add(talismanGraveMesh);
+        cemeteryData.group.add(talismanGraveMesh);
+        cemeteryData.group.updateMatrixWorld(true);
 
         // Spawn talisman item
-        talismanItemMesh = createTalismanMesh(0.55);
-        talismanBaseY = cemeteryData.worldGroundY + 0.8;
-        talismanItemMesh.position.set(
-            cemeteryData.talismanGraveWorldX,
-            talismanBaseY,
-            cemeteryData.talismanGraveWorldZ
+        talismanItemMesh = createTalismanMesh(0.8);
+        const talismanSpawn = new THREE.Vector3(
+            cemeteryData.talismanGraveLocalX,
+            1.05,
+            cemeteryData.talismanGraveLocalZ
         );
+        cemeteryData.group.localToWorld(talismanSpawn);
+        talismanBaseY = talismanSpawn.y;
+        talismanItemMesh.position.copy(talismanSpawn);
         scene.add(talismanItemMesh);
         talismanSpawnTime = performance.now();
         talismanLockTimer = 3;
@@ -1243,9 +1441,12 @@ function updateTalisman(delta) {
     talismanItemMesh.rotation.y += delta * 1.5;
     talismanItemMesh.position.y = talismanBaseY + 0.25 + Math.sin(performance.now() / 700) * 0.25;
 
-    if (talismanLockTimer > 0) {
-        talismanLockTimer = Math.max(0, talismanLockTimer - delta);
-        const phase = (performance.now() - talismanSpawnTime) / 1000 * 2 * Math.PI;
+    const elapsed = (performance.now() - talismanSpawnTime) / 1000;
+    talismanLockTimer = Math.max(0, 3 - elapsed);
+
+    if (elapsed < 3) {
+        // Phase-locked pulse: exactly 3 oscillations over the 3-second lockout.
+        const phase = elapsed * 2 * Math.PI;
         const pulse = 2 - 2 * Math.cos(phase);
         talismanItemMesh.traverse(obj => {
             if (obj.isMesh && obj.material) obj.material.emissiveIntensity = 0.6 + pulse * 0.8;
