@@ -660,7 +660,7 @@ function createHauntedHouse() {
         const aspectRatio = 8.5/13;
         const width = 25;
         const wMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width*aspectRatio), wMat);
-        wMesh.position.set(-1.5, HH_F2_SURFACE_Y + 7.1, -HH_HALF_D + 0.35);
+        wMesh.position.set(-1.5, HH_F2_SURFACE_Y + 7.1, -HH_HALF_D + 0.01);
         wMesh.renderOrder = 2;
         hhGrp.add(wMesh);
         // Store mesh and apply current torch state immediately
@@ -670,6 +670,28 @@ function createHauntedHouse() {
         }
     };
     writingImg.src = IMAGE_HAUNTED_HOUSE_WRITING;
+
+    // ── Talisman insignia drawing — small image centered below the writing ────
+    const drawingImg = new Image();
+    drawingImg.onload = () => {
+        const tex = new THREE.Texture(drawingImg);
+        tex.needsUpdate = true;
+        const dMat = new THREE.MeshLambertMaterial({
+            map: tex, transparent: true, alphaTest: 0.05,
+            color: 0xbd1919, side: THREE.DoubleSide, depthWrite: false
+        });
+        const dWidth = 3;
+        const dHeight = dWidth * (863 / 1120); // image aspect ratio 1120×863
+        const dMesh = new THREE.Mesh(new THREE.PlaneGeometry(dWidth, dHeight), dMat);
+        dMesh.position.set(-1.5, HH_F2_SURFACE_Y + 3.5, -HH_HALF_D + 0.01);
+        dMesh.renderOrder = 2;
+        hhGrp.add(dMesh);
+        if (hauntedHouseData) {
+            hauntedHouseData.insigniaDrawingMesh = dMesh;
+            dMat.opacity = (currentHandItem === 'torch') ? 1.0 : 0.05;
+        }
+    };
+    drawingImg.src = IMAGE_TALISMAN_INSIGNIA_DRAWING;
 
     // ── World display items: sword, shield, skull (floor 2 near north wall) ──
     const worldSword = createSwordMesh(0.75);
@@ -785,7 +807,8 @@ function createHauntedHouse() {
         ssItemGrp,
         worldSword,          // used as position reference for SS pickup detection
         worldSkeleton,
-        writingMesh: null,   // set async in writingImg.onload
+        writingMesh: null,          // set async in writingImg.onload
+        insigniaDrawingMesh: null,  // set async in drawingImg.onload
         allColliderRefs: hhColliderRefs,
     };
 
@@ -1741,6 +1764,9 @@ function _setHHItemsLit(lit) {
     const hd = hauntedHouseData;
     if (hd.writingMesh && hd.writingMesh.material) {
         hd.writingMesh.material.opacity = lit ? 1.0 : 0.05;
+    }
+    if (hd.insigniaDrawingMesh && hd.insigniaDrawingMesh.material) {
+        hd.insigniaDrawingMesh.material.opacity = lit ? 1.0 : 0.05;
     }
     _blacken(hd.ssItemGrp, !lit);
     _blacken(hd.worldSkeleton, !lit);
