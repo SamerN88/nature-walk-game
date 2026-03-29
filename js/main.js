@@ -49,6 +49,11 @@ function init() {
     createWater();
     bigLake = waterBodies.filter(w => w.kind === 'lake').sort((a, b) => b.cylinderRadius - a.cylinderRadius)[0] || null;
 
+    if (DEBUG_AK47) {
+        ak47Collected = true;
+        addHandSlot('ak47');
+    }
+
     if (DEBUG_SHOVEL) {
         hasShovel = true;
         addHandSlot('shovel');

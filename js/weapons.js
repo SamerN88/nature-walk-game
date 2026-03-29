@@ -216,13 +216,7 @@ function updateTorchLight(delta) {
 // ── End Stake / Torch ────────────────────────────────────────────────────────
 
 function syncHandItemVisuals() {
-    // Sync ak47Equipped from currentHandItem (DEBUG_AK47 overrides)
-    if (DEBUG_AK47) {
-        ak47Collected = true;
-        ak47Equipped = true;
-    } else {
-        ak47Equipped = (currentHandItem === 'ak47');
-    }
+    ak47Equipped = ak47Collected && (currentHandItem === 'ak47');
 
     if (akChest && akChest.gunMesh) {
         akChest.gunMesh.visible = !!(akChest.opened && !akChest.collected);
