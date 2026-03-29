@@ -1350,6 +1350,28 @@ function createCemetery() {
         const tcap = makeTombCapMesh();
         tcap.position.set(gx, 2.0, gz - 1.0);
         cemGrp.add(tcap);
+
+        if (isTalisman) {
+            // Insignia decal on the back face of the talisman tombstone
+            // Image is 1602x1306 (aspect ~1.226); tombstone back face is 1.2w × 2.2h
+            const insigniaTex = new THREE.TextureLoader().load(IMAGE_TALISMAN_INSIGNIA);
+            const insigniaMat = new THREE.MeshBasicMaterial({
+                map: insigniaTex,
+                color: 0x666666,   // tint
+                transparent: true,
+                alphaTest: 0.05,
+                side: THREE.FrontSide,
+                depthWrite: false
+            });
+            // PlaneGeometry sized to fit the back face with a small margin
+            const insigW = 1.0;
+            const insigH = insigW / (1602 / 1306);  // ≈ 0.815
+            const insig = new THREE.Mesh(new THREE.PlaneGeometry(insigW, insigH), insigniaMat);
+            // Back face center: same x/y as tombstone, z offset by -half-depth - tiny epsilon
+            insig.position.set(gx, 1.2, gz - 1.0 - 0.152);
+            insig.rotation.y = Math.PI;  // face toward -Z (away from grave)
+            cemGrp.add(insig);
+        }
     };
 
     let cemeteryGraveCount = 0;
