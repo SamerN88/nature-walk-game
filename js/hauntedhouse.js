@@ -868,14 +868,14 @@ function _createHHForestTree(x, z) {
 // ── Create HH forest — dense dark trees + boulders within a certain radius ─────
 function createHHForest(hhX, hhZ, hhGroundY) {
     const INNER_CLEAR = 60;   // no-tree buffer around the house footprint
-    const OUTER_EDGE  = 300;
+    const OUTER_EDGE  = 285;
     const subW = (OUTER_EDGE - INNER_CLEAR) / 4;  // width of each sub-ring
 
     const rockMatDark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
 
     // Four equal-width sub-rings with deterministic tree counts.
     // Distribution from outer to inner: 10 / 20 / 50 / 20 %
-    const TOTAL_TREES = 300;
+    const TOTAL_TREES = 270;
     const rings = [
         { inner: INNER_CLEAR + 3*subW, outer: OUTER_EDGE,           count: Math.round(TOTAL_TREES * 0.05) },
         { inner: INNER_CLEAR + 2*subW, outer: INNER_CLEAR + 3*subW, count: Math.round(TOTAL_TREES * 0.10) },
@@ -932,9 +932,83 @@ function createHHForest(hhX, hhZ, hhGroundY) {
 
         if (isPointInWater(wx, wz)) continue;
 
-        // Size varies widely: small pebbles (0.2) to large boulders (2.2)
+        // Size varies widely: small pebbles (0.2) to large boulders (4.2)
         const sizePow = Math.pow(Math.random(), 2);   // skew toward small
         const rockRadius = 0.2 + sizePow * 4.0;
+
+        const rock = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(rockRadius, 0),
+            rockMatDark
+        );
+        rock.position.set(wx, getGroundHeight(wx, wz) + rockRadius * 0.4, wz);
+        rock.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        rock.scale.y = 0.5 + Math.random() * 0.6;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        scene.add(rock);
+    }
+}
+
+// ── Create Cemetery forest — same dark trees as HH forest, tight ring ──────────
+function createCemeteryForest(cemX, cemZ) {
+    const INNER_CLEAR = 60;   // no-tree buffer around the cemetery footprint
+    const OUTER_EDGE  = 165;
+    const TOTAL_TREES = 80;
+
+    const worldLimit = WORLD_SIZE - 10;
+    const placedTreeXZ = [];
+    const TREE_MIN_SPACING = 6;
+
+    let placed = 0;
+    let attempts = 0;
+    const maxAttempts = TOTAL_TREES * 20;
+    while (placed < TOTAL_TREES && attempts < maxAttempts) {
+        attempts++;
+        const angle = Math.random() * Math.PI * 2;
+        const r = INNER_CLEAR + Math.random() * (OUTER_EDGE - INNER_CLEAR);
+        const wx = cemX + Math.cos(angle) * r;
+        const wz = cemZ + Math.sin(angle) * r;
+
+        if (isPointInWater(wx, wz)) continue;
+        if (Math.abs(wx) > worldLimit || Math.abs(wz) > worldLimit) continue;
+        if (placementFootprints.some(fp => fp.noTree && !fp.isCemOwn &&
+                footprintsOverlap({ x: wx, z: wz, radius: 4 }, fp, 0))) continue;
+        if (placedTreeXZ.some(p => {
+            const dx = p.x - wx, dz = p.z - wz;
+            return dx*dx + dz*dz < TREE_MIN_SPACING * TREE_MIN_SPACING;
+        })) continue;
+
+        _createHHForestTree(wx, wz);
+        placedTreeXZ.push({ x: wx, z: wz });
+        placed++;
+    }
+
+    // Rocks: scattered throughout the cemetery forest ring
+    // Cemetery half-diagonal ≈ sqrt(25²+25²) ≈ 35.4; add 5-unit buffer → 40.4
+    const ROCK_CEM_MIN_DIST_SQ = (Math.sqrt(CEM_HALF * CEM_HALF + CEM_HALF * CEM_HALF) + 5) ** 2;
+    const rockMatDark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
+    const ROCK_INNER_CLEAR = INNER_CLEAR - 20;
+    const ROCK_COUNT = 80;
+    for (let i = 0; i < ROCK_COUNT; i++) {
+        const angle  = Math.random() * Math.PI * 2;
+        const radius = ROCK_INNER_CLEAR + Math.random() * (OUTER_EDGE - ROCK_INNER_CLEAR);
+        const wx = cemX + Math.cos(angle) * radius;
+        const wz = cemZ + Math.sin(angle) * radius;
+
+        // Skip rocks within the cemetery footprint diagonal + buffer
+        // const rdx = wx - cemX, rdz = wz - cemZ;
+        // if (rdx * rdx + rdz * rdz < ROCK_CEM_MIN_DIST_SQ) continue;
+
+        if (isPointInWater(wx, wz)) continue;
+        if (Math.abs(wx) > worldLimit || Math.abs(wz) > worldLimit) continue;
+
+        // Size varies widely: small pebbles (0.2) to large boulders (4.2)
+        const sizePow = Math.pow(Math.random(), 2);   // skew toward small
+        const rockRadius = 0.2 + sizePow * 3.0;
 
         const rock = new THREE.Mesh(
             new THREE.DodecahedronGeometry(rockRadius, 0),
@@ -1235,6 +1309,7 @@ function createCemetery() {
     // ── Small stone room (northeast corner: x≈+16, z≈-16) ────────────────────
     const srX = 16, srZ = -16, srS = 8, srH = 6;
     const srDoorW = 2.2, srDoorH = 3.6;
+    const srWallSink = 5;
     const srMat = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
     const srSouthZ = srZ + srS / 2;
     const srSouthSideW = (srS + 0.6 - srDoorW) / 2;
@@ -1251,7 +1326,7 @@ function createCemetery() {
         if (isTalisman) tgSlab = gravePatch;
 
         const dirtSpot = makeGraveDirtSpotMesh();
-        dirtSpot.position.set(gx, 0.03, gz + 0.8);
+        dirtSpot.position.set(gx + 0.2, 0.03, gz + 0.8);
         cemGrp.add(dirtSpot);
 
         const tstone = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.3), graveMat);
@@ -1286,12 +1361,12 @@ function createCemetery() {
     }
 
     // Walls with a south-facing doorway toward the cemetery interior
-    CB(srS + 0.6, srH, 0.6, srX, 0, srZ - srS / 2, srMat);            // North wall
-    CB(srSouthSideW, srH, 0.6, srSouthLeftX, 0, srSouthZ, srMat);     // South wall left
-    CB(srSouthSideW, srH, 0.6, srSouthRightX, 0, srSouthZ, srMat);    // South wall right
+    CB(srS + 0.6, srH + srWallSink, 0.6, srX, -srWallSink, srZ - srS / 2, srMat);            // North wall
+    CB(srSouthSideW, srH + srWallSink, 0.6, srSouthLeftX, -srWallSink, srSouthZ, srMat);     // South wall left
+    CB(srSouthSideW, srH + srWallSink, 0.6, srSouthRightX, -srWallSink, srSouthZ, srMat);    // South wall right
     CB(srDoorW, srH - srDoorH, 0.6, srX, srDoorH, srSouthZ, srMat);   // Door lintel
-    CB(0.6, srH, srS, srX - srS / 2, 0, srZ, srMat);                  // West wall
-    CB(0.6, srH, srS, srX + srS / 2, 0, srZ, srMat);                  // East wall
+    CB(0.6, srH + srWallSink, srS, srX - srS / 2, -srWallSink, srZ, srMat);                  // West wall
+    CB(0.6, srH + srWallSink, srS, srX + srS / 2, -srWallSink, srZ, srMat);                  // East wall
     // Roof
     CB(srS + 1.2, 0.5, srS + 1.2, srX, srH, srZ, srMat);
     // Floor (raised 0.1 above cemetery slab to eliminate Z-fighting)
@@ -1381,8 +1456,20 @@ function createCemetery() {
     }
 
     // Point light inside chimney
-    const lampLight = new THREE.PointLight(0xFF6600, 5.0, 40, 2);
+    const lampLight = new THREE.PointLight(0xFF6600, 4.0, 40, 1.65);
     lampLight.position.y = 0.53;
+    lampLight.castShadow = true;
+    lampLight.shadow.mapSize.set(512, 512);
+    lampLight.shadow.bias = -0.0008;
+    lampLight.shadow.normalBias = 0.08;
+    lampLight.shadow.radius = 2;
+    lampLight.userData.baseIntensity = 4.0;
+    lampLight.userData.currentIntensity = 4.0;
+    lampLight.userData.targetIntensity = 4.0;
+    lampLight.userData.baseDistance = 40;
+    lampLight.userData.currentDistance = 40;
+    lampLight.userData.targetDistance = 40;
+    lampLight.userData.flickerTimer = 0;
     lamp.add(lampLight);
     // NW corner of the room (floor raised by 0.1)
     lamp.position.set(srX - srS / 2 + 0.75, 0.1, srZ - srS / 2 + 0.75);
@@ -1393,12 +1480,12 @@ function createCemetery() {
     addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
     addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
     addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
-    addCemeteryWall(srX, srZ - srS / 2, srS / 2 + 0.3, 0.9, 0, srH);         // North wall
-    addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, 0.9, 0, srH);  // South left
-    addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, 0.9, 0, srH); // South right
+    addCemeteryWall(srX, srZ - srS / 2, srS / 2 + 0.3, 0.9, -srWallSink, srH);         // North wall
+    addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH);  // South left
+    addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH); // South right
     addCemeteryWall(srX, srSouthZ, srDoorW / 2, 0.9, srDoorH, srH);          // Lintel above door
-    addCemeteryWall(srX - srS / 2, srZ, srS / 2, 0.9, 0, srH, Math.PI / 2); // West wall
-    addCemeteryWall(srX + srS / 2, srZ, srS / 2, 0.9, 0, srH, Math.PI / 2); // East wall
+    addCemeteryWall(srX - srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // West wall
+    addCemeteryWall(srX + srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // East wall
     addCemeteryCeiling(srX, srZ, srS / 2 + 0.5, srS / 2 + 0.5, srH);         // Roof
 
     cemGrp.position.set(ox, cemeteryFloorY, oz);
@@ -1417,7 +1504,11 @@ function createCemetery() {
         talismanGraveLocalZ: tgZ,
         talismanGraveCoverMesh: tgSlab,
         graveCount: cemeteryGraveCount,
+        roomLampLight: lampLight,
+        roomLampGlassMat: hhGlassMat,
     };
+
+    createCemeteryForest(ox, oz);
 
     if (DEBUG_CEMETERY) {
         // Place player 75 units south of the cemetery entrance
@@ -1516,6 +1607,35 @@ function updateTalisman(delta) {
     }
 }
 
+function updateCemeteryRoomLamp(delta) {
+    if (!cemeteryData || !cemeteryData.roomLampLight) return;
+
+    const light = cemeteryData.roomLampLight;
+    const glassMat = cemeteryData.roomLampGlassMat;
+    const ud = light.userData;
+    ud.flickerTimer -= delta;
+
+    if (ud.flickerTimer <= 0) {
+        ud.flickerTimer = 0.045 + Math.random() * 0.09;
+        ud.targetIntensity = ud.baseIntensity * (0.85 + Math.random() * 0.30);
+        ud.targetDistance = ud.baseDistance * (0.92 + Math.random() * 0.16);
+    }
+
+    const intensityBlend = Math.min(1, delta * 10);
+    const distanceBlend = Math.min(1, delta * 7);
+    ud.currentIntensity += (ud.targetIntensity - ud.currentIntensity) * intensityBlend;
+    ud.currentDistance += (ud.targetDistance - ud.currentDistance) * distanceBlend;
+
+    const t = performance.now() * 0.001;
+    const breath = Math.sin(t * 8.7) * 0.1 + Math.sin(t * 15.1 + 1.4) * 0.05;
+    light.intensity = Math.max(0.2, ud.currentIntensity + breath);
+    light.distance = Math.max(8, ud.currentDistance + breath * 1.5);
+
+    if (glassMat) {
+        glassMat.emissiveIntensity = 0.75 + (light.intensity - ud.baseIntensity) * 0.12;
+    }
+}
+
 // ── tryPickupTalisman (called from punch) ────────────────────────────────────
 function tryPickupTalisman(aimDir, punchRange) {
     if (!talismanItemMesh || talismanLockTimer > 0) return false;
@@ -1592,6 +1712,8 @@ function _setHHItemsLit(lit) {
 
 // ── updateHauntedHouseSequence (called per-frame) ────────────────────────────
 function updateHauntedHouseSequence(delta) {
+    updateCemeteryRoomLamp(delta);
+
     if (!hauntedHouseData) return;
 
     // Keep writing and world items synced to whether the torch is actively held

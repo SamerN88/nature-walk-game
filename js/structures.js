@@ -836,7 +836,9 @@ function createEnterableStructures() {
             const geom = new THREE.BufferGeometry();
             geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
             geom.computeVertexNormals();
-            return new THREE.Mesh(geom, material);
+            const wall = new THREE.Mesh(geom, material);
+            wall.receiveShadow = true;
+            return wall;
         }
 
         cave.add(createWallPrism([
@@ -874,6 +876,7 @@ function createEnterableStructures() {
         );
         caveCeiling.rotation.x = Math.PI / 2;
         caveCeiling.position.set(0, cH - 0.03, (-cD + leanInset) / 2);
+        caveCeiling.receiveShadow = true;
         cave.add(caveCeiling);
 
         const caveFloor = new THREE.Mesh(
@@ -882,6 +885,7 @@ function createEnterableStructures() {
         );
         caveFloor.rotation.x = -Math.PI / 2;
         caveFloor.position.set(0, 0.1, -cD / 2);
+        caveFloor.receiveShadow = true;
         caveFloor.userData.ignoreCameraOcclusion = true;
         cave.add(caveFloor);
 
@@ -916,6 +920,8 @@ function createEnterableStructures() {
                 stoneMaterial
             );
             rock.position.set(rx, 0.5, rz);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
             cave.add(rock);
         }
 
@@ -938,15 +944,20 @@ function createEnterableStructures() {
         cave.add(embers);
 
         const flame = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.8, 8), flameMat);
-        flame.position.set(firePos.x, firePos.y + 1.1, firePos.z);
+        flame.position.set(firePos.x, firePos.y + 0.85, firePos.z);
+        flame.castShadow = false;
+        flame.receiveShadow = false;
         cave.add(flame);
 
         const flameCore = new THREE.Mesh(new THREE.ConeGeometry(0.25, 1.2, 8), innerFlameMat);
-        flameCore.position.set(firePos.x, firePos.y + 1.3, firePos.z);
+        flameCore.position.set(firePos.x, firePos.y + 1.05, firePos.z);
+        flameCore.castShadow = false;
+        flameCore.receiveShadow = false;
         cave.add(flameCore);
 
         const fireLight = new THREE.PointLight(0xFF6600, 12, 120);
         fireLight.position.set(firePos.x, firePos.y + 1, firePos.z);
+        fireLight.castShadow = true;
         cave.add(fireLight);
 
         if (isChosenCave) {

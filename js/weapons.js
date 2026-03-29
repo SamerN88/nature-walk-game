@@ -156,6 +156,8 @@ function createPlayerTorchMesh(scale = 1) {
     // Outer flame cone: ConeGeometry tip is at +Y by default. Place base at y=0, tip at y=0.4.
     const flameCone = new THREE.Mesh(new THREE.ConeGeometry(0.13 * scale, 0.4 * scale, 8), flameMat);
     flameCone.position.y = 0.2 * scale - 0.0002;
+    flameCone.castShadow = false;
+    flameCone.receiveShadow = false;
     flameGroup.add(flameCone);
 
     // Lower hemisphere: thetaStart=PI/2, thetaLength=PI/2 → lower half-sphere.
@@ -165,11 +167,15 @@ function createPlayerTorchMesh(scale = 1) {
         flameMat
     );
     flameBase.position.y = 0;
+    flameBase.castShadow = false;
+    flameBase.receiveShadow = false;
     flameGroup.add(flameBase);
 
     // Inner core cone (brighter center)
     const flameCore = new THREE.Mesh(new THREE.ConeGeometry(0.06 * scale, 0.28 * scale, 8), innerFlameMat);
     flameCore.position.y = 0.14 * scale;
+    flameCore.castShadow = false;
+    flameCore.receiveShadow = false;
     flameGroup.add(flameCore);
 
     enableMeshShadows(group);

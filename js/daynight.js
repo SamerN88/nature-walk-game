@@ -13,7 +13,7 @@ function setTimeOfDay(time) {
             gameTime = FULL_CYCLE * (0.51/24); // 30% into dawn (~5:44 AM)
             break;
         case 'day':
-            gameTime = FULL_CYCLE * (4.94/24); // 30% into day (~9:56 AM)
+            gameTime = FULL_CYCLE * (6.02/24); // 40% into day (~11:01 AM)
             break;
         case 'sunset':
             gameTime = FULL_CYCLE * (12.86/24); // 30% into sunset (~17:52)
@@ -124,4 +124,3 @@ function updateDayNightCycle(delta) {
 
     document.getElementById('day-night').textContent = timeOfDay;
 }
-
