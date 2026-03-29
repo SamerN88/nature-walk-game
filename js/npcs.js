@@ -1,15 +1,15 @@
 function createNPCs() {
     // Create deer
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 125; i++) {
         createDeer();
     }
     // Create rabbits
-    for (let i = 0; i < 350; i++) {
+    for (let i = 0; i < 125; i++) {
         createRabbit();
     }
-    // Create birds — 150 small, 150 big
-    for (let i = 0; i < 150; i++) { createBird(1); }
-    for (let i = 0; i < 150; i++) { createBird(4); }
+    // Create birds — 100 small, 100 big
+    for (let i = 0; i < 100; i++) { createBird(1); }
+    for (let i = 0; i < 100; i++) { createBird(4); }
     // Create humans
     for (let i = 0; i < 150; i++) {
         createHuman();
