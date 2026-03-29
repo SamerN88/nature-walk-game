@@ -957,8 +957,16 @@ function createEnterableStructures() {
 
         const fireLight = new THREE.PointLight(0xFF6600, 12, 120);
         fireLight.position.set(firePos.x, firePos.y + 1, firePos.z);
-        fireLight.castShadow = true;
+        fireLight.castShadow = true; // DEBUG SHADOW
+        fireLight.userData.baseIntensity    = 12;
+        fireLight.userData.currentIntensity = 12;
+        fireLight.userData.targetIntensity  = 12;
+        fireLight.userData.baseDistance     = 120;
+        fireLight.userData.currentDistance  = 120;
+        fireLight.userData.targetDistance   = 120;
+        fireLight.userData.flickerTimer     = 0;
         cave.add(fireLight);
+        campfireLights.push(fireLight);
 
         if (isChosenCave) {
             const writingImg = new Image();
@@ -1176,5 +1184,29 @@ function createEnterableStructures() {
         chosenTent.add(shovelInTent);
         chosenTent.updateMatrixWorld(true);
         tentShovelMesh = shovelInTent;
+    }
+}
+
+// ── updateCampfireLights: per-frame extreme flicker for cave campfire lights ──
+function updateCampfireLights(delta) {
+    const t = performance.now() * 0.001;
+    for (const light of campfireLights) {
+        const ud = light.userData;
+        ud.flickerTimer -= delta;
+        if (ud.flickerTimer <= 0) {
+            // Extreme flicker: intensity swings from 40% to 180% of base, distance 50–140%
+            ud.flickerTimer      = 0.03 + Math.random() * 0.12;
+            ud.targetIntensity   = ud.baseIntensity * (0.4 + Math.random() * 1.4);
+            ud.targetDistance    = ud.baseDistance  * (0.5 + Math.random() * 0.9);
+        }
+        const iBlend = Math.min(1, delta * 9);
+        const dBlend = Math.min(1, delta * 6);
+        ud.currentIntensity += (ud.targetIntensity - ud.currentIntensity) * iBlend;
+        ud.currentDistance  += (ud.targetDistance  - ud.currentDistance)  * dBlend;
+
+        // High-frequency breath adds organic micro-variation
+        const breath = Math.sin(t * 11.3) * 0.18 + Math.sin(t * 19.7 + 0.9) * 0.10;
+        light.intensity = Math.max(0.5, ud.currentIntensity + breath * ud.baseIntensity);
+        light.distance  = Math.max(15,  ud.currentDistance  + breath * ud.baseDistance * 0.12);
     }
 }

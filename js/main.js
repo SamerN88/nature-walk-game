@@ -378,7 +378,8 @@ function animate() {
     updateDragonBondFlashes(delta);
     updateDigParticles(delta);
     updateGoldenKey(delta);
-    updateTorchLight();
+    updateTorchLight(delta);
+    updateCampfireLights(delta);
     updateDoors(delta);
     updateNotes(delta);
     underwaterTintEl.style.opacity = isPointInsideWaterCylinder(

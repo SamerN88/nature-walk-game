@@ -1145,19 +1145,31 @@ function createCemetery() {
         const world = localToWorldXZ(ox, oz, localX, localZ, rot);
         return addCeilingRect(world.x, world.z, halfW, halfD, cemeteryFloorY + localY, rot + localRotation);
     };
+    const addCemeteryRoofCollider = (localX, localZ, halfW, halfD, topLocalY, bottomLocalY, localRotation = 0) => {
+        const world = localToWorldXZ(ox, oz, localX, localZ, rot);
+        return addRoofColliderRect(world.x, world.z, halfW, halfD, cemeteryFloorY + topLocalY, cemeteryFloorY + bottomLocalY, rot + localRotation);
+    };
     const makeGraveDirtSpotMesh = () => {
         const dirtShape = new THREE.Shape();
+        // Irregular rectangle: 4 corners anchored at the rectangle boundary, with
+        // slightly bumpy edges so it reads as hand-dug rather than perfectly rectangular.
         const pts = [
-            new THREE.Vector2(-1.45, -0.46),
-            new THREE.Vector2(-0.82, -0.62),
-            new THREE.Vector2(0.14, -0.58),
-            new THREE.Vector2(1.18, -0.44),
-            new THREE.Vector2(1.54, -0.14),
-            new THREE.Vector2(1.48, 0.16),
-            new THREE.Vector2(0.72, 0.38),
-            new THREE.Vector2(-0.18, 0.44),
-            new THREE.Vector2(-1.02, 0.3),
-            new THREE.Vector2(-1.5, 0.04),
+            // Bottom edge (left → right)
+            new THREE.Vector2(-1.40, -0.48),  // BL corner
+            new THREE.Vector2(-0.50, -0.54),  // bottom, near-left — slight outward bump
+            new THREE.Vector2( 0.48, -0.53),  // bottom, near-right — slight bump
+            new THREE.Vector2( 1.42, -0.47),  // BR corner
+            // Right edge (bottom → top)
+            new THREE.Vector2( 1.50, -0.12),  // right, lower
+            new THREE.Vector2( 1.47,  0.18),  // right, upper
+            // Top edge (right → left)
+            new THREE.Vector2( 1.38,  0.50),  // TR corner
+            new THREE.Vector2( 0.44,  0.55),  // top, near-right — slight bump
+            new THREE.Vector2(-0.40,  0.52),  // top, near-left
+            new THREE.Vector2(-1.36,  0.49),  // TL corner
+            // Left edge (top → bottom)
+            new THREE.Vector2(-1.46,  0.16),  // left, upper
+            new THREE.Vector2(-1.48, -0.16),  // left, lower
         ];
         dirtShape.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) dirtShape.lineTo(pts[i].x, pts[i].y);
@@ -1326,7 +1338,7 @@ function createCemetery() {
         if (isTalisman) tgSlab = gravePatch;
 
         const dirtSpot = makeGraveDirtSpotMesh();
-        dirtSpot.position.set(gx + 0.2, 0.03, gz + 0.8);
+        dirtSpot.position.set(gx, 0.02, gz + 0.8);
         cemGrp.add(dirtSpot);
 
         const tstone = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 0.3), graveMat);
@@ -1458,7 +1470,7 @@ function createCemetery() {
     // Point light inside chimney
     const lampLight = new THREE.PointLight(0xFF6600, 4.0, 40, 1.65);
     lampLight.position.y = 0.53;
-    lampLight.castShadow = true;
+    lampLight.castShadow = true; // DEBUG SHADOW
     lampLight.shadow.mapSize.set(512, 512);
     lampLight.shadow.bias = -0.0008;
     lampLight.shadow.normalBias = 0.08;
@@ -1475,18 +1487,20 @@ function createCemetery() {
     lamp.position.set(srX - srS / 2 + 0.75, 0.1, srZ - srS / 2 + 0.75);
     cemGrp.add(lamp);
     // Robust collision for the room and fence, registered directly in world space.
-    addCemeteryWall(0.5 * (-CEM_HALF - CEM_ENT_HALF_W), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
-    addCemeteryWall(0.5 * (CEM_ENT_HALF_W + CEM_HALF), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
-    addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4);
-    addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
-    addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + 4.4, Math.PI / 2);
+    const bonusCollisionHeight = 1.75;
+    addCemeteryWall(0.5 * (-CEM_HALF - CEM_ENT_HALF_W), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(0.5 * (CEM_ENT_HALF_W + CEM_HALF), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
+    addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
     addCemeteryWall(srX, srZ - srS / 2, srS / 2 + 0.3, 0.9, -srWallSink, srH);         // North wall
     addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH);  // South left
     addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH); // South right
     addCemeteryWall(srX, srSouthZ, srDoorW / 2, 0.9, srDoorH, srH);          // Lintel above door
     addCemeteryWall(srX - srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // West wall
     addCemeteryWall(srX + srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // East wall
-    addCemeteryCeiling(srX, srZ, srS / 2 + 0.5, srS / 2 + 0.5, srH);         // Roof
+    addCemeteryCeiling(srX, srZ, srS / 2 + 0.5, srS / 2 + 0.5, srH);              // Roof (inside — blocks jump-through)
+    addCemeteryRoofCollider(srX, srZ, srS / 2 + 0.6, srS / 2 + 0.6, srH + 0.5, srH); // Roof (outside — supports standing on top)
 
     cemGrp.position.set(ox, cemeteryFloorY, oz);
     cemGrp.rotation.y = rot;

@@ -142,6 +142,7 @@ let dragonHealth = 100;
 let playerDead = false;
 let demons = [];
 let campfirePositions = [];
+let campfireLights = [];     // PointLights from cave campfires — updated each frame for flicker
 let shadowMan = null;
 let shadowManLastMinuteChecked = -1;
 let shadowManPostApocalypseUnlocked = false;

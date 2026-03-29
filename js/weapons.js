@@ -179,13 +179,38 @@ function createPlayerTorchMesh(scale = 1) {
     flameGroup.add(flameCore);
 
     enableMeshShadows(group);
+    // Flames are transparent light effects — must not cast shadows after enableMeshShadows overwrites them.
+    flameGroup.traverse(obj => {
+        if (obj.isMesh) { obj.castShadow = false; obj.receiveShadow = false; }
+    });
     return group;
 }
 
-function updateTorchLight() {
+function updateTorchLight(delta) {
     if (!torchEquippedLight) return;
     const torchActive = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
-    torchEquippedLight.intensity = torchActive ? 20 : 0;
+    if (!torchActive) {
+        torchEquippedLight.intensity = 0;
+        return;
+    }
+    const ud = torchEquippedLight.userData;
+    if (!ud.baseIntensity) { torchEquippedLight.intensity = 20; return; } // fallback if userData not set
+    ud.flickerTimer -= delta;
+    if (ud.flickerTimer <= 0) {
+        // Extreme flicker matching campfire magnitude
+        ud.flickerTimer     = 0.03 + Math.random() * 0.12;
+        ud.targetIntensity  = ud.baseIntensity * (0.7 + Math.random() * 0.6);
+        ud.targetDistance   = ud.baseDistance  * (0.7 + Math.random() * 0.6);
+    }
+    const iBlend = Math.min(1, delta * 9);
+    const dBlend = Math.min(1, delta * 6);
+    ud.currentIntensity += (ud.targetIntensity - ud.currentIntensity) * iBlend;
+    ud.currentDistance  += (ud.targetDistance  - ud.currentDistance)  * dBlend;
+
+    const t = performance.now() * 0.0005;
+    const breath = Math.sin(t * 13.1) * 0.17 + Math.sin(t * 21.3 + 2.1) * 0.09;
+    torchEquippedLight.intensity = Math.max(0.5, ud.currentIntensity + breath * ud.baseIntensity);
+    torchEquippedLight.distance  = Math.max(20,  ud.currentDistance  + breath * ud.baseDistance * 0.10);
 }
 
 // ── End Stake / Torch ────────────────────────────────────────────────────────

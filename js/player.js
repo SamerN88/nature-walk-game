@@ -54,11 +54,18 @@ function createPlayer() {
 
     torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 150, 1.2);
     torchEquippedLight.position.set(0, 2.5, 1);
-    torchEquippedLight.castShadow = true;
+    torchEquippedLight.castShadow = true; // DEBUG SHADOW
     torchEquippedLight.shadow.mapSize.set(200, 200); // RECONSIDER: this degrades performance a bit, do we need it?
     torchEquippedLight.shadow.bias = -0.0008;
     torchEquippedLight.shadow.normalBias = 0.08;
     torchEquippedLight.shadow.radius = 2;
+    torchEquippedLight.userData.baseIntensity    = 20;
+    torchEquippedLight.userData.currentIntensity = 20;
+    torchEquippedLight.userData.targetIntensity  = 20;
+    torchEquippedLight.userData.baseDistance     = 150;
+    torchEquippedLight.userData.currentDistance  = 150;
+    torchEquippedLight.userData.targetDistance   = 150;
+    torchEquippedLight.userData.flickerTimer     = 0;
     player.add(torchEquippedLight);
 
     const flashMat = new THREE.MeshBasicMaterial({
