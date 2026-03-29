@@ -1,3 +1,6 @@
+// Pre-allocated Color reused every frame to avoid per-frame GC allocations in updateDayNightCycle.
+const _skyColorBuf = new THREE.Color();
+
 function setTimeOfDay(time) {
     if (demonApocalypse) return; // can't change time during apocalypse
     // Set gameTime based on selected time
@@ -49,47 +52,47 @@ function updateDayNightCycle(delta) {
     const NIGHT_START  = 14.9 / 24; // 19:54
     const HALF_DAWN    = DAWN_END / 2;
 
-    let skyColor, sunIntensity, ambientIntensity;
+    let sunIntensity, ambientIntensity;
     const sunAngle = cycleProgress * Math.PI * 2 - Math.PI / 2;
 
     if (cycleProgress < HALF_DAWN) {
         // Night to dawn (first half of dawn window)
         const t = cycleProgress / HALF_DAWN;
-        skyColor = skyColors.night.clone().lerp(skyColors.dawn, t);
+        _skyColorBuf.copy(skyColors.night).lerp(skyColors.dawn, t);
         sunIntensity = t * 0.5;
         ambientIntensity = 0.1 + t * 0.2;
     } else if (cycleProgress < DAWN_END) {
         // Dawn to day (second half of dawn window)
         const t = (cycleProgress - HALF_DAWN) / HALF_DAWN;
-        skyColor = skyColors.dawn.clone().lerp(skyColors.day, t);
+        _skyColorBuf.copy(skyColors.dawn).lerp(skyColors.day, t);
         sunIntensity = 0.5 + t * 0.5;
         ambientIntensity = 0.3 + t * 0.2;
     } else if (cycleProgress < SUNSET_START) {
         // Day
-        skyColor = skyColors.day.clone();
+        _skyColorBuf.copy(skyColors.day);
         sunIntensity = 1;
         ambientIntensity = 0.5;
     } else if (cycleProgress < DUSK_START) {
         // Sunset: day fading to sunset colours
         const t = (cycleProgress - SUNSET_START) / (DUSK_START - SUNSET_START);
-        skyColor = skyColors.day.clone().lerp(skyColors.sunset, t);
+        _skyColorBuf.copy(skyColors.day).lerp(skyColors.sunset, t);
         sunIntensity = 1 - t * 0.3;
         ambientIntensity = 0.5 - t * 0.1;
     } else if (cycleProgress < NIGHT_START) {
         // Dusk: sunset fading to night
         const t = (cycleProgress - DUSK_START) / (NIGHT_START - DUSK_START);
-        skyColor = skyColors.sunset.clone().lerp(skyColors.night, t);
+        _skyColorBuf.copy(skyColors.sunset).lerp(skyColors.night, t);
         sunIntensity = 0.7 - t * 0.6;
         ambientIntensity = 0.4 - t * 0.3;
     } else {
         // Night
-        skyColor = skyColors.night.clone();
+        _skyColorBuf.copy(skyColors.night);
         sunIntensity = 0.1;
         ambientIntensity = 0.1;
     }
 
-    scene.background = skyColor;
-    scene.fog.color = skyColor;
+    scene.background = _skyColorBuf;
+    scene.fog.color = _skyColorBuf;
     sun.intensity = sunIntensity;
     ambientLight.intensity = ambientIntensity;
     updateSunShadowFocus();

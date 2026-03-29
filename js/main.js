@@ -5,6 +5,13 @@ const DECEL = 20;  // MODIFIED: decel controls how quickly you come to a stop af
 const PLAYER_RADIUS = 0.5;
 const DRAGON_COLLISION_RADIUS = 4.5;
 
+// Pre-allocated vectors — reused every frame to avoid per-frame GC allocations.
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _cameraOffset = new THREE.Vector3();
+const _lookTarget = new THREE.Vector3();
+const _desiredCameraPos = new THREE.Vector3();
+
 function init() {
     // Scene
     scene = new THREE.Scene();
@@ -22,7 +29,7 @@ function init() {
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     document.body.appendChild(renderer.domElement);
 
     // Lights
@@ -32,8 +39,8 @@ function init() {
     sun = new THREE.DirectionalLight(0xffffff, 1);
     sun.position.set(50, 100, 50);
     sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
+    sun.shadow.mapSize.width = 1024;
+    sun.shadow.mapSize.height = 1024;
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = 2000;
     sun.shadow.camera.left = -200;
@@ -165,23 +172,15 @@ function update(delta) {
         const moveSpeed = (isRunning ? RUN_SPEED : WALK_SPEED) * speedMultiplier;
 
         // Get forward direction based on camera yaw
-        const forward = new THREE.Vector3(
-            Math.sin(cameraYaw),
-            0,
-            Math.cos(cameraYaw)
-        );
-        const right = new THREE.Vector3(
-            Math.sin(cameraYaw - Math.PI / 2),
-            0,
-            Math.cos(cameraYaw - Math.PI / 2)
-        );
+        _forward.set(Math.sin(cameraYaw), 0, Math.cos(cameraYaw));
+        _right.set(Math.sin(cameraYaw - Math.PI / 2), 0, Math.cos(cameraYaw - Math.PI / 2));
 
         // Movement input
         direction.set(0, 0, 0);
-        if (moveForward) direction.add(forward);
-        if (moveBackward) direction.sub(forward);
-        if (moveRight) direction.add(right);
-        if (moveLeft) direction.sub(right);
+        if (moveForward) direction.add(_forward);
+        if (moveBackward) direction.sub(_forward);
+        if (moveRight) direction.add(_right);
+        if (moveLeft) direction.sub(_right);
 
         // MODIFIED: cache whether there is movement input, since we use it multiple times
         const hasInput = direction.lengthSq() > 0;
@@ -314,20 +313,20 @@ function update(delta) {
         const pitchHeight = cameraPitch > 0
             ? pitchSin * cameraDistance * 0.65
             : pitchSin * cameraDistance * 1.8;
-        const cameraOffset = new THREE.Vector3(
+        _cameraOffset.set(
             -Math.sin(cameraYaw) * cameraDistance * pitchCos,
             cameraHeight + pitchHeight,
             -Math.cos(cameraYaw) * cameraDistance * pitchCos
         );
 
-        const lookTarget = player.position.clone();
-        lookTarget.y += 4.25;
+        _lookTarget.copy(player.position);
+        _lookTarget.y += 4.25;
 
-        const desiredCameraPosition = player.position.clone().add(cameraOffset);
-        desiredCameraPosition.y += 2;
+        _desiredCameraPos.copy(player.position).add(_cameraOffset);
+        _desiredCameraPos.y += 2;
         scene.updateMatrixWorld();
-        camera.position.copy(resolveThirdPersonCameraPosition(lookTarget, desiredCameraPosition));
-        camera.lookAt(lookTarget);
+        camera.position.copy(resolveThirdPersonCameraPosition(_lookTarget, _desiredCameraPos));
+        camera.lookAt(_lookTarget);
     }
 
     // Update day/night cycle

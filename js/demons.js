@@ -434,8 +434,14 @@ function explodeDemon(zData, index) {
     if (demons.length === 0) demonVictory();
 }
 
+// Separation runs every 3rd frame to reduce O(n²) cost without noticeable visual change.
+let _demonSepFrame = 0;
+
 function updateDemons(delta) {
     if (!demonApocalypse || playerDead || demons.length === 0) return;
+
+    _demonSepFrame = (_demonSepFrame + 1) % 3;
+    const runSeparation = _demonSepFrame === 0;
 
     const targetPos = mountedOnDragon ? dragon.position : player.position;
     const now = performance.now() / 1000;
@@ -526,31 +532,34 @@ function updateDemons(delta) {
         updateDemonWallPhaseState(z, zp, zp.y, demonRadius, delta, farFromPlayer);
 
         // ── Separation: accumulate and clamp so demons don't slingshot each other ──
-        const SEPARATION_STRENGTH = 10; // MODIFIED: fixed separation tuning
-        const MAX_SEPARATION_STEP = 4;  // MODIFIED: hard cap on separation speed contribution
+        // Runs every 3rd frame only — O(n²) cost is too high to pay every frame.
+        if (runSeparation) {
+            const SEPARATION_STRENGTH = 10; // MODIFIED: fixed separation tuning
+            const MAX_SEPARATION_STEP = 4;  // MODIFIED: hard cap on separation speed contribution
 
-        let sepX = 0; // MODIFIED: accumulate separation X
-        let sepZ = 0; // MODIFIED: accumulate separation Z
+            let sepX = 0; // MODIFIED: accumulate separation X
+            let sepZ = 0; // MODIFIED: accumulate separation Z
 
-        for (let j = 0; j < demons.length; j++) {
-            if (j === i) continue;
+            for (let j = 0; j < demons.length; j++) {
+                if (j === i) continue;
 
-            const sdx = zp.x - demons[j].mesh.position.x;
-            const sdz = zp.z - demons[j].mesh.position.z;
-            const sd  = Math.sqrt(sdx * sdx + sdz * sdz);
+                const sdx = zp.x - demons[j].mesh.position.x;
+                const sdz = zp.z - demons[j].mesh.position.z;
+                const sd  = Math.sqrt(sdx * sdx + sdz * sdz);
 
-            if (sd < sepRadius && sd > 0.001) {
-                const push = (sepRadius - sd) / sepRadius; // MODIFIED: normalized overlap strength
-                sepX += (sdx / sd) * push; // MODIFIED: accumulate direction only
-                sepZ += (sdz / sd) * push; // MODIFIED: accumulate direction only
+                if (sd < sepRadius && sd > 0.001) {
+                    const push = (sepRadius - sd) / sepRadius; // MODIFIED: normalized overlap strength
+                    sepX += (sdx / sd) * push; // MODIFIED: accumulate direction only
+                    sepZ += (sdz / sd) * push; // MODIFIED: accumulate direction only
+                }
             }
-        }
 
-        const sepLen = Math.sqrt(sepX * sepX + sepZ * sepZ); // MODIFIED: measure accumulated separation
-        if (sepLen > 0.001) {
-            const capped = Math.min(sepLen * SEPARATION_STRENGTH, MAX_SEPARATION_STEP); // MODIFIED: cap total push
-            zp.x += (sepX / sepLen) * capped * delta; // MODIFIED: apply capped separation
-            zp.z += (sepZ / sepLen) * capped * delta; // MODIFIED: apply capped separation
+            const sepLen = Math.sqrt(sepX * sepX + sepZ * sepZ); // MODIFIED: measure accumulated separation
+            if (sepLen > 0.001) {
+                const capped = Math.min(sepLen * SEPARATION_STRENGTH, MAX_SEPARATION_STEP); // MODIFIED: cap total push
+                zp.x += (sepX / sepLen) * capped * delta; // MODIFIED: apply capped separation
+                zp.z += (sepZ / sepLen) * capped * delta; // MODIFIED: apply capped separation
+            }
         }
 
         // ── Idle animation: super-fast menacing head shift ──

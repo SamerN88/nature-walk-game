@@ -957,7 +957,7 @@ function createEnterableStructures() {
 
         const fireLight = new THREE.PointLight(0xFF6600, 12, 120);
         fireLight.position.set(firePos.x, firePos.y + 1, firePos.z);
-        fireLight.castShadow = true; // DEBUG SHADOW
+        // fireLight.castShadow = true; // DEBUG SHADOW - decided to disable for performance reasons
         fireLight.userData.baseIntensity    = 12;
         fireLight.userData.currentIntensity = 12;
         fireLight.userData.targetIntensity  = 12;

@@ -1492,7 +1492,7 @@ function createCemetery() {
     // Point light inside chimney
     const lampLight = new THREE.PointLight(0xFF6600, 4.0, 40, 1.65);
     lampLight.position.y = 0.53;
-    lampLight.castShadow = true; // DEBUG SHADOW
+    // lampLight.castShadow = true; // DEBUG SHADOW - decided to disable for performance reasons
     lampLight.shadow.mapSize.set(512, 512);
     lampLight.shadow.bias = -0.0008;
     lampLight.shadow.normalBias = 0.08;

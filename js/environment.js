@@ -80,8 +80,6 @@ function createRocks() {
         rock.position.set(x, getGroundHeight(x, z) + 0.2, z);
         rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
         rock.scale.y = 0.6 + Math.random() * 0.4;
-        rock.castShadow = true;
-        rock.receiveShadow = true;
         scene.add(rock);
     }
 }
