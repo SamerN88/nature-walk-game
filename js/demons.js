@@ -226,9 +226,14 @@ function createDemon(biasedSpeed = false) {
     };
 }
 
+// Tracks how many times the player has respawned during the current apocalypse.
+// Reset each time a fresh apocalypse begins so the escalation starts from zero.
+let _apocalypseRespawnCount = 0;
+
 function triggerDemonApocalypse() {
     if (demonApocalypse) return;
     demonApocalypse = true;
+    _apocalypseRespawnCount = 0;
     updateTopCornerHudVisibility();
 
     // ── Blood-red apocalypse sky ──
@@ -749,6 +754,8 @@ function hardReset() {
 }
 
 function respawnWithMoreDemons() {
+    _apocalypseRespawnCount++;
+
     playerDead   = false;
     playerHealth = 100;
     dragonHealth = 100;
@@ -761,16 +768,19 @@ function respawnWithMoreDemons() {
     player.position.set(rx, getGroundHeight(rx, rz), rz);
     velocity.set(0, 0, 0);
 
-    // Add 50 new demons
-    const newlyAdded = [];
-    for (let i = 0; i < 50; i++) {
+    // Remove all surviving demons and start fresh so the count is always
+    // based on the initial spawn count, not however many happened to survive.
+    for (const dData of demons) scene.remove(dData.mesh);
+    demons.length = 0;
+
+    // Spawn DEMON_SPAWN_COUNT + 50 per respawn (150 → 200 → 250 → ...)
+    const spawnCount = DEMON_SPAWN_COUNT + 50 * _apocalypseRespawnCount;
+    for (let i = 0; i < spawnCount; i++) {
         const dData = createDemon();
         scene.add(dData.mesh);
         demons.push(dData);
-        newlyAdded.push(dData);
     }
 
-    // Reposition ALL current demons (old survivors + newly added ones)
     positionDemonsAroundPlayer(demons, player.position.x, player.position.z);
 
     updateDemonCounter();
