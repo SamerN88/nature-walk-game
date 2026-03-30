@@ -97,7 +97,7 @@ function createDeer() {
     const x = spawn.x;
     const z = spawn.z;
     deer.position.set(x, getGroundHeight(x, z), z);
-    enableMeshShadows(deer);
+    enableMeshReceiveShadowOnly(deer);
     scene.add(deer);
 
     npcs.push({
@@ -164,7 +164,7 @@ function createRabbit() {
     const x = spawn.x;
     const z = spawn.z;
     rabbit.position.set(x, getGroundHeight(x, z), z);
-    enableMeshShadows(rabbit);
+    enableMeshReceiveShadowOnly(rabbit);
     scene.add(rabbit);
 
     npcs.push({
@@ -338,7 +338,7 @@ function createHuman() {
     const x = spawn.x;
     const z = spawn.z;
     human.position.set(x, getGroundHeight(x, z), z);
-    enableMeshShadows(human);
+    enableMeshReceiveShadowOnly(human);
     scene.add(human);
 
     npcs.push({

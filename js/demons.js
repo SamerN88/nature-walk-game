@@ -206,7 +206,7 @@ function createDemon(biasedSpeed = false) {
         part.userData.baseZ = part.position.z;
     });
     demon.userData.faceAnimatedParts = faceAnimatedParts;
-    enableMeshShadows(demon);
+    enableMeshReceiveShadowOnly(demon);
 
     return {
         mesh: demon,

@@ -6,6 +6,14 @@ function enableMeshShadows(root) {
     });
 }
 
+function enableMeshReceiveShadowOnly(root) {
+    root.traverse(obj => {
+        if (!obj.isMesh) return;
+        obj.castShadow = false;
+        obj.receiveShadow = true;
+    });
+}
+
 function smoothstep01(t) {
     const clamped = Math.max(0, Math.min(1, t));
     return clamped * clamped * (3 - 2 * clamped);
