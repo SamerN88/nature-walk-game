@@ -222,7 +222,8 @@ function createDemon(biasedSpeed = false) {
         animPhase: Math.random() * Math.PI * 2,  // randomise animation start
         wallPhaseTimer: 0,
         wallPhaseWall: null,
-        wallPhaseActive: false
+        wallPhaseActive: false,
+        teleportTimer: Math.random() * DEMON_TELEPORT_INTERVAL_SEC  // stagger so demons don't all fire at once
     };
 }
 
@@ -495,7 +496,8 @@ function updateDemons(delta) {
         if (distXZ > 0.01) z.mesh.rotation.y = Math.atan2(dx, dz);
 
         // ── Chase (XZ movement) ──
-        if (distXZ > 5) {
+        // No minimum stop distance — demons always close in so elevated terrain can't shelter the player.
+        if (distXZ > 0.01) {
             zp.x += (dx / distXZ) * z.speed * delta;
             zp.z += (dz / distXZ) * z.speed * delta;
         }
@@ -574,6 +576,20 @@ function updateDemons(delta) {
             const shiftAmount = 0.06; // how far it slides left-right
             part.position.x = baseX + Math.sin(phase) * shiftAmount;
         });
+
+        // ── Teleport: random angle around player, same XZ distance ──
+        // Breaks single-file line formations when demons are far away.
+        // Disabled within DEMON_TELEPORT_DISABLE_DIST to avoid unfair close-range snaps.
+        z.teleportTimer -= delta;
+        if (z.teleportTimer <= 0) {
+            z.teleportTimer = DEMON_TELEPORT_INTERVAL_SEC;
+            if (distXZ > DEMON_TELEPORT_DISABLE_DIST && Math.random() < DEMON_TELEPORT_CHANCE) {
+                const angle = Math.random() * Math.PI * 2;
+                zp.x = targetPos.x + Math.sin(angle) * distXZ;
+                zp.z = targetPos.z + Math.cos(angle) * distXZ;
+                zp.y = getGroundHeight(zp.x, zp.z);
+            }
+        }
 
         // ── Hit player when in 3D range ──
         const hitDy = targetPos.y - zp.y;

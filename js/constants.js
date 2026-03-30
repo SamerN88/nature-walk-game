@@ -2,7 +2,7 @@
 const DEBUG_GEMS = false;  // makes gems spawn very close to origin
 const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
 const DEBUG_CHEST = false;  // for quick access to chest
-const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
+const DEBUG_APOCALYPSE = true;  // for quick access to demon apocalypse
 const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
 const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
 const DEBUG_TORCH = false; // spawn with the torch already in hand
@@ -27,6 +27,11 @@ const DEBUG_TALISMAN = false;      // start with talisman already in inventory
 const DEBUG_INF_JUMP = false;  // gives player infinite jump
 const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
+
+// Demon teleport ability
+const DEMON_TELEPORT_INTERVAL_SEC = 5;      // seconds between each teleport eligibility check
+const DEMON_TELEPORT_CHANCE   = 0.10;       // chance to teleport each check
+const DEMON_TELEPORT_DISABLE_DIST = 40;     // teleport disabled when demon is closer than this to player
 
 // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
 const FALL_TO_CUTSCENE = true;
