@@ -278,7 +278,6 @@ let playerShieldMesh = null;
 let hasTalisman = false;
 let cemeteryData = null;
 let talismanGraveDigCount = 0;
-let talismanGraveMesh = null;
 let talismanItemMesh = null;
 let talismanLockTimer = 0;
 let talismanSpawnTime = 0;

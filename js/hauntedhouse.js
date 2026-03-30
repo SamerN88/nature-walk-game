@@ -1354,12 +1354,8 @@ function createCemetery() {
     // ── Graves ───────────────────────────────────────────────────────────────
     const gravePitch = 4.5;
     const tgX = -18, tgZ = -18;
-    let tgSlab = null;
 
     const addGrave = (gx, gz, isTalisman = false) => {
-        const gravePatch = CB(2.35, 0.08, 3.1, gx, -0.08, gz, dirtMat);
-        if (isTalisman) tgSlab = gravePatch;
-
         const dirtSpot = makeGraveDirtSpotMesh();
         dirtSpot.position.set(gx, 0.02, gz + 0.8);
         cemGrp.add(dirtSpot);
@@ -1561,7 +1557,6 @@ function createCemetery() {
         talismanGraveWorldZ: tgWorld.z,
         talismanGraveLocalX: tgX,
         talismanGraveLocalZ: tgZ,
-        talismanGraveCoverMesh: tgSlab,
         graveCount: cemeteryGraveCount,
         roomLampLight: lampLight,
         roomLampGlassMat: hhGlassMat,
@@ -1599,30 +1594,6 @@ function tryDigTalismanGrave() {
     );
 
     if (talismanGraveDigCount >= CEM_GRAVE_DIGS) {
-        if (cemeteryData.talismanGraveCoverMesh) {
-            cemeteryData.talismanGraveCoverMesh.visible = false;
-        }
-
-        // Create a shallow grave depression aligned in cemetery-local space.
-        const depOuterMat = new THREE.MeshLambertMaterial({ color: 0x241c14 });
-        const depInnerMat = new THREE.MeshLambertMaterial({ color: 0x16100c });
-        talismanGraveMesh = new THREE.Group();
-        const depOuter = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.24, 1.18), depOuterMat);
-        depOuter.position.y = -0.14;
-        depOuter.receiveShadow = true;
-        talismanGraveMesh.add(depOuter);
-        const depInner = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.16, 0.74), depInnerMat);
-        depInner.position.y = -0.18;
-        depInner.receiveShadow = true;
-        talismanGraveMesh.add(depInner);
-        talismanGraveMesh.position.set(
-            cemeteryData.talismanGraveLocalX,
-            0,
-            cemeteryData.talismanGraveLocalZ
-        );
-        cemeteryData.group.add(talismanGraveMesh);
-        cemeteryData.group.updateMatrixWorld(true);
-
         // Spawn talisman item
         talismanItemMesh = createTalismanMesh(0.8);
         const talismanSpawn = new THREE.Vector3(
