@@ -2,7 +2,7 @@
 const DEBUG_GEMS = false;  // makes gems spawn very close to origin
 const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
 const DEBUG_CHEST = false;  // for quick access to chest
-const DEBUG_APOCALYPSE = true;  // for quick access to demon apocalypse
+const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
 const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
 const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
 const DEBUG_TORCH = false; // spawn with the torch already in hand
