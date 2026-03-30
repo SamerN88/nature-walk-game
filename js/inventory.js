@@ -134,6 +134,7 @@ function buildNoteMesh3D(imgSrc, noteWidth, noteHeight, isFloating) {
 
     if (isFloating) {
         const glow = new THREE.PointLight(0xFFD080, 2.5, 9);
+        glow.userData.isNoteGlow = true;
         glow.position.y = 0.6;
         noteGroup.add(glow);
     }
@@ -166,6 +167,8 @@ function spawnKeyHintNote(deathPos) {
     scene.add(noteGroup);
     keyHintNoteMesh  = noteGroup;
     keyHintNoteDropped = true;
+    keyHintNoteSpawnTime = performance.now();
+    keyHintNoteLockTimer = 3;
 }
 
 // ─── Per-frame update ─────────────────────────────────────────────────────────
@@ -176,6 +179,31 @@ function updateNotes(delta) {
         keyHintNoteMesh.position.y =
             keyHintNoteMesh.userData.baseY + Math.sin(keyHintNoteMesh.userData.bobPhase) * 0.25;
         keyHintNoteMesh.rotation.y += delta * 0.45;
+
+        const elapsed = (performance.now() - keyHintNoteSpawnTime) / 1000;
+        keyHintNoteLockTimer = Math.max(0, 3 - elapsed);
+
+        if (elapsed < 3) {
+            const phase = elapsed * 2 * Math.PI;
+            const pulse = 2 - 2 * Math.cos(phase);
+            keyHintNoteMesh.traverse(obj => {
+                if (obj.isMesh && obj.material?.color) {
+                    obj.material.color.setRGB(1, 0.88 + pulse * 0.06, 0.72 + pulse * 0.14);
+                }
+                if (obj.isLight && obj.userData.isNoteGlow) {
+                    obj.intensity = 0.6 + pulse * 1.9;
+                }
+            });
+        } else {
+            keyHintNoteMesh.traverse(obj => {
+                if (obj.isMesh && obj.material?.color) {
+                    obj.material.color.setRGB(1, 1, 1);
+                }
+                if (obj.isLight && obj.userData.isNoteGlow) {
+                    obj.intensity = 0.6;
+                }
+            });
+        }
     }
 }
 
@@ -202,6 +230,8 @@ function tryPickupNote(aimDir, punchRange) {
         candidates.push({ mesh: keyHintNoteMesh, id: NOTE_KEY_HINT_ID });
 
     for (const { mesh, id } of candidates) {
+        if (id === NOTE_KEY_HINT_ID && keyHintNoteLockTimer > 0) continue;
+
         // Use world position so notes parented to structures (e.g. cave group) work correctly
         const notePos = new THREE.Vector3();
         mesh.getWorldPosition(notePos);
@@ -219,6 +249,7 @@ function tryPickupNote(aimDir, punchRange) {
         } else {
             keyHintNotePickedUp = true;
             keyHintNoteMesh = null;
+            keyHintNoteLockTimer = 0;
             addInventoryItem(NOTE_KEY_HINT_ID, 'Mysterious Note', NOTE_KEY_HINT_SRC);
         }
         flashEquipHint('NOTE FOUND');
@@ -329,13 +360,19 @@ function renderInventoryGrid() {
             }
             el.addEventListener('click', () => openItemViewer(item));
         } else {
-            // Render a torn-edge parchment thumbnail in a small canvas
-            const TW = 256, TH = 256;
+            // Render a torn-edge parchment thumbnail in a small canvas.
+            // Use the same 4:3 aspect ratio as the note viewer (640×480) so the
+            // thumbnail looks like a scaled-down version of the expanded note.
+            const NOTE_AR = 640 / 480; // 4:3, matches openNoteViewer canvas
+            const THUMB_CONTENT = 70;  // inv-item content area (80px box - 5px padding each side)
+            const THUMB_W = THUMB_CONTENT;
+            const THUMB_H = Math.round(THUMB_CONTENT / NOTE_AR); // 53px
+            const TW = 256, TH = Math.round(256 / NOTE_AR); // 256×192
             const thumbCanvas = document.createElement('canvas');
             thumbCanvas.width = TW;
             thumbCanvas.height = TH;
-            thumbCanvas.style.width = '62px';
-            thumbCanvas.style.height = '62px';
+            thumbCanvas.style.width = THUMB_W + 'px';
+            thumbCanvas.style.height = THUMB_H + 'px';
             thumbCanvas.style.display = 'block';
             thumbCanvas.style.borderRadius = '3px';
             const tctx = thumbCanvas.getContext('2d');
@@ -345,7 +382,9 @@ function renderInventoryGrid() {
             ]);
             drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, null);
             const tImg = new Image();
-            tImg.onload = () => { drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg); };
+            tImg.onload = () => {
+                drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg);
+            };
             tImg.src = item.imgSrc;
 
             el.appendChild(thumbCanvas);
