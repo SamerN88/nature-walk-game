@@ -638,12 +638,15 @@ function tryInteractWithAkChest(aimDir, range) {
     const perp = toChest.sub(aimDir.clone().multiplyScalar(projected)).length();
     if (perp > 2.2) return false;
 
+    // Require player to be within a certain small distance of the chest to interact with it
+    const dx = player.position.x - akChest.worldX;
+    const dz = player.position.z - akChest.worldZ;
+    if (Math.sqrt(dx * dx + dz * dz) > 3.4) return false;
+
     if (!akChest.opened) {
         if (DEBUG_CHEST || hasGoldenKey) {
             akChest.opened = true;
             akChest.lidPivot.rotation.x = -Math.PI * 0.65;
-            hasGoldenKey = false;
-            removeInventoryItem('golden-key'); // key consumed by chest
             updateKeyHUD();
             syncHandItemVisuals();
         }
