@@ -5,6 +5,11 @@ const NOTE_VOLCANO_HINT_ID  = 'volcano-hint';
 const NOTE_KEY_HINT_SRC     = 'images/key-hint.png';
 const NOTE_VOLCANO_HINT_SRC = 'images/volcano-hint.png';
 
+// Preload static icon images used in the handheld bar so they're cache-warm
+// before the player ever opens inventory.
+const _fistImg = new Image();
+_fistImg.src = 'images/fist.png';
+
 // Generates a stable torn-edge polygon path as an array of [x,y] points.
 function makeTornEdgePath(W, H, step, jag) {
     const pts = [];
@@ -262,7 +267,20 @@ function tryPickupNote(aimDir, punchRange) {
 
 function addInventoryItem(id, name, imgSrc, opts = {}) {
     if (inventoryItems.find(i => i.id === id)) return;
-    inventoryItems.push({ id, name, imgSrc, type: opts.type || 'note', itemKey: opts.itemKey });
+    const item = { id, name, imgSrc, type: opts.type || 'note', itemKey: opts.itemKey };
+    // Preload image immediately so it's ready when the inventory is opened
+    if (imgSrc) {
+        const img = new Image();
+        img.src = imgSrc;
+        item._img = img;
+    } else if (item.itemKey) {
+        // Pre-render the 3D icon now and cache it as a loaded Image
+        const dataUrl = _renderItemIconDataURL(item.itemKey);
+        const img = new Image();
+        img.src = dataUrl;
+        item._img = img;
+    }
+    inventoryItems.push(item);
     if (inventoryOpen) renderInventoryGrid();
 }
 
@@ -344,18 +362,19 @@ function renderInventoryGrid() {
                 img.draggable = false;
                 el.appendChild(img);
             } else {
-                const iconSrc = _renderItemIconDataURL(item.itemKey);
                 const SLOT_SIZE = 62;
                 const thumbCanvas = document.createElement('canvas');
                 thumbCanvas.style.display = 'block';
                 thumbCanvas.style.borderRadius = '3px';
                 const tctx = setupHiDPICanvas(thumbCanvas, SLOT_SIZE, SLOT_SIZE, 3);
-                const tImg = new Image();
-                tImg.onload = () => {
-                    tctx.clearRect(0, 0, SLOT_SIZE, SLOT_SIZE);
-                    drawContainedImage(tctx, tImg, SLOT_SIZE, SLOT_SIZE);
-                };
-                tImg.src = iconSrc;
+                const tImg = item._img || (() => {
+                    const img = new Image();
+                    img.src = _renderItemIconDataURL(item.itemKey);
+                    return img;
+                })();
+                const drawIcon = () => { tctx.clearRect(0, 0, SLOT_SIZE, SLOT_SIZE); drawContainedImage(tctx, tImg, SLOT_SIZE, SLOT_SIZE); };
+                if (tImg.complete) drawIcon();
+                else tImg.addEventListener('load', drawIcon, { once: true });
                 el.appendChild(thumbCanvas);
             }
             el.addEventListener('click', () => openItemViewer(item));
@@ -381,11 +400,11 @@ function renderInventoryGrid() {
                 Math.random() * TW, Math.random() * TH, 35 + Math.random() * 45,
             ]);
             drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, null);
-            const tImg = new Image();
-            tImg.onload = () => {
-                drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg);
-            };
-            tImg.src = item.imgSrc;
+            const tImg = item._img || new Image();
+            if (!item._img) tImg.src = item.imgSrc;
+            const drawThumb = () => drawNotePaper(tctx, TW, TH, tTornPath, tWrinkles, tImg);
+            if (tImg.complete) drawThumb();
+            else tImg.addEventListener('load', drawThumb, { once: true });
 
             el.appendChild(thumbCanvas);
             el.addEventListener('click', () => openNoteViewer(item));
@@ -409,10 +428,11 @@ function openNoteViewer(item) {
     const vWrinkles = Array.from({ length: 6 }, () => [
         Math.random() * VW, Math.random() * VH, 65 + Math.random() * 95,
     ]);
-    drawNotePaper(vctx, VW, VH, vTornPath, vWrinkles, null);
-    const vImg = new Image();
-    vImg.onload = () => { drawNotePaper(vctx, VW, VH, vTornPath, vWrinkles, vImg); };
-    vImg.src = item.imgSrc;
+    const vImg = item._img || new Image();
+    if (!item._img) vImg.src = item.imgSrc;
+    const drawViewer = () => drawNotePaper(vctx, VW, VH, vTornPath, vWrinkles, vImg);
+    drawNotePaper(vctx, VW, VH, vTornPath, vWrinkles, vImg.complete ? vImg : null);
+    if (!vImg.complete) vImg.addEventListener('load', drawViewer, { once: true });
 
     viewer.style.display = 'flex';
 }
@@ -431,11 +451,13 @@ function openItemViewer(item) {
     if (item.imgSrc) {
         vctx.fillStyle = 'rgba(18,18,22,1)';
         vctx.fillRect(0, 0, VW, VH);
-        const vImg = new Image();
-        vImg.onload = () => {
+        const vImg = item._img || new Image();
+        if (!item._img) vImg.src = item.imgSrc;
+        if (vImg.complete) {
             drawContainedImage(vctx, vImg, VW, VH);
-        };
-        vImg.src = item.imgSrc;
+        } else {
+            vImg.addEventListener('load', () => drawContainedImage(vctx, vImg, VW, VH), { once: true });
+        }
         viewer.style.display = 'flex';
         return;
     }
@@ -462,14 +484,11 @@ function openItemViewer(item) {
     if (mesh) { _iconScene.add(mesh); _iconMeshes.push(mesh); }
     _iconRenderer.render(_iconScene, _iconCamera);
 
-    // Draw the rendered icon centered on a dark background
+    // Draw the WebGL canvas directly onto the 2D context — synchronous, no data URL round-trip
     vctx.fillStyle = 'rgba(18,18,22,1)';
     vctx.fillRect(0, 0, VW, VH);
-    const dataUrl = _iconRenderer.domElement.toDataURL();
+    vctx.drawImage(_iconRenderer.domElement, 0, 0, VW, VH);
     _iconRenderer.setSize(200, 200); // restore default size
-    const vImg = new Image();
-    vImg.onload = () => { vctx.drawImage(vImg, 0, 0, VW, VH); };
-    vImg.src = dataUrl;
 
     viewer.style.display = 'flex';
 }
@@ -604,8 +623,8 @@ function renderHandheldBar() {
         slot.appendChild(num);
 
         const img = document.createElement('img');
-        // Fist uses the dedicated PNG; everything else uses the 3D icon renderer
-        img.src = _renderItemIconDataURL(item);
+        // Fist uses the preloaded PNG; everything else uses the 3D icon renderer
+        img.src = item === 'fist' ? _fistImg.src : _renderItemIconDataURL(item);
         img.alt = displayName;
         slot.appendChild(img);
 
