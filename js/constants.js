@@ -29,7 +29,16 @@ const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inv
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
 
 // Demon teleport ability
-const DEMON_TELEPORT_INTERVAL_SEC = 5;      // seconds between each teleport eligibility check
+    /* NOTES FROM TESTING THIS OUT:
+        - 3 sec gives the impression that demons teleport often; difficult to maintain a huge train at 
+          round 4 and above (which is good, I want it to be challenging)
+        - 10% chance gives a fair balance; most demons stay put, allowing player to form a fairly sized 
+          train, but prevents player from exploiting the train strategy too much
+        - 40 units makes it so in rounds 1 and 2, it's easy to maintain a train of all or most demons 
+          without them teleporting; but in higher rounds, it's difficult to put all demons in a train 
+          because they will keep exiting the 40-unit raidus, forcing the player to move and stay alert
+    */
+const DEMON_TELEPORT_INTERVAL_SEC = 3;      // seconds between each teleport eligibility check
 const DEMON_TELEPORT_CHANCE   = 0.10;       // chance to teleport each check
 const DEMON_TELEPORT_DISABLE_DIST = 40;     // teleport disabled when demon is closer than this to player
 
