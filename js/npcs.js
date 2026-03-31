@@ -427,8 +427,9 @@ function updateNPCs(delta) {
             }
         }
 
-        // Face movement direction
-        npc.mesh.rotation.y = npc.direction;
+        // NPC meshes are authored facing local +X, so offset by 90 deg from the
+        // movement direction math, which uses +Z as heading zero.
+        npc.mesh.rotation.y = npc.direction - Math.PI / 2;
     });
 }
 
@@ -612,4 +613,3 @@ function recordKill(type) {
         }
     }
 }
-
