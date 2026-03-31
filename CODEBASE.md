@@ -12,6 +12,7 @@ nature-walk-game/
 ├── js/
 │   ├── constants.js    Debug flags and immutable game constants
 │   ├── state.js        All mutable global state variables
+│   ├── images.js       Embedded base64 image assets (PNG data URLs as JS constants)
 │   ├── utils.js        Pure math/geometry helpers and placement utilities
 │   ├── terrain.js      Ground mesh generation and terrain height queries
 │   ├── water.js        Water body planning, mesh creation, traversal state
@@ -24,12 +25,15 @@ nature-walk-game/
 │   ├── gems.js         Secret speed gem and dragon gem (collect, animate, effects)
 │   ├── dragon.js       Dragon creation, mounting, beam weapon, tether, bond system
 │   ├── weapons.js      AK47, shovel, golden key, punch system, lake digging
+│   ├── skeleton.js     Skull and full skeleton mesh construction (used in haunted house)
 │   ├── demons.js       Demon AI, demon apocalypse, health bar, death/reset screen
 │   ├── shadowman.js    Shadow man entity, spawn logic, multi-phase cutscene
 │   ├── hellrun.js      Shrine and demon-rounds (Hell Run) system
 │   ├── daynight.js     Day/night cycle, sky color, sun position
 │   ├── hud.js          HUD/UI update functions, menu panels, god-mode controls
 │   ├── input.js        Keyboard and mouse event handlers
+│   ├── inventory.js    Notes and inventory overlay system (press I), paper/image rendering
+│   ├── hauntedhouse.js Haunted house and cemetery: buildings, dark forests, shadow man combat
 │   └── main.js         `init()`, `animate()`, `update()` — the game loop
 └── CODEBASE.md         This file
 ```
@@ -55,6 +59,13 @@ All `const` declarations that never change at runtime:
 - `FALL_TO_CUTSCENE` — controls cutscene transition behavior
 
 **To change a debug mode or timing constant:** edit here.
+
+---
+
+### `js/images.js`
+All game image assets embedded as base64 data URL constants. Loaded early (right after `state.js`) so image data is available before any system that needs it initializes.
+
+**To add a new image asset:** embed it as a base64 data URL constant here.
 
 ---
 
@@ -240,8 +251,9 @@ The dragon companion system:
 - `findClearDescendPoint(prefX, prefZ)` — finds ground to land on that isn't inside a structure
 - `updateMountedPlayerPose()` — keeps player mesh aligned with dragon saddle
 
-**Bond system:** killing `DRAGON_BOND_KILLS_REQUIRED` enemies with the beam makes the dragon white and permanent.
-**Tether system:** press T to toggle; dragon hovers above player and auto-shoots nearby demons.
+**Bond system:** killing `DRAGON_BOND_KILLS_REQUIRED` enemies (currently 150) with the beam sets `dragonBondFormed = true`, triggers the aura pulse flash (`playDragonBondFlash`), and unlocks the T-tether key. It does **not** change the dragon's color.
+**Tether system:** press T to toggle (unlocked after bond forms); dragon hovers above player and auto-shoots nearby demons.
+**Post-apocalypse dragon transformation:** when the player defeats all demons (`demonVictory`), the dragon's appearance is overhauled — body/neck/legs/tail become dark blue-grey (`0x444455`) and all accents (eyes, spikes, claws, horns, wing membranes) become electric cyan (`0x00DDFF`). The beam also turns cyan. This sets `dragonAscended = true`.
 
 **To change dragon flight behavior:** edit `updateDragon`.
 **To change beam damage/range:** edit `dragonBeamAttack`.
@@ -278,6 +290,17 @@ All player weapons and interactive items:
 
 **To change punch range or damage:** edit the `punch()` function.
 **To change AK47 fire rate:** edit `AK47_SHOT_INTERVAL_MS` in `state.js`.
+
+---
+
+### `js/skeleton.js`
+Mesh construction for skeletal props used inside the haunted house:
+- `createSkullMesh(scale)` — builds a skull (cranium, jaw, eye sockets, nasal cavity, teeth)
+- `createSkeletonMesh(scale)` — builds a complete human skeleton in a seated-against-wall/slumped pose (pelvis, spine, rib cage, clavicles, arms with fingers, legs with toes, skull)
+
+Both functions call `enableMeshShadows` and return a `THREE.Group`. Loaded between `weapons.js` and `demons.js` since `hauntedhouse.js` uses these and is loaded later.
+
+**To change skeleton appearance/pose:** edit the coordinate arrays in `createSkeletonMesh`.
 
 ---
 
@@ -368,6 +391,45 @@ All UI update functions:
 
 ---
 
+### `js/inventory.js`
+Notes and inventory overlay system:
+- Press **I** to open/close the inventory overlay
+- Two collectible paper notes rendered with a torn-parchment canvas effect, each displaying a PNG image (key hint and volcano hint)
+- `makeTornEdgePath(W, H, step, jag)` — generates a stable torn-edge polygon path for the note border
+- `drawNotePaper(ctx, W, H, applyTornPath, wrinkles, img)` — renders parchment texture + image to a canvas
+- Notes are found in-world and added to the inventory when picked up
+- The handheld bar shows equipped item icons (fist, shovel, AK47, etc.)
+
+**To add a new note:** add its image asset to `images.js`, register the note in `inventory.js`.
+
+---
+
+### `js/hauntedhouse.js`
+The haunted house and cemetery, plus their surrounding dark forests:
+
+**Haunted house** (`createHauntedHouse()`):
+- Randomly placed in a ring region (radius 1650–2200) at least 800 units from the volcano
+- Two-floor Victorian-style house (48×50 footprint, raised 5 units on a foundation, gable roof)
+- Full collision geometry: walls, stairs, floor-2, doorways, interior partition with L-shaped corridor
+- Skeletons placed inside as props (using `createSkeletonMesh`)
+- Shadow man combat system inside the house: SM spawns in corners, charges the player, sword hit detection, health tracking, multi-approach cycle (`HH_SM_*` constants)
+
+**Cemetery** (`createCemetery()`):
+- Randomly placed at least 500 units from the haunted house
+- Fenced enclosure with gate, gravestones, talisman collectible, dig mechanic
+
+**Dark forests:**
+- `_createHHForestTree(x, z)` — tall, near-black tree (scale 1.8–3.2, 4 foliage cones) with shadow casting
+- `createHHForest(hhX, hhZ)` — 270 dark trees in 4 density rings (inner-60 to outer-285) + 200 rocks around the haunted house
+- `createCemeteryForest(cemX, cemZ)` — 80 dark trees in a ring (inner-60 to outer-165) around the cemetery
+
+**Key constants** (at top of file): `HH_W/D`, `HH_F1_H/F2_H`, `HH_ELEV`, `HH_SM_*`, `CEM_*`
+
+**To change the haunted house layout:** edit the wall/floor box builders in `createHauntedHouse`.
+**To change the dark forest density:** edit `TOTAL_TREES` / ring counts in `createHHForest` or `createCemeteryForest`.
+
+---
+
 ### `js/input.js`
 Raw input event handlers:
 - `onKeyDown(event)` — WASD/arrow movement, Shift (run), Space (jump), E (interact), F (equip switch), T (tether toggle), M (menu), R (dragon dismount/mount), Q (dragon beam)
@@ -388,7 +450,7 @@ The game loop orchestrator:
 - `WALK_SPEED = 20`, `RUN_SPEED = 40`, `ACCEL = 14`, `DECEL = 20`
 - `PLAYER_RADIUS = 0.5`, `DRAGON_COLLISION_RADIUS = 4.5`
 
-**`init()`** — creates scene, camera, renderer, lights; calls all `create*()` functions in order; registers event listeners; sets start time to noon.
+**`init()`** — creates scene, camera, renderer, lights; calls all `create*()` functions in order; registers event listeners; sets start time to noon. Also calls `createHauntedHouse()` and `createCemetery()` from `hauntedhouse.js`.
 
 **`update(delta)`** — the per-frame update called from `animate()`:
 1. Player movement (gravity, jump, water buoyancy, horizontal movement with collision)
@@ -416,10 +478,10 @@ The game loop orchestrator:
 
 ```
 index.html
-    └─ loads scripts in order ──► constants → state → utils → terrain → water → collision
+    └─ loads scripts in order ──► constants → state → images → utils → terrain → water → collision
                                   → environment → structures → player → camera → npcs
-                                  → gems → dragon → weapons → demons → shadowman
-                                  → hellrun → daynight → hud → input → main
+                                  → gems → dragon → weapons → skeleton → demons → shadowman
+                                  → hellrun → daynight → hud → input → inventory → hauntedhouse → main
 
 main.js:init()
     ├─ planWaterBodies()     [water.js]
@@ -434,7 +496,9 @@ main.js:init()
     ├─ createNPCs()          [npcs.js]
     ├─ createDragonGem()     [gems.js]
     ├─ createDragon()        [dragon.js]
-    └─ createShrine()        [hellrun.js]  ← called inside triggerDemonApocalypse → demonVictory
+    ├─ createShrine()        [hellrun.js]  ← called inside triggerDemonApocalypse → demonVictory
+    ├─ createHauntedHouse()  [hauntedhouse.js]
+    └─ createCemetery()      [hauntedhouse.js]
 
 main.js:update(delta) calls per-frame:
     ├─ updateNPCs()          [npcs.js]
@@ -454,11 +518,11 @@ main.js:update(delta) calls per-frame:
 Progression flow:
     Explore world
     → collect dragonGem at volcano  [gems.js → dragon.js]
-    → dragon descends, bond with dragon via 300 beam kills  [dragon.js]
+    → dragon descends, bond with dragon via 150 beam kills (unlocks tether)  [dragon.js]
     → shadow man phase 3 triggers cutscene  [shadowman.js]
     → demon apocalypse begins  [demons.js]
     → kill all demons → demonVictory()  [demons.js]
-    → secret speed gem spawns  [gems.js]
+    → dragon transforms to dark blue-grey + cyan, secret speed gem spawns  [demons.js, gems.js]
     OR activate shrine → hell run rounds  [hellrun.js]
 ```
 

@@ -689,7 +689,7 @@ function demonVictory() {
             // Everything else (body, neck, head, legs, wing bones, tail): dark blue-grey
             child.material = new THREE.MeshLambertMaterial({ color: 0x444455 });
         });
-        dragonIsWhite = true;
+        dragonAscended = true;
         dragon.visible = true;
         // Trigger dragon descent
         dragonDescending = true;

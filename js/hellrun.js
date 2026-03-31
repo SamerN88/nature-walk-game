@@ -473,7 +473,7 @@ function exitRoundMode() {
 
     if (shrine) { shrine.visible = true; shrineActive = true; }
 
-    if (dragon && dragonIsWhite) {
+    if (dragon && dragonAscended) {
         dragon.visible = true;
         dragonDescending = true;
         dragon.position.set(player.position.x, player.position.y + 150, player.position.z);

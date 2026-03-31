@@ -229,7 +229,7 @@ function updateDragon(delta) {
     }
 
     if (mountedOnDragon) {
-        const flySpeed = 400 * (dragonIsWhite ? speedMultiplier : 1);
+        const flySpeed = 400 * (dragonAscended ? speedMultiplier : 1);
 
         // Dragon faces camera direction - dragon's +X is head
         dragon.rotation.set(0, Math.atan2(-Math.cos(cameraYaw), Math.sin(cameraYaw)), 0);
@@ -463,7 +463,7 @@ function dragonBeamAttack() {
 
     const beamGeometry = new THREE.CylinderGeometry(0.5, 1.5, visualLength, 8);
     const beamMaterial = new THREE.MeshBasicMaterial({
-        color: dragonIsWhite ? 0x00DDFF : 0xFF2200,
+        color: dragonAscended ? 0x00DDFF : 0xFF2200,
         transparent: true,
         opacity: 0.85
     });
@@ -592,7 +592,7 @@ function dragonTetherShoot(targetDemon, targetIndex) {
     const beamDir = beamVec.clone().normalize();
 
     const beamGeo = new THREE.CylinderGeometry(0.3, 0.9, beamLen, 8);
-    const beamMat = new THREE.MeshBasicMaterial({ color: dragonIsWhite ? 0x00DDFF : 0xFF2200, transparent: true, opacity: 0.82 });
+    const beamMat = new THREE.MeshBasicMaterial({ color: dragonAscended ? 0x00DDFF : 0xFF2200, transparent: true, opacity: 0.82 });
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.userData.isBeam = true;
     beam.position.copy(beamStart).addScaledVector(beamDir, beamLen / 2);
