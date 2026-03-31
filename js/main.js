@@ -394,6 +394,7 @@ function animate() {
     updateHauntedHouseSequence(delta);
     updateHHHallDoor(delta);
     updateSwordBladeParticles(delta);
+    updateSwordAuraOrbPulse(delta);
     updateLightningEffects(delta);
     updateTalisman(delta);
     updateSwordSwipe(delta);

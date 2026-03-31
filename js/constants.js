@@ -27,9 +27,11 @@ const DEBUG_TALISMAN = false;      // start with talisman already in inventory
 const DEBUG_INF_JUMP = false;  // gives player infinite jump
 const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
+const DEBUG_SWORD_THUNDER_TRANSITION = true; // makes sword lightning recharge after 2 kills instead of 100
 
 // Demon teleport ability
-    /* NOTES FROM TESTING THIS OUT:
+    /* 
+    NOTES FROM TESTING THIS OUT:
         - 3 sec gives the impression that demons teleport often; difficult to maintain a huge train at 
           round 4 and above (which is good, I want it to be challenging)
         - 10% chance gives a fair balance; most demons stay put, allowing player to form a fairly sized 

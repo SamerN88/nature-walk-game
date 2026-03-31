@@ -2053,8 +2053,62 @@ function _reactivateSwordAura() {
         if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
     });
     _startSwordBladeParticles();
+    _triggerSwordAuraOrbPulse();
     swordAuraActive = true;
     swordPostAuraKills = 0;
+}
+
+function _clearSwordAuraOrbPulse() {
+    if (!playerSwordMesh) return;
+    const pulse = playerSwordMesh.userData.auraOrbPulse;
+    if (!pulse) return;
+    playerSwordMesh.remove(pulse.mesh);
+    pulse.mesh.geometry.dispose();
+    pulse.mesh.material.dispose();
+    if (pulse.light) {
+        playerSwordMesh.remove(pulse.light);
+    }
+    playerSwordMesh.userData.auraOrbPulse = null;
+}
+
+function _triggerSwordAuraOrbPulse() {
+    if (!playerSwordMesh) return;
+    _clearSwordAuraOrbPulse();
+
+    const orbMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(1.55, 24, 20),
+        new THREE.MeshBasicMaterial({
+            color: 0xd9f7ff,
+            transparent: true,
+            opacity: 0,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            toneMapped: false,
+            fog: false
+        })
+    );
+    orbMesh.position.set(0, 1.75, 0);
+    orbMesh.scale.setScalar(0.55);
+    orbMesh.frustumCulled = false;
+    orbMesh.renderOrder = 75;
+
+    const orbLight = new THREE.PointLight(0xd9f7ff, 0, 15, 2);
+    orbLight.position.copy(orbMesh.position);
+
+    playerSwordMesh.add(orbMesh);
+    playerSwordMesh.add(orbLight);
+    playerSwordMesh.userData.auraOrbPulse = {
+        mesh: orbMesh,
+        light: orbLight,
+        elapsed: 0,
+        duration: 0.9,
+        fadeInDuration: 0.28,
+        startScale: 0.55,
+        endScale: 1.08,
+        peakOpacity: 0.3,
+        peakLightIntensity: 3
+    };
 }
 
 // ── Start light-blue particles orbiting the blade and drifting upward ─────────
@@ -2126,6 +2180,29 @@ function updateSwordBladeParticles(delta) {
             pd.height,
             Math.sin(pd.phase) * pd.orbitRadius
         );
+    }
+}
+
+function updateSwordAuraOrbPulse(delta) {
+    if (!playerSwordMesh) return;
+    const pulse = playerSwordMesh.userData.auraOrbPulse;
+    if (!pulse) return;
+
+    pulse.elapsed += delta;
+    const t = Math.min(pulse.elapsed / pulse.duration, 1);
+    const fadeInT = Math.min(pulse.elapsed / pulse.fadeInDuration, 1);
+    const fadeOutT = pulse.elapsed <= pulse.fadeInDuration
+        ? 1
+        : 1 - (pulse.elapsed - pulse.fadeInDuration) / Math.max(0.001, pulse.duration - pulse.fadeInDuration);
+    const opacity = pulse.peakOpacity * Math.min(fadeInT, fadeOutT);
+    const scale = THREE.MathUtils.lerp(pulse.startScale, pulse.endScale, t);
+
+    pulse.mesh.material.opacity = opacity;
+    pulse.mesh.scale.setScalar(scale);
+    if (pulse.light) pulse.light.intensity = pulse.peakLightIntensity * Math.min(fadeInT, fadeOutT);
+
+    if (pulse.elapsed >= pulse.duration) {
+        _clearSwordAuraOrbPulse();
     }
 }
 

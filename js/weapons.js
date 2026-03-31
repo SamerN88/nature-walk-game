@@ -1019,9 +1019,10 @@ function punch() {
         });
 
         if (isSwordAttack && hasSwordShield && swordKillsThisSwing > 0) {
+            const swordAuraRechargeKills = DEBUG_SWORD_THUNDER_TRANSITION ? 1 : 100;
             swordPostAuraKills += swordKillsThisSwing;
-            if (swordPostAuraKills >= 100) {
-                swordPostAuraKills -= 100;
+            if (swordPostAuraKills >= swordAuraRechargeKills) {
+                swordPostAuraKills -= swordAuraRechargeKills;
                 _reactivateSwordAura();
             }
         }
