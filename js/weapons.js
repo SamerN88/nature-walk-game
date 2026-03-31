@@ -644,7 +644,7 @@ function tryInteractWithAkChest(aimDir, range) {
     // Require player to be within a certain small distance of the chest to interact with it
     const dx = player.position.x - akChest.worldX;
     const dz = player.position.z - akChest.worldZ;
-    if (Math.sqrt(dx * dx + dz * dz) > 3.4) return false;
+    if (Math.sqrt(dx * dx + dz * dz) > 4) return false;
 
     if (!akChest.opened) {
         if (DEBUG_CHEST || hasGoldenKey) {
