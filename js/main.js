@@ -504,6 +504,7 @@ function animate() {
     updateHHHallDoor(delta);
     updateSwordBladeParticles(delta);
     updateSwordAuraOrbPulse(delta);
+    updatePlayerTalismanPulse(delta);
     updateLightningEffects(delta);
     updateTalisman(delta);
     updateSwordSwipe(delta);

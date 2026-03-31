@@ -1922,6 +1922,7 @@ function _spawnHHWhiteSM(useFarthest) {
     hhWhiteSMData = { mesh: smGrp, approachCount: hhSMApproachCount, partMeshes, partBaseX };
     hhSMApproaching = (hhSeqTimer >= 50) && !hhWhiteSMData.justSpawned;
     hhWhiteSMData.justSpawned = true;
+    if (hasTalisman && hhSMApproachCount === 0) _triggerPlayerTalismanPulse();
 
     if (hhSMApproachCount > 0) {
         // Respawn: approach immediately (no freeze)
@@ -1993,6 +1994,7 @@ function tryHitHHWhiteSM(aimDir, punchRange) {
 
     // Hit!
     hhSMApproachCount++;
+    _triggerPlayerTalismanPulse();
 
     if (hhSMApproachCount >= HH_SM_MAX_APPROACHES) {
         // Final hit: sequence complete
@@ -2004,6 +2006,28 @@ function tryHitHHWhiteSM(aimDir, punchRange) {
         _spawnHHWhiteSM(false);
     }
     return true;
+}
+
+function _clearPlayerTalismanPulse() {
+    if (!player || !player.userData.talismanPulse) return;
+    const pulse = player.userData.talismanPulse;
+    scene.remove(pulse.light);
+    player.userData.talismanPulse = null;
+}
+
+function _triggerPlayerTalismanPulse() {
+    if (!player) return;
+    _clearPlayerTalismanPulse();
+
+    const light = new THREE.PointLight(0xaa33ff, 0, 20, 2);
+    scene.add(light);
+
+    player.userData.talismanPulse = {
+        light,
+        elapsed: 0,
+        duration: 0.7,
+        peakLightIntensity: 5
+    };
 }
 
 
@@ -2203,6 +2227,21 @@ function updateSwordAuraOrbPulse(delta) {
 
     if (pulse.elapsed >= pulse.duration) {
         _clearSwordAuraOrbPulse();
+    }
+}
+
+function updatePlayerTalismanPulse(delta) {
+    if (!player || !player.userData.talismanPulse) return;
+    const pulse = player.userData.talismanPulse;
+    pulse.elapsed += delta;
+
+    const t = Math.min(pulse.elapsed / pulse.duration, 1);
+    const phase = Math.sin(t * Math.PI);
+    pulse.light.position.copy(player.position);
+    pulse.light.intensity = pulse.peakLightIntensity * phase;
+
+    if (pulse.elapsed >= pulse.duration) {
+        _clearPlayerTalismanPulse();
     }
 }
 
