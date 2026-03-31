@@ -213,6 +213,7 @@ function updateMountedPlayerPose() {
 
 function updateDragon(delta) {
     if (!dragon) return;
+    const UNASCENDED_DRAGON_MAX_FLY_HEIGHT = 325;
 
     if (dragonDescending && !mountedOnDragon && !dragonTethered) {
         const previousDragonX = dragon.position.x;
@@ -289,6 +290,10 @@ function updateDragon(delta) {
         if (dragon.position.y < dgY + 8) {
             dragon.position.y = dgY + 8;
             if (dragonVelocity.y < 0) dragonVelocity.y = 0;
+        }
+        if (!dragonAscended && dragon.position.y > UNASCENDED_DRAGON_MAX_FLY_HEIGHT) {
+            dragon.position.y = UNASCENDED_DRAGON_MAX_FLY_HEIGHT;
+            if (dragonVelocity.y > 0) dragonVelocity.y = 0;
         }
         const groundedOnRoof = resolveCircularBodyRoofCollision(
             dragon.position,
@@ -617,4 +622,3 @@ function dragonTetherShoot(targetDemon, targetIndex) {
 
     explodeDemon(targetDemon, targetIndex);
 }
-

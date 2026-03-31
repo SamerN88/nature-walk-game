@@ -47,7 +47,6 @@ const ORIGIN_CLEAR_RADIUS = 50;
 const STRUCTURE_PLACEMENT_GAP = 10;
 const STRUCTURE_WORLD_LIMIT = WORLD_SIZE - 120;
 const MOUNTAIN_EDGE_SAMPLE_COUNT = 50;
-const DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT = 300;
 const MOUNTAIN_EXTRA_SINK = 1;
 const BOULDER_Y_SINK = 6;
 const PORTAL_FRAME_Y_SINK = 2;
@@ -173,7 +172,6 @@ let hasPlayedDemonRounds = false;
 let dragonGem;
 let dragonGemCollected = false;
 let dragonVolcano = null;
-let tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
 let dragon;
 let dragonDescending = false;
 let dragonDescendTracksPlayer = false;  // currently unused, but leaving it in for posterity

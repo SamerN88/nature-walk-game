@@ -266,7 +266,6 @@ function createMountains() {
     const snowMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
 
     const region = { type: 'ring', minRadius: 1450, maxRadius: 1950 };
-    tallestSnowyMountainHeight = 0;
 
     for (let i = 0; i < 30; i++) {
         const placement = findPlacement(() => {
@@ -285,7 +284,6 @@ function createMountains() {
         }, 260);
 
         if (!placement) continue;
-        tallestSnowyMountainHeight = Math.max(tallestSnowyMountainHeight, placement.height);
 
         const mountainGroup = new THREE.Group();
 
@@ -331,20 +329,15 @@ function createMountains() {
         mountainGroup.rotation.y = placement.rotation;
         scene.add(mountainGroup);
     }
-
-    if (tallestSnowyMountainHeight <= 0) {
-        tallestSnowyMountainHeight = DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
-    }
 }
 
 function createDragonVolcano() {
-    const rawVolcanoHeight = tallestSnowyMountainHeight || DEFAULT_TALLEST_SNOWY_MOUNTAIN_HEIGHT;
-    const volcanoHeight    = rawVolcanoHeight * 0.7125;                  // 25% + 5% shorter (×0.75×0.95)
-    const outerBaseRadius  = Math.max(226, rawVolcanoHeight * 0.751);   // 30% + 5% wider than original (×1.3×1.05)
-    const outerTopRadius   = Math.max(62,  rawVolcanoHeight * 0.22);    // unchanged
-    const coreRadius       = Math.max(48,  volcanoHeight * 0.16);
+    const volcanoHeight = 213;
+    const outerBaseRadius = 230;
+    const outerTopRadius = 65;
+    const coreRadius = 48;
     const lavaHeight = volcanoHeight * 0.3;
-    const platformRadius = Math.max(8, coreRadius * 0.2);
+    const platformRadius = 10;
     const platformThickness = 2.5;
     const innerWallThickness = 3;
     const innerWallSegments = 40;
@@ -534,4 +527,3 @@ function findNPCSpawnPosition(region, attempts = 80) {
 
     return { x: 0, z: 0 };
 }
-
