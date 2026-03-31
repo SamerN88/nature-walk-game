@@ -5,11 +5,15 @@ function updateSunShadowFocus() {
         ? dragon.position
         : (player ? player.position : camera.position);
     const cycleProgress = gameTime / FULL_CYCLE;
-    const sunAngle = cycleProgress * Math.PI * 2 - Math.PI / 2;
+    // Map cycleProgress to a 0->π arc between sunrise (DAWN_END) and sunset (SUNSET_START).
+    // This puts the sun on the eastern horizon at 6:42, overhead at ~12:06, and on the
+    // western horizon at 17:30. Outside that window sin(sunAngle) < 0, so the sun is
+    // correctly below the horizon during dawn, dusk, and night.
+    const sunAngle = (cycleProgress - DAWN_END) / (SUNSET_START - DAWN_END) * Math.PI;
 
     sun.target.position.set(focus.x, focus.y, focus.z);
     sun.position.x = focus.x + Math.cos(sunAngle) * 500;
-    sun.position.y = focus.y + Math.sin(sunAngle) * 500 + 200;
+    sun.position.y = focus.y + Math.sin(sunAngle) * 500;
     sun.position.z = focus.z + 200;
     sun.target.updateMatrixWorld();
 }

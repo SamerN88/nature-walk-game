@@ -61,7 +61,6 @@ function updateDayNightCycle(delta) {
     const cycleProgress = gameTime / FULL_CYCLE;
 
     let sunIntensity, ambientIntensity;
-    const sunAngle = cycleProgress * Math.PI * 2 - Math.PI / 2;
 
     if (cycleProgress < HALF_DAWN) {
         // Night to dawn (first half of dawn window)
