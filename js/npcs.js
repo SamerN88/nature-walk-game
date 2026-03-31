@@ -1,4 +1,13 @@
+const FARMER_MIN_SPAWN_DISTANCE = 200;
+const FARMER_MAX_SPAWN_DISTANCE = 400;
+const FARMER_DEBUG_DISTANCE = 5;
+const FARMER_SCALE = 1.20;
+
 function createNPCs() {
+    if (!farmerSpawnAnchor && player) {
+        farmerSpawnAnchor = { x: player.position.x, z: player.position.z };
+    }
+
     // Create deer
     for (let i = 0; i < 125; i++) {
         createDeer();
@@ -11,9 +20,10 @@ function createNPCs() {
     for (let i = 0; i < 100; i++) { createBird(1); }
     for (let i = 0; i < 100; i++) { createBird(4); }
     // Create humans
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < 149; i++) {
         createHuman();
     }
+    createFarmer();
 }
 
 function createDeer() {
@@ -299,18 +309,78 @@ function createBird(birdScale = 1) {
     });
 }
 
-function createHuman() {
+function isValidFarmerSpawn(x, z) {
+    const bound = WORLD_SIZE * 0.9;
+    if (Math.abs(x) > bound || Math.abs(z) > bound) return false;
+    if (isPointInWater(x, z)) return false;
+    if (getStructureHeight(x, z) > -Infinity) return false;
+    return true;
+}
+
+function findFarmerSpawnPosition(attempts = 160) {
+    const anchorX = farmerSpawnAnchor?.x ?? player?.position.x ?? 0;
+    const anchorZ = farmerSpawnAnchor?.z ?? player?.position.z ?? 0;
+
+    for (let i = 0; i < attempts; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = randRange(FARMER_MIN_SPAWN_DISTANCE, FARMER_MAX_SPAWN_DISTANCE);
+        const x = anchorX + Math.cos(angle) * distance;
+        const z = anchorZ + Math.sin(angle) * distance;
+        if (isValidFarmerSpawn(x, z)) return { x, z };
+    }
+
+    for (let distance = FARMER_MIN_SPAWN_DISTANCE; distance <= FARMER_MAX_SPAWN_DISTANCE; distance += 15) {
+        for (let step = 0; step < 24; step++) {
+            const angle = (step / 24) * Math.PI * 2;
+            const x = anchorX + Math.cos(angle) * distance;
+            const z = anchorZ + Math.sin(angle) * distance;
+            if (isValidFarmerSpawn(x, z)) return { x, z };
+        }
+    }
+
+    const toCenterX = -anchorX;
+    const toCenterZ = -anchorZ;
+    const toCenterLen = Math.hypot(toCenterX, toCenterZ);
+    const dirX = toCenterLen > 1e-5 ? toCenterX / toCenterLen : 0;
+    const dirZ = toCenterLen > 1e-5 ? toCenterZ / toCenterLen : 1;
+    const fallbackDistance = (FARMER_MIN_SPAWN_DISTANCE + FARMER_MAX_SPAWN_DISTANCE) * 0.5;
+    return {
+        x: anchorX + dirX * fallbackDistance,
+        z: anchorZ + dirZ * fallbackDistance
+    };
+}
+
+function getDebugFarmerSpawnPosition() {
+    const forwardX = Math.sin(cameraYaw);
+    const forwardZ = Math.cos(cameraYaw);
+    return {
+        x: player.position.x + forwardX * FARMER_DEBUG_DISTANCE,
+        z: player.position.z + forwardZ * FARMER_DEBUG_DISTANCE
+    };
+}
+
+function createHuman(options = {}) {
+    const isFarmer = options.isFarmer === true;
     const human = new THREE.Group();
     human.userData.ignoreCameraOcclusion = true;
-    const skinColor = [0xFFDBAC, 0xD2A06F, 0x8D5524, 0xC68642][Math.floor(Math.random() * 4)];
-    const clothesColor = [0x3366CC, 0xCC3333, 0x33AA33, 0x9933CC, 0xCC9933][Math.floor(Math.random() * 5)];
+    const skinColor = isFarmer
+        ? 0xFFDBAC
+        : [0xFFDBAC, 0xD2A06F, 0x8D5524, 0xC68642][Math.floor(Math.random() * 4)];
+    const shirtColor = isFarmer
+        ? 0xF2F2F2
+        : [0x3366CC, 0xCC3333, 0x33AA33, 0x9933CC, 0xCC9933][Math.floor(Math.random() * 5)];
+    const pantsColor = isFarmer ? 0x3366CC : 0x444444;
+    const hairColor = [0x000000, 0x3D2314, 0x8B4513, 0xFFD700, 0xA52A2A][Math.floor(Math.random() * 5)];
     const skinMaterial = new THREE.MeshLambertMaterial({ color: skinColor });
-    const clothesMaterial = new THREE.MeshLambertMaterial({ color: clothesColor });
+    const shirtMaterial = new THREE.MeshLambertMaterial({ color: shirtColor });
+    const pantsMaterial = new THREE.MeshLambertMaterial({ color: pantsColor });
+    const hairMaterial = new THREE.MeshLambertMaterial({ color: hairColor });
+    const beardMaterial = new THREE.MeshLambertMaterial({ color: isFarmer ? 0x9A9A9A : hairColor });
 
     // Body/shirt
     const body = new THREE.Mesh(
         new THREE.CapsuleGeometry(0.3, 0.6, 4, 8),
-        clothesMaterial
+        shirtMaterial
     );
     body.position.y = 1;
     human.add(body);
@@ -323,14 +393,44 @@ function createHuman() {
     head.position.y = 1.65;
     human.add(head);
 
-    // Hair
-    const hairColor = [0x000000, 0x3D2314, 0x8B4513, 0xFFD700, 0xA52A2A][Math.floor(Math.random() * 5)];
-    const hair = new THREE.Mesh(
-        new THREE.SphereGeometry(0.26, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
-        new THREE.MeshLambertMaterial({ color: hairColor })
-    );
-    hair.position.y = 1.7;
-    human.add(hair);
+    if (!isFarmer) {
+        const hair = new THREE.Mesh(
+            new THREE.SphereGeometry(0.26, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2),
+            hairMaterial
+        );
+        hair.position.y = 1.7;
+        human.add(hair);
+    }
+
+    if (isFarmer) {
+        const hatMaterial = new THREE.MeshLambertMaterial({ color: 0xD6B35A });
+        const hatGroup = new THREE.Group();
+        hatGroup.position.set(0.02, 1.76, 0);
+
+        const hatBrim = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.38, 0.46, 0.05, 12),
+            hatMaterial
+        );
+        hatGroup.add(hatBrim);
+
+        const hatCrown = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.22, 0.28, 0.35, 12),
+            hatMaterial
+        );
+        hatCrown.position.y = 0.14;
+        hatGroup.add(hatCrown);
+
+        hatGroup.rotation.z = Math.PI / 12;
+        human.add(hatGroup);
+
+        const beard = new THREE.Mesh(
+            new THREE.SphereGeometry(0.22, 8, 8),
+            beardMaterial
+        );
+        beard.position.set(0.16, 1.43, 0);
+        beard.scale.set(0.9, 1.45, 1.15);
+        human.add(beard);
+    }
 
     // Eyes
     [-1, 1].forEach(side => {
@@ -346,7 +446,7 @@ function createHuman() {
     [-1, 1].forEach(side => {
         const leg = new THREE.Mesh(
             new THREE.CapsuleGeometry(0.1, 0.4, 4, 6),
-            new THREE.MeshLambertMaterial({ color: 0x444444 })
+            pantsMaterial
         );
         leg.position.set(0, 0.35, side * 0.15);
         human.add(leg);
@@ -363,7 +463,7 @@ function createHuman() {
         human.add(arm);
     });
 
-    const spawn = findNPCSpawnPosition({
+    const spawn = options.spawnPosition || findNPCSpawnPosition({
         type: 'box',
         minX: -WORLD_SIZE * 0.4,
         maxX: WORLD_SIZE * 0.4,
@@ -372,21 +472,35 @@ function createHuman() {
     });
     const x = spawn.x;
     const z = spawn.z;
+    if (isFarmer) {
+        human.scale.setScalar(FARMER_SCALE);
+        human.scale.y = 1.1 * FARMER_SCALE;
+    }
     human.position.set(x, getGroundHeight(x, z), z);
     enableMeshReceiveShadowOnly(human);
     scene.add(human);
 
-    npcs.push({
+    const npcData = {
         mesh: human,
         type: 'human',
-        waterHeight: 1.96,
+        isFarmer,
+        waterHeight: 1.96 * (isFarmer ? FARMER_SCALE : 1),
         speed: 1.5 + Math.random() * 1.5,
         direction: Math.random() * Math.PI * 2,
         changeTimer: 0,
         changeInterval: 3 + Math.random() * 5,
         walkPhase: Math.random() * Math.PI * 2,
         waterBobPhase: Math.random() * Math.PI * 2
-    });
+    };
+    npcs.push(npcData);
+    return npcData;
+}
+
+function createFarmer() {
+    const spawnPosition = DEBUG_FARMER
+        ? getDebugFarmerSpawnPosition()
+        : findFarmerSpawnPosition();
+    return createHuman({ isFarmer: true, spawnPosition });
 }
 
 function updateNPCs(delta) {
@@ -472,7 +586,7 @@ function updateNPCs(delta) {
 function getNPCHitRadius(npc) {
     if (npc.type === 'bird') return (npc.mesh.scale.x > 1.5) ? 6.0 : 2.8;
     if (npc.type === 'deer') return 3.2;
-    if (npc.type === 'human') return 2.8;
+    if (npc.type === 'human') return npc.isFarmer ? 3.3 : 2.8;
     return 2.2;
 }
 
@@ -583,11 +697,8 @@ function explodeNPC(npcData, index) {
     };
     animateExplosion();
 
-    // Track human death position for note drops
-    if (npcType === 'human') lastHumanDeathPos = position.clone();
-
     // Increment kill count
-    recordKill(npcType);
+    recordKill(npcType, npcData, position);
 
     // Spawn NPCs based on respawn rate
     for (let i = 0; i < respawnRate; i++) {
@@ -602,8 +713,10 @@ function explodeNPC(npcData, index) {
 // Called when the demon apocalypse or hell run begins.
 function despawnAllNPCsForHell() {
     savedNpcCounts = { deer: 0, rabbit: 0, bird: 0, human: 0 };
+    savedFarmerPresent = false;
     for (const npc of npcs) {
         if (savedNpcCounts[npc.type] !== undefined) savedNpcCounts[npc.type]++;
+        if (npc.isFarmer) savedFarmerPresent = true;
         scene.remove(npc.mesh);
     }
     npcs.length = 0;
@@ -620,8 +733,11 @@ function respawnSavedNPCs() {
     const halfBirds = Math.floor(savedNpcCounts.bird / 2);
     for (let i = 0; i < halfBirds; i++) createBird(1);
     for (let i = 0; i < savedNpcCounts.bird - halfBirds; i++) createBird(4);
-    for (let i = 0; i < savedNpcCounts.human; i++) createHuman();
+    const regularHumanCount = Math.max(0, savedNpcCounts.human - (savedFarmerPresent ? 1 : 0));
+    for (let i = 0; i < regularHumanCount; i++) createHuman();
+    if (savedFarmerPresent) createFarmer();
     savedNpcCounts = null;
+    savedFarmerPresent = false;
     updateStats();
 }
 
@@ -637,15 +753,12 @@ function spawnRandomNPC() {
     }
 }
 
-function recordKill(type) {
+function recordKill(type, npcData = null, deathPos = null) {
     killCount++;
     if (killBreakdown[type] !== undefined) {
         killBreakdown[type]++;
     }
-    // Key-hint note: 10% drop from human kills, never in first 5 kills, one-time only
-    if (type === 'human' && !keyHintNoteDropped && (DEBUG_KEY_HINT || killCount > 5) && lastHumanDeathPos) {
-        if (DEBUG_KEY_HINT || Math.random() < 0.10) {
-            spawnKeyHintNote(lastHumanDeathPos);
-        }
+    if (type === 'human' && npcData?.isFarmer && !keyHintNoteDropped && deathPos) {
+        spawnKeyHintNote(deathPos);
     }
 }

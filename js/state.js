@@ -111,6 +111,8 @@ const DIG_ZONE_SIZE = 10;
 let npcs = [];
 // Counts of each NPC type saved before hell/apocalypse, null when not saved
 let savedNpcCounts = null;
+let savedFarmerPresent = false;
+let farmerSpawnAnchor = null;
 
 // Secret gem
 let secretGem;
@@ -241,7 +243,6 @@ let keyHintNoteLockTimer = 0;
 let keyHintNoteSpawnTime = 0;
 let volcanoHintNotePickedUp = false;
 let volcanoHintNoteMesh = null;
-let lastHumanDeathPos = null;
 let inventoryOpen = false;
 let inventoryItems = [];
 
