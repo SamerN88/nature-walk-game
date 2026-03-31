@@ -12,6 +12,114 @@ const _cameraOffset = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
 const _desiredCameraPos = new THREE.Vector3();
 
+function createDigZoneGroundPatch(lake) {
+    if (!lake) return;
+
+    function makeBlobTexture(halfSize, baseRadius, noise, feather) {
+        const texSize = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = texSize;
+        canvas.height = texSize;
+        const ctx = canvas.getContext('2d');
+        const image = ctx.createImageData(texSize, texSize);
+        const data = image.data;
+
+        for (let y = 0; y < texSize; y++) {
+            for (let x = 0; x < texSize; x++) {
+                const u = (x + 0.5) / texSize * 2 - 1;
+                const v = (y + 0.5) / texSize * 2 - 1;
+                const angle = Math.atan2(v, u);
+                const worldX = u * halfSize;
+                const worldZ = v * halfSize;
+                const radial = Math.hypot(worldX, worldZ);
+                const variation = THREE.MathUtils.clamp(
+                    Math.sin(angle * 2.0 + 0.7) * 0.12 +
+                    Math.cos(angle * 3.0 - 1.1) * 0.09 +
+                    Math.sin(angle * 5.0 + 0.3) * 0.18 +
+                    Math.cos(angle * 9.0 - 0.9) * 0.16 +
+                    Math.sin(angle * 15.0 + 1.8) * 0.12 +
+                    Math.cos(angle * 24.0 - 0.2) * 0.08 +
+                    Math.sin(worldX * 0.18 + worldZ * 0.11) * 0.08 +
+                    Math.cos(worldX * 0.13 - worldZ * 0.17) * 0.07 +
+                    Math.sin(worldX * 0.31 + worldZ * 0.27) * 0.04,
+                    -1,
+                    1
+                );
+                const noisyRadius = Math.max(0.1, baseRadius + noise * variation);
+                const alphaT = THREE.MathUtils.clamp((noisyRadius - radial) / feather, 0, 1);
+                const alpha = alphaT * alphaT * (3 - 2 * alphaT);
+                const i = (y * texSize + x) * 4;
+
+                data[i] = 255;
+                data[i + 1] = 255;
+                data[i + 2] = 255;
+                data[i + 3] = Math.round(alpha * 255);
+            }
+        }
+
+        ctx.putImageData(image, 0, 0);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    function addBlobPatch({
+        color,
+        opacity,
+        yOffset,
+        renderOrder,
+        baseRadius,
+        noise,
+        feather
+    }) {
+        const halfSize = baseRadius + noise + feather * 2 + 1;
+        const size = halfSize * 2;
+        const patch = new THREE.Mesh(
+            new THREE.PlaneGeometry(size, size),
+            new THREE.MeshLambertMaterial({
+                color,
+                map: makeBlobTexture(halfSize, baseRadius, noise, feather),
+                transparent: true,
+                opacity,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            })
+        );
+        patch.rotation.x = -Math.PI / 2;
+        patch.position.set(lake.x, lake.floorY + yOffset, lake.z);
+        patch.renderOrder = renderOrder;
+        patch.userData.ignoreCameraOcclusion = true;
+        scene.add(patch);
+    }
+
+    // Set configs for both blob patches
+    const bigPatchRadius = 3.5 * DIG_ZONE_SIZE;
+    const smallPatchRadius = 1.5 * DIG_ZONE_SIZE;
+
+    // Big outer patch
+    addBlobPatch({
+        color: 0x356035,
+        opacity: 0.8,
+        yOffset: 0.01,
+        renderOrder: 3,
+        baseRadius: bigPatchRadius,
+        noise: bigPatchRadius * 0.18,
+        feather: bigPatchRadius * 0.5
+    });
+    // Small inner patch
+    addBlobPatch({
+        color: 0x2e532e,
+        opacity: 0.5,
+        yOffset: 0.02,
+        renderOrder: 4,
+        baseRadius: smallPatchRadius,
+        noise: smallPatchRadius * 0.18,
+        feather: smallPatchRadius * 0.7
+    });
+
+}
+
 function init() {
     // Scene
     scene = new THREE.Scene();
@@ -55,6 +163,7 @@ function init() {
     createGround();
     createWater();
     bigLake = waterBodies.filter(w => w.kind === 'lake').sort((a, b) => b.cylinderRadius - a.cylinderRadius)[0] || null;
+    createDigZoneGroundPatch(bigLake);
 
     if (DEBUG_AK47) {
         ak47Collected = true;
