@@ -50,7 +50,7 @@ const CEM_MIN_DIST_FROM_HH = 500;
 const CEM_Y_OFFSET = 0.5;
 const CEM_TERRAIN_FLAT_MARGIN = 20;
 const CEM_TERRAIN_FLAT_BLEND = 30;
-const TALISMAN_ICON_SRC = 'images/talisman.png';
+const TALISMAN_ICON_SRC = 'img/talisman.png';
 
 // ── Floor-1 corner positions (local x,z) for SM spawning ────────────────────
 const HH_CORNERS = [

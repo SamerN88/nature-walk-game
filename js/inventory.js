@@ -2,13 +2,13 @@
 
 const NOTE_KEY_HINT_ID      = 'key-hint';
 const NOTE_VOLCANO_HINT_ID  = 'volcano-hint';
-const NOTE_KEY_HINT_SRC     = 'images/key-hint.png';
-const NOTE_VOLCANO_HINT_SRC = 'images/volcano-hint.png';
+const NOTE_KEY_HINT_SRC     = 'img/key-hint.png';
+const NOTE_VOLCANO_HINT_SRC = 'img/volcano-hint.png';
 
 // Preload static icon images used in the handheld bar so they're cache-warm
 // before the player ever opens inventory.
 const _fistImg = new Image();
-_fistImg.src = 'images/fist.png';
+_fistImg.src = 'img/fist.png';
 
 // Generates a stable torn-edge polygon path as an array of [x,y] points.
 function makeTornEdgePath(W, H, step, jag) {
@@ -552,7 +552,7 @@ function _renderItemIconDataURL(itemName) {
             // mesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), mat);
             // mesh.position.set(0, 0.35, 0);
             // break;
-            return 'images/fist.png';
+            return 'img/fist.png';
         }
         case 'shovel':
             mesh = createShovelMesh(0.42);
