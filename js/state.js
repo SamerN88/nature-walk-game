@@ -250,7 +250,7 @@ let inventoryItems = [];
 // Doors
 let houseDoors = [];
 // Dragon bond / tether constants
-const DRAGON_BOND_KILLS_REQUIRED  = 300; // dragon-beam kills needed to form bond
+const DRAGON_BOND_KILLS_REQUIRED  = 150; // dragon-beam kills needed to form bond
 const DRAGON_TETHER_HEIGHT        = 60;  // units above player head when tethered
 const DRAGON_TETHER_DETECT_RADIUS = 30;  // radius around player to detect demons for tether shots
 const DRAGON_TETHER_SHOT_INTERVAL = 1;   // seconds between tether auto-shots

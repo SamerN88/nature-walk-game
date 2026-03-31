@@ -240,7 +240,7 @@ The dragon companion system:
 - `findClearDescendPoint(prefX, prefZ)` — finds ground to land on that isn't inside a structure
 - `updateMountedPlayerPose()` — keeps player mesh aligned with dragon saddle
 
-**Bond system:** killing `DRAGON_BOND_KILLS_REQUIRED` (300) enemies with the beam makes the dragon white and permanent.
+**Bond system:** killing `DRAGON_BOND_KILLS_REQUIRED` enemies with the beam makes the dragon white and permanent.
 **Tether system:** press T to toggle; dragon hovers above player and auto-shoots nearby demons.
 
 **To change dragon flight behavior:** edit `updateDragon`.
