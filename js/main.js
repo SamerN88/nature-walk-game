@@ -23,7 +23,7 @@ function init() {
     shadowMan = null;
 
     // Camera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1500);
 
     // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -371,7 +371,6 @@ function animate() {
         const dirToSM = smLookPos.clone().sub(refPos).normalize();
         const camPos = refPos.clone().addScaledVector(dirToSM, -8);
         camPos.y = refPos.y + 6;
-        scene.updateMatrixWorld();
         camera.position.copy(camPos);
         camera.lookAt(smLookPos);
     }

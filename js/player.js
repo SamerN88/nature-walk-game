@@ -54,7 +54,7 @@ function createPlayer() {
 
     torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 150, 1.2);
     torchEquippedLight.position.set(0, 2.5, 1);
-    torchEquippedLight.castShadow = true; // DEBUG SHADOW - decided to keep this but mitigate it for performance
+    torchEquippedLight.castShadow = false; // DEBUG SHADOW - decided to keep this but mitigate it for performance
     torchEquippedLight.shadow.mapSize.set(256, 256);
     torchEquippedLight.shadow.bias = -0.0008;
     torchEquippedLight.shadow.normalBias = 0.08;

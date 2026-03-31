@@ -1,3 +1,19 @@
+// Pre-allocated vectors/objects to avoid per-frame heap allocations in updateDragon
+// and dragonBeamAttack / dragonTetherShoot.
+const _dragonForward      = new THREE.Vector3();
+const _dragonRight        = new THREE.Vector3();
+const _dragonCamOffset    = new THREE.Vector3();
+const _dragonLookTarget   = new THREE.Vector3();
+const _dragonDesiredCam   = new THREE.Vector3();
+const _dragonAimDir       = new THREE.Vector3();
+const _dragonSnoutOffset  = new THREE.Vector3();
+const _dragonBeamStart    = new THREE.Vector3();
+const _dragonBeamEnd      = new THREE.Vector3();
+const _dragonBeamVec      = new THREE.Vector3();
+const _dragonUp           = new THREE.Vector3(0, 1, 0);
+const _dragonBeamRaycaster = new THREE.Raycaster();
+const _dragonScreenCenter  = new THREE.Vector2(0, 0); // crosshair is always screen center
+
 function createDragon() {
     dragon = new THREE.Group();
     dragon.userData.ignoreCameraOcclusion = true;
@@ -235,14 +251,14 @@ function updateDragon(delta) {
         dragon.rotation.set(0, Math.atan2(-Math.cos(cameraYaw), Math.sin(cameraYaw)), 0);
 
         // Forward vector (camera direction)
-        const forward = new THREE.Vector3(Math.sin(cameraYaw), 0, Math.cos(cameraYaw));
+        _dragonForward.set(Math.sin(cameraYaw), 0, Math.cos(cameraYaw));
         // Right vector matches player convention (sin(yaw - PI/2), 0, cos(yaw - PI/2))
-        const right = new THREE.Vector3(Math.sin(cameraYaw - Math.PI / 2), 0, Math.cos(cameraYaw - Math.PI / 2));
+        _dragonRight.set(Math.sin(cameraYaw - Math.PI / 2), 0, Math.cos(cameraYaw - Math.PI / 2));
 
-        if (moveForward) dragonVelocity.add(forward.clone().multiplyScalar(flySpeed * delta));
-        if (moveBackward) dragonVelocity.sub(forward.clone().multiplyScalar(flySpeed * delta));
-        if (moveRight) dragonVelocity.add(right.clone().multiplyScalar(flySpeed * delta));
-        if (moveLeft) dragonVelocity.sub(right.clone().multiplyScalar(flySpeed * delta));
+        if (moveForward)  dragonVelocity.addScaledVector(_dragonForward,  flySpeed * delta);
+        if (moveBackward) dragonVelocity.addScaledVector(_dragonForward, -flySpeed * delta);
+        if (moveRight)    dragonVelocity.addScaledVector(_dragonRight,    flySpeed * delta);
+        if (moveLeft)     dragonVelocity.addScaledVector(_dragonRight,   -flySpeed * delta);
 
         // SPACE = up, SHIFT = down
         if (spaceHeld) dragonVelocity.y += flySpeed * delta;
@@ -285,8 +301,8 @@ function updateDragon(delta) {
         }
 
         // Camera follows dragon (further back than normal player cam)
-        const lookTarget = dragon.position.clone();
-        lookTarget.y += 18;
+        _dragonLookTarget.copy(dragon.position);
+        _dragonLookTarget.y += 18;
         const dragonCamDist = 35;
         const dragonCamH = 14;
         const pitchCos = Math.cos(cameraPitch);
@@ -294,16 +310,16 @@ function updateDragon(delta) {
         const pitchHeight = cameraPitch > 0
             ? pitchSin * dragonCamDist * 0.65
             : pitchSin * dragonCamDist * 1.8;
-        const cameraOffset = new THREE.Vector3(
+        _dragonCamOffset.set(
             -Math.sin(cameraYaw) * dragonCamDist * pitchCos,
             dragonCamH + pitchHeight,
             -Math.cos(cameraYaw) * dragonCamDist * pitchCos
         );
-        const desiredCameraPosition = dragon.position.clone().add(cameraOffset);
-        desiredCameraPosition.y += 2;
+        _dragonDesiredCam.copy(dragon.position).add(_dragonCamOffset);
+        _dragonDesiredCam.y += 2;
         scene.updateMatrixWorld();
-        camera.position.copy(resolveThirdPersonCameraPosition(lookTarget, desiredCameraPosition));
-        camera.lookAt(lookTarget);
+        camera.position.copy(resolveThirdPersonCameraPosition(_dragonLookTarget, _dragonDesiredCam));
+        camera.lookAt(_dragonLookTarget);
     }
 
     if (mountedOnDragon) {
@@ -425,26 +441,23 @@ function dragonBeamAttack() {
     if (!mountedOnDragon) return;
 
     // Aim direction = where the camera is looking (crosshair direction)
-    const aimDir = new THREE.Vector3();
-    camera.getWorldDirection(aimDir);
+    camera.getWorldDirection(_dragonAimDir);
 
     // Beam starts from the tip of the dragon's snout (local +X front face at (15, 4.5, 0))
-    const beamStart = dragon.position.clone().add(
-        new THREE.Vector3(15, 4.5, 0).applyQuaternion(dragon.quaternion)
-    );
+    _dragonSnoutOffset.set(15, 4.5, 0).applyQuaternion(dragon.quaternion);
+    _dragonBeamStart.copy(dragon.position).add(_dragonSnoutOffset);
 
     // Raycast from screen center (crosshair) against all solid scene objects.
     // Exclude the dragon, player, NPCs, and any still-fading beam meshes so the
     // ray only hits terrain and structures (including structures blocking the view).
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    _dragonBeamRaycaster.setFromCamera(_dragonScreenCenter, camera);
 
     const excludeUUIDs = new Set();
     dragon.traverse(obj => excludeUUIDs.add(obj.uuid));
     player.traverse(obj => excludeUUIDs.add(obj.uuid));
     npcs.forEach(npc => npc.mesh.traverse(obj => excludeUUIDs.add(obj.uuid)));
 
-    const solidHits = raycaster.intersectObjects(scene.children, true)
+    const solidHits = _dragonBeamRaycaster.intersectObjects(scene.children, true)
         .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam && !h.object.userData.isWater);
 
     let beamEndPoint;
@@ -452,12 +465,13 @@ function dragonBeamAttack() {
         beamEndPoint = solidHits[0].point;
     } else {
         // Aimed at sky — extend a long way
-        beamEndPoint = camera.position.clone().addScaledVector(aimDir, 1000);
+        _dragonBeamEnd.copy(camera.position).addScaledVector(_dragonAimDir, 1000);
+        beamEndPoint = _dragonBeamEnd;
     }
 
-    const beamVec = beamEndPoint.clone().sub(beamStart);
-    const visualLength = beamVec.length();
-    const beamDir = beamVec.clone().normalize();
+    _dragonBeamVec.copy(beamEndPoint).sub(_dragonBeamStart);
+    const visualLength = _dragonBeamVec.length();
+    const beamDir = _dragonBeamVec.clone().normalize();
     // Kill detection uses camera as ray origin — measure range from camera too
     const cameraRayLength = camera.position.distanceTo(beamEndPoint);
 
@@ -469,17 +483,17 @@ function dragonBeamAttack() {
     });
     const beam = new THREE.Mesh(beamGeometry, beamMaterial);
     beam.userData.isBeam = true; // exclude from future raycasts
-    beam.position.copy(beamStart).addScaledVector(beamDir, visualLength / 2);
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamDir);
+    beam.position.copy(_dragonBeamStart).addScaledVector(beamDir, visualLength / 2);
+    beam.quaternion.setFromUnitVectors(_dragonUp, beamDir);
     scene.add(beam);
 
     // Kill NPCs in beam path — ray from camera, range capped at camera->endpoint dist
     const killList = [];
     npcs.forEach((npc, index) => {
         const toNPC = npc.mesh.position.clone().sub(camera.position);
-        const projected = toNPC.dot(aimDir);
+        const projected = toNPC.dot(_dragonAimDir);
         if (projected > 0 && projected < cameraRayLength) {
-            const perpDist = toNPC.clone().sub(aimDir.clone().multiplyScalar(projected)).length();
+            const perpDist = toNPC.clone().sub(_dragonAimDir.clone().multiplyScalar(projected)).length();
             if (perpDist < 8) {
                 killList.push(index);
             }
@@ -582,21 +596,21 @@ function updateDragonBondFlashes(delta) {
 
 
 function dragonTetherShoot(targetDemon, targetIndex) {
-    const snoutOffset = new THREE.Vector3(15, 4.5, 0).applyQuaternion(dragon.quaternion);
-    const beamStart = dragon.position.clone().add(snoutOffset);
-    const beamEnd = targetDemon.mesh.position.clone();
-    beamEnd.y += targetDemon.gunHitCenterY ?? 4.8;
+    _dragonSnoutOffset.set(15, 4.5, 0).applyQuaternion(dragon.quaternion);
+    _dragonBeamStart.copy(dragon.position).add(_dragonSnoutOffset);
+    _dragonBeamEnd.copy(targetDemon.mesh.position);
+    _dragonBeamEnd.y += targetDemon.gunHitCenterY ?? 4.8;
 
-    const beamVec = beamEnd.clone().sub(beamStart);
-    const beamLen = beamVec.length();
-    const beamDir = beamVec.clone().normalize();
+    _dragonBeamVec.copy(_dragonBeamEnd).sub(_dragonBeamStart);
+    const beamLen = _dragonBeamVec.length();
+    const beamDir = _dragonBeamVec.clone().normalize();
 
     const beamGeo = new THREE.CylinderGeometry(0.3, 0.9, beamLen, 8);
     const beamMat = new THREE.MeshBasicMaterial({ color: dragonAscended ? 0x00DDFF : 0xFF2200, transparent: true, opacity: 0.82 });
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.userData.isBeam = true;
-    beam.position.copy(beamStart).addScaledVector(beamDir, beamLen / 2);
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), beamDir);
+    beam.position.copy(_dragonBeamStart).addScaledVector(beamDir, beamLen / 2);
+    beam.quaternion.setFromUnitVectors(_dragonUp, beamDir);
     scene.add(beam);
     setTimeout(() => { beam.material.opacity = 0.3; }, 100);
     setTimeout(() => { scene.remove(beam); beam.geometry.dispose(); beam.material.dispose(); }, 260);

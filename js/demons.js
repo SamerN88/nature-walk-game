@@ -2,6 +2,8 @@ const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine de
 const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
 // Circumference of the campfire-timer SVG arc (r=13): 2π×13
 const _CAMPFIRE_ARC_CIRC = 2 * Math.PI * 13;
+// Cached DOM element for the damage flash overlay (avoid getElementById in hot loop)
+const _damageFlashEl = document.getElementById('damage-flash');
 
 function createDemon(biasedSpeed = false) {
     const demon = new THREE.Group();
@@ -440,13 +442,15 @@ function explodeDemon(zData, index) {
     if (demons.length === 0) demonVictory();
 }
 
-// Separation runs every 3rd frame to reduce O(n²) cost without noticeable visual change.
+// Separation interval scales with demon count to keep O(n²) cost manageable:
+// every 3 frames for <100 demons, +1 frame per additional 100 demons.
 let _demonSepFrame = 0;
 
 function updateDemons(delta) {
     if (!demonApocalypse || playerDead || demons.length === 0) return;
 
-    _demonSepFrame = (_demonSepFrame + 1) % 3;
+    const sepInterval = 3 + Math.floor(demons.length / 100);
+    _demonSepFrame = (_demonSepFrame + 1) % sepInterval;
     const runSeparation = _demonSepFrame === 0;
 
     const targetPos = mountedOnDragon ? dragon.position : player.position;
@@ -606,12 +610,10 @@ function updateDemons(delta) {
             playerHealth = Math.max(0, playerHealth - damage);
             dragonHealth = Math.max(0, dragonHealth - damage);
 
-            // Red screen flash
-            const flash = document.createElement('div');
-            flash.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(220,0,0,0.38);pointer-events:none;z-index:400;transition:opacity 0.3s';
-            document.body.appendChild(flash);
-            setTimeout(() => { flash.style.opacity = '0'; }, 60);
-            setTimeout(() => flash.remove(), 400);
+            // Red screen flash — re-trigger CSS animation on persistent element
+            _damageFlashEl.classList.remove('active');
+            void _damageFlashEl.offsetWidth; // force reflow so the animation restarts
+            _damageFlashEl.classList.add('active');
 
             updateHealthBar();
             const activeHealth = mountedOnDragon ? dragonHealth : playerHealth;

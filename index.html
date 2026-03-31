@@ -426,6 +426,22 @@
             from { opacity: 0.75; }
             to   { opacity: 1.0;  }
         }
+        @keyframes damageFlash {
+            0%   { opacity: 0.38; }
+            100% { opacity: 0; }
+        }
+        #damage-flash {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(220, 0, 0, 0.38);
+            pointer-events: none;
+            z-index: 400;
+            opacity: 0;
+        }
+        #damage-flash.active {
+            animation: damageFlash 0.4s ease-out forwards;
+        }
         #campfire-shield {
             position: absolute;
             bottom: 95px;
@@ -766,6 +782,9 @@
             <rect x="50" y="20.5" width="4" height="5" rx="1.5" fill="#ffd700"/>
         </svg>
     </div>
+
+    <!-- Persistent damage flash overlay (reused via CSS animation re-trigger) -->
+    <div id="damage-flash"></div>
 
     <!-- Demon Apocalypse UI -->
     <div id="demon-counter"><span id="round-label" style="display:none;font-size:13px;letter-spacing:2px;opacity:0.8;"></span>&#x2620;&#xFE0E; DEMONS: <span id="demon-count">0</span> &#x2620;&#xFE0E;</div>

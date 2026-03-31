@@ -868,10 +868,22 @@ function _createHHForestTree(x, z) {
             foliageMat
         );
         cone.position.y = fl.yOff;
-        cone.castShadow = true;
+        cone.castShadow = false;
         cone.receiveShadow = true;
         tree.add(cone);
     }
+
+    // Invisible shadow-proxy cone: spans the full foliage envelope so the shadow
+    // pass renders one mesh instead of four. colorWrite/depthWrite = false keeps it
+    // invisible to the player; the shadow pass ignores those flags (it uses its own
+    // depth material) so the cone still casts a shadow.
+    const shadowProxy = new THREE.Mesh(
+        new THREE.ConeGeometry(2.8 * scale, 7.9 * scale, 8),
+        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+    );
+    shadowProxy.position.y = 8.7 * scale;
+    shadowProxy.castShadow = true;
+    tree.add(shadowProxy);
 
     // Raycast downward against the terrain mesh only (isGround tag set in terrain.js).
     // Trees land on the world ground surface; if that happens to be inside a mountain, that's fine.

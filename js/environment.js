@@ -22,7 +22,7 @@ function createTree(x, z, scale = 1) {
         foliageMaterial
     );
     foliage1.position.y = 4 * scale;
-    foliage1.castShadow = true;
+    foliage1.castShadow = false;
     foliage1.receiveShadow = true;
     tree.add(foliage1);
 
@@ -31,7 +31,7 @@ function createTree(x, z, scale = 1) {
         foliageMaterial
     );
     foliage2.position.y = 5.5 * scale;
-    foliage2.castShadow = true;
+    foliage2.castShadow = false;
     tree.add(foliage2);
 
     const foliage3 = new THREE.Mesh(
@@ -39,8 +39,22 @@ function createTree(x, z, scale = 1) {
         foliageMaterial
     );
     foliage3.position.y = 6.8 * scale;
-    foliage3.castShadow = true;
+    foliage3.castShadow = false;
     tree.add(foliage3);
+
+    // Invisible shadow-proxy cone: spans the full foliage envelope so the shadow
+    // pass renders one mesh instead of three. colorWrite/depthWrite = false keeps
+    // it invisible to the player; the shadow pass uses its own depth material so
+    // the proxy still casts a shadow correctly.
+    // Foliage spans Y = 2.5s (base of foliage1) to 7.8s (top of foliage3).
+    // Total height 5.3s, centre at 5.15s, max radius 2.5s.
+    const shadowProxy = new THREE.Mesh(
+        new THREE.ConeGeometry(2.5 * scale, 5.3 * scale, 8),
+        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+    );
+    shadowProxy.position.y = 5.15 * scale;
+    shadowProxy.castShadow = true;
+    tree.add(shadowProxy);
 
     tree.position.set(x, getGroundHeight(x, z), z);
     scene.add(tree);
