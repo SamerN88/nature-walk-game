@@ -4,10 +4,6 @@ const FARMER_DEBUG_DISTANCE = 5;
 const FARMER_SCALE = 1.20;
 
 function createNPCs() {
-    if (!farmerSpawnAnchor && player) {
-        farmerSpawnAnchor = { x: player.position.x, z: player.position.z };
-    }
-
     // Create deer
     for (let i = 0; i < 125; i++) {
         createDeer();
@@ -497,6 +493,9 @@ function createHuman(options = {}) {
 }
 
 function createFarmer() {
+    // One-farmer rule: never create a second farmer while one is alive, and never
+    // resurrect a farmer who was permanently killed in true combat.
+    if (farmerPermanentlyKilled || npcs.some(n => n.isFarmer)) return null;
     const spawnPosition = DEBUG_FARMER
         ? getDebugFarmerSpawnPosition()
         : findFarmerSpawnPosition();
@@ -735,7 +734,7 @@ function respawnSavedNPCs() {
     for (let i = 0; i < savedNpcCounts.bird - halfBirds; i++) createBird(4);
     const regularHumanCount = Math.max(0, savedNpcCounts.human - (savedFarmerPresent ? 1 : 0));
     for (let i = 0; i < regularHumanCount; i++) createHuman();
-    if (savedFarmerPresent) createFarmer();
+    if (savedFarmerPresent && !farmerPermanentlyKilled) createFarmer();
     savedNpcCounts = null;
     savedFarmerPresent = false;
     updateStats();
@@ -743,13 +742,15 @@ function respawnSavedNPCs() {
 
 function spawnRandomNPC() {
     const types = ['deer', 'rabbit', 'bird', 'human'];
+    if (!farmerPermanentlyKilled && !npcs.some(n => n.isFarmer)) types.push('farmer');
     const type = types[Math.floor(Math.random() * types.length)];
 
     switch (type) {
-        case 'deer': createDeer(); break;
+        case 'deer':   createDeer();   break;
         case 'rabbit': createRabbit(); break;
-        case 'bird': createBird(); break;
-        case 'human': createHuman(); break;
+        case 'bird':   createBird();   break;
+        case 'human':  createHuman();  break;
+        case 'farmer': createFarmer(); break;
     }
 }
 
@@ -758,7 +759,10 @@ function recordKill(type, npcData = null, deathPos = null) {
     if (killBreakdown[type] !== undefined) {
         killBreakdown[type]++;
     }
-    if (type === 'human' && npcData?.isFarmer && !keyHintNoteDropped && deathPos) {
-        spawnKeyHintNote(deathPos);
+    if (type === 'human' && npcData?.isFarmer) {
+        farmerPermanentlyKilled = true;
+        if (!keyHintNoteDropped && deathPos) {
+            spawnKeyHintNote(deathPos);
+        }
     }
 }

@@ -111,7 +111,12 @@ let npcs = [];
 // Counts of each NPC type saved before hell/apocalypse, null when not saved
 let savedNpcCounts = null;
 let savedFarmerPresent = false;
-let farmerSpawnAnchor = null;
+// True once the farmer has been killed in true combat (note dropped).
+// Prevents the farmer from ever respawning. God-kills do NOT set this flag.
+let farmerPermanentlyKilled = false;
+// Anchor for farmer spawn — always origin so the farmer spawns near the world
+// centre regardless of where the player happens to be standing at game start.
+let farmerSpawnAnchor = { x: 0, z: 0 };
 
 // Secret gem
 let secretGem;
