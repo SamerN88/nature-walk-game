@@ -398,7 +398,6 @@ function animate() {
     updateLightningEffects(delta);
     updateTalisman(delta);
     updateSwordSwipe(delta);
-    _updateSwordCooldownBar();
     updateSunShadowFocus();
     renderer.render(scene, camera);
 }

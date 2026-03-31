@@ -2303,19 +2303,6 @@ function updateSwordSwipe(delta) {
     if (mesh) mesh.material.opacity = 0.55 * (1 - t);
 }
 
-// ── Sword cooldown bar HUD ────────────────────────────────────────────────────
-function _updateSwordCooldownBar() {
-    const bar = document.getElementById('sword-cooldown-bar');
-    const wrap = document.getElementById('sword-cooldown-wrap');
-    if (!wrap || !bar) return;
-    if (hhSwordCooldown > 0 && currentHandItem === 'sword-shield') {
-        wrap.style.display = 'block';
-        bar.style.width = (hhSwordCooldown * 100) + '%';
-    } else {
-        wrap.style.display = 'none';
-    }
-}
-
 // ── Despawn HH (after 900 units post-sequence) ───────────────────────────────
 function _despawnHauntedHouse() {
     if (!hauntedHouseData) return;

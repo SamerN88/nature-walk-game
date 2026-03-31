@@ -273,7 +273,6 @@ let hhSMSpawned = false;
 let hhSMApproaching = false;
 let hhWhiteSMData = null;      // { mesh, approachCount }
 let hhSMApproachCount = 0;     // 0..10; wins on 11th hit
-let hhSwordCooldown = 0;       // sword cooldown countdown (max 1.0 s)
 let hasSwordShield = false;
 let playerSwordMesh = null;
 let playerShieldMesh = null;
