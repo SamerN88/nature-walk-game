@@ -27,7 +27,7 @@ const DEBUG_TALISMAN = false;      // start with talisman already in inventory
 const DEBUG_INF_JUMP = false;  // gives player infinite jump
 const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
-const DEBUG_SWORD_THUNDER_TRANSITION = true; // makes sword lightning recharge after 2 kills instead of 100
+const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge after 1 kill instead of 100
 
 // Demon teleport ability
     /* 

@@ -185,6 +185,7 @@ function createBird(birdScale = 1) {
     bird.userData.ignoreCameraOcclusion = true;
     const bodyColor = [0x4444FF, 0xFF4444, 0xFFFF00, 0x44FF44, 0xFF8800][Math.floor(Math.random() * 5)];
     const bodyMaterial = new THREE.MeshLambertMaterial({ color: bodyColor });
+    const wingMaterial = new THREE.MeshLambertMaterial({ color: bodyColor, side: THREE.DoubleSide });
     const wings = [];
 
     // Body
@@ -192,7 +193,8 @@ function createBird(birdScale = 1) {
         new THREE.SphereGeometry(0.15, 8, 8),
         bodyMaterial
     );
-    body.scale.set(1, 0.8, 1.3);
+    body.scale.y = 0.7;
+    body.scale.z = 0.7;
     bird.add(body);
 
     // Head
@@ -200,8 +202,19 @@ function createBird(birdScale = 1) {
         new THREE.SphereGeometry(0.1, 8, 8),
         bodyMaterial
     );
+    head.scale.y = 0.8;
+    head.scale.z = 0.8;
     head.position.set(0.18, 0.05, 0);
     bird.add(head);
+
+    [-1, 1].forEach(side => {
+        const eye = new THREE.Mesh(
+            new THREE.SphereGeometry(0.018, 6, 6),
+            new THREE.MeshLambertMaterial({ color: 0x111111 })
+        );
+        eye.position.set(0.25, 0.07, side * 0.045);
+        bird.add(eye);
+    });
 
     // Beak
     const beak = new THREE.Mesh(
@@ -213,22 +226,44 @@ function createBird(birdScale = 1) {
     bird.add(beak);
 
     // Wings
+    const wingShape = new THREE.Shape();
+    wingShape.moveTo(0.12, 0);
+    wingShape.lineTo(0, 0.40);
+    wingShape.lineTo(-0.12, 0);
+    wingShape.closePath();
+    const wingThickness = 0.03;
+
     [-1, 1].forEach(side => {
-        const wing = new THREE.Mesh(
-            new THREE.BoxGeometry(0.02, 0.15, 0.25),
-            bodyMaterial
-        );
-        wing.position.set(0, 0, side * 0.18);
+        const wingGeometry = new THREE.ExtrudeGeometry(wingShape, {
+            depth: wingThickness,
+            bevelEnabled: false
+        });
+        wingGeometry.rotateX(-Math.PI / 2);
+        wingGeometry.rotateY(Math.PI / 10);
+        if (side < 0) wingGeometry.scale(1, 1, -1);
+
+        const wing = new THREE.Mesh(wingGeometry, wingMaterial);
+        wing.position.set(0.04, 0, side * 0.02);
+        wing.userData.flapSign = -side;
         bird.add(wing);
         wings.push(wing);
     });
 
     // Tail
-    const tail = new THREE.Mesh(
-        new THREE.BoxGeometry(0.02, 0.08, 0.12),
-        bodyMaterial
-    );
-    tail.position.set(-0.2, 0, 0);
+    const tailShape = new THREE.Shape();
+    tailShape.moveTo(0.08, 0);
+    tailShape.lineTo(0, 0.12);
+    tailShape.lineTo(-0.08, 0);
+    tailShape.closePath();
+
+    const tailGeometry = new THREE.ExtrudeGeometry(tailShape, {
+        depth: 0.03,
+        bevelEnabled: false
+    });
+    tailGeometry.rotateX(-Math.PI / 2);
+    tailGeometry.rotateY(-Math.PI / 2);
+    const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+    tail.position.set(-0.20, 0, 0);
     bird.add(tail);
     bird.userData.wings = wings;
 
@@ -244,8 +279,8 @@ function createBird(birdScale = 1) {
     const x = spawn.x;
     const z = spawn.z;
     const flyHeight = birdScale > 1
-        ? (30 + Math.random() * 30)   // big birds fly higher
-        : (10 + Math.random() * 20);  // small birds fly lower
+        ? (30 + Math.random() * 50)   // big birds fly higher
+        : (10 + Math.random() * 30);  // small birds fly lower
     bird.position.set(x, getGroundHeight(x, z) + flyHeight, z);
     enableMeshShadows(bird);
     scene.add(bird);
@@ -254,7 +289,7 @@ function createBird(birdScale = 1) {
         mesh: bird,
         type: 'bird',
         waterHeight: 0.35 * birdScale,
-        speed: birdScale > 1 ? (3 + Math.random() * 3) : (8 + Math.random() * 6),
+        speed: birdScale > 1 ? (20 + Math.random() * 30) : (8 + Math.random() * 6),
         direction: Math.random() * Math.PI * 2,
         changeTimer: 0,
         changeInterval: 3 + Math.random() * 5,
@@ -387,8 +422,9 @@ function updateNPCs(delta) {
             const baseY = getGroundHeight(npc.mesh.position.x, npc.mesh.position.z);
             npc.mesh.position.y = baseY + npc.flyHeight + Math.sin(npc.wingPhase * 0.5) * 2;
             // Wing flapping animation
+            const flapAngle = Math.sin(npc.wingPhase) * 0.5;
             (npc.mesh.userData.wings || []).forEach(wing => {
-                wing.rotation.x = Math.sin(npc.wingPhase) * 0.5;
+                wing.rotation.x = flapAngle * (wing.userData.flapSign || 1);
             });
         } else if (npc.type === 'rabbit') {
             npc.hopTimer += delta * 8;
