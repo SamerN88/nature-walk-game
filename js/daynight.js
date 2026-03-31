@@ -1,31 +1,51 @@
 // Pre-allocated Color reused every frame to avoid per-frame GC allocations in updateDayNightCycle.
 const _skyColorBuf = new THREE.Color();
+const DAY_START_HOUR = 5;
+
+function timeToCycleProgress(hour, minute) {
+    return ((hour + minute/60) - DAY_START_HOUR) / 24;
+}
+
+// Phase thresholds (cycleProgress 0=5:00 AM, offset 5 hrs)
+    // Dawn:   0.00000 – 0.07083  (5:00 – 6:42)
+    // Day:    0.07083 – 0.52083  (6:42 – 17:30)
+    // Sunset: 0.52083 – 0.57083  (17:30 – 18:42)
+    // Dusk:   0.57083 – 0.62083  (18:42 – 19:54)
+    // Night:  0.62083 – 1.00000  (19:54 – 5:00)
+const DAWN_END = timeToCycleProgress(6, 42);
+const SUNSET_START = timeToCycleProgress(17, 30);
+const DUSK_START = timeToCycleProgress(18, 42);
+const NIGHT_START = timeToCycleProgress(19, 54);
+const HALF_DAWN = DAWN_END / 2;
+
 
 function setTimeOfDay(time) {
     if (demonApocalypse) return; // can't change time during apocalypse
-    // Set gameTime based on selected time
-    // 0.0 - 0.125: Night to dawn
-    // 0.125 - 0.25: Dawn to day
-    // 0.25 - 0.375: Day (morning)
-    // 0.375 - 0.5: Day to sunset
-    // 0.5 - 0.625: Sunset to night
-    // 0.625 - 1.0: Night
+    const phaseProgress = 0.3;
 
     switch (time) {
         case 'dawn':
-            gameTime = FULL_CYCLE * (0.51/24); // 30% into dawn (~5:44 AM)
+            gameTime = FULL_CYCLE * (DAWN_END * phaseProgress);
             break;
         case 'day':
-            gameTime = FULL_CYCLE * (6.02/24); // 40% into day (~11:01 AM)
+            gameTime = FULL_CYCLE * (
+                DAWN_END + (SUNSET_START - DAWN_END) * phaseProgress
+            );
             break;
         case 'sunset':
-            gameTime = FULL_CYCLE * (12.86/24); // 30% into sunset (~17:52)
+            gameTime = FULL_CYCLE * (
+                SUNSET_START + (DUSK_START - SUNSET_START) * phaseProgress
+            );
             break;
         case 'dusk':
-            gameTime = FULL_CYCLE * (14.06/24); // 30% into dusk (~19:04)
+            gameTime = FULL_CYCLE * (
+                DUSK_START + (NIGHT_START - DUSK_START) * phaseProgress
+            );
             break;
         case 'night':
-            gameTime = FULL_CYCLE * (17.63/24); // 30% into night (~22:38)
+            gameTime = FULL_CYCLE * (
+                NIGHT_START + (1 - NIGHT_START) * phaseProgress
+            );
             break;
     }
 
@@ -39,18 +59,6 @@ function updateDayNightCycle(delta) {
     gameTime = (gameTime + delta) % FULL_CYCLE;
 
     const cycleProgress = gameTime / FULL_CYCLE;
-
-    // Phase thresholds (cycleProgress 0=5:00 AM, offset 5 hrs)
-    // Dawn:   0.00000 – 0.07083  (5:00 – 6:42)
-    // Day:    0.07083 – 0.52083  (6:42 – 17:30)
-    // Sunset: 0.52083 – 0.57083  (17:30 – 18:42)
-    // Dusk:   0.57083 – 0.62083  (18:42 – 19:54)
-    // Night:  0.62083 – 1.00000  (19:54 – 5:00)
-    const DAWN_END    = 1.7  / 24; // 6:42
-    const SUNSET_START = 12.5 / 24; // 17:30
-    const DUSK_START   = 13.7 / 24; // 18:42
-    const NIGHT_START  = 14.9 / 24; // 19:54
-    const HALF_DAWN    = DAWN_END / 2;
 
     let sunIntensity, ambientIntensity;
     const sunAngle = cycleProgress * Math.PI * 2 - Math.PI / 2;
@@ -98,9 +106,9 @@ function updateDayNightCycle(delta) {
     updateSunShadowFocus();
 
     // Update sun color
-    if (cycleProgress > 12.5/24 && cycleProgress < 14.9/24) {
+    if (cycleProgress > SUNSET_START && cycleProgress < NIGHT_START) {
         sun.color.setHex(0xffa500); // orange during sunset+dusk
-    } else if (cycleProgress < 1.7/24 || cycleProgress > 14.9/24) {
+    } else if (cycleProgress < DAWN_END || cycleProgress > NIGHT_START) {
         sun.color.setHex(0x4444ff); // blue during dawn+night
     } else {
         sun.color.setHex(0xffffff); // white during day
@@ -109,7 +117,7 @@ function updateDayNightCycle(delta) {
     updateWaterLighting();
 
     // Update UI
-    const gameHours = (cycleProgress * 24 + 5) % 24; // Start at 5 AM
+    const gameHours = (cycleProgress * 24 + DAY_START_HOUR) % 24; // Start at 5 AM
     const hours = Math.floor(gameHours);
     const minutes = Math.floor((gameHours - hours) * 60);
     const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -119,10 +127,10 @@ function updateDayNightCycle(delta) {
         `Time: ${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
 
     let timeOfDay;
-    if (cycleProgress < 1.7/24) timeOfDay = 'Dawn';
-    else if (cycleProgress < 12.5/24) timeOfDay = 'Day';
-    else if (cycleProgress < 13.7/24) timeOfDay = 'Sunset';
-    else if (cycleProgress < 14.9/24) timeOfDay = 'Dusk';
+    if (cycleProgress < DAWN_END) timeOfDay = 'Dawn';
+    else if (cycleProgress < SUNSET_START) timeOfDay = 'Day';
+    else if (cycleProgress < DUSK_START) timeOfDay = 'Sunset';
+    else if (cycleProgress < NIGHT_START) timeOfDay = 'Dusk';
     else timeOfDay = 'Night';
 
     document.getElementById('day-night').textContent = timeOfDay;
