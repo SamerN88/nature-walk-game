@@ -205,14 +205,14 @@ function init() {
     }
 
     createPlayer();
-    // Enterable/climbable structures must be created BEFORE trees so their
-    // footprints are registered in placementFootprints before tree placement.
-    createClimbableStructures();
-    createEnterableStructures();
-    createDragonVolcano();   // must run first — largest footprint (≥266 units), claims space before mountains/HH
-    createMountains();       // avoids volcano; must run before HH/cemetery so mountain footprints are registered
+    // Reserve critical landmarks before generic clutter so unique progression
+    // content cannot lose its placement budget to ambient world generation.
+    createDragonVolcano();
     createHauntedHouse();
     createCemetery();
+    createEnterableStructures();
+    createClimbableStructures();
+    createMountains();
     createTrees();
     createRocks();
     createFlowers();

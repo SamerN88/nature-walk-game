@@ -64,8 +64,7 @@ const HH_CORNERS = [
 function createHauntedHouse() {
     const region = { type: 'ring', minRadius: 1650, maxRadius: 2200 };
 
-    const placement = findPlacement(() => {
-        const pt = samplePointInRegion(region);
+    const placement = findPlacementInRegion(region, (pt, rotation) => {
         // Reject if terrain under the building footprint is too steep or too elevated.
         // Sampling radius 70 covers the building's half-diagonal and a small buffer.
         const stats = sampleTerrainStats(pt.x, pt.z, 70, 3, 12);
@@ -76,12 +75,12 @@ function createHauntedHouse() {
             const dvDz = pt.z - dragonVolcano.z;
             if (dvDx * dvDx + dvDz * dvDz < 800 * 800) return null;
         }
-        const rot = randomRotationY();
+        const rot = rotation ?? randomRotationY();
         return {
             x: pt.x, z: pt.z, rotation: rot,
             footprint: { ...makePlacementFootprint(pt.x, pt.z, 100), noTree: true, isHHOwn: true }
         };
-    }, 500);
+    }, 500, { rotationCount: 12, pointDensity: 1.3 });
 
     if (!placement) { console.warn('HauntedHouse: no placement found'); return; }
 
@@ -1123,19 +1122,18 @@ function createCemetery() {
     const hhZ = hauntedHouseData.worldZ;
     const region = { type: 'ring', minRadius: 1650, maxRadius: 2200 };
 
-    const placement = findPlacement(() => {
-        const pt = samplePointInRegion(region);
+    const placement = findPlacementInRegion(region, (pt, rotation) => {
         // Enforce minimum distance from HH
         if (Math.hypot(pt.x - hhX, pt.z - hhZ) < CEM_MIN_DIST_FROM_HH) return null;
         // Reject steep / elevated terrain (same guard as HH)
         const stats = sampleTerrainStats(pt.x, pt.z, 50, 3, 12);
         if (stats.range > 28) return null;
-        const rot2 = randomRotationY();
+        const rot2 = rotation ?? randomRotationY();
         return {
             x: pt.x, z: pt.z, rotation: rot2,
             footprint: { ...makePlacementFootprint(pt.x, pt.z, 48), noTree: true }
         };
-    }, 600);
+    }, 600, { rotationCount: 12, pointDensity: 1.3 });
 
     if (!placement) { console.warn('Cemetery: no placement found'); return; }
 

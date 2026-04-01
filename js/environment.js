@@ -341,18 +341,13 @@ function createDragonVolcano() {
     const platformThickness = 2.5;
     const innerWallThickness = 3;
     const innerWallSegments = 40;
+    const volcanoRegion = { type: 'ring', minRadius: 1500, maxRadius: 2000 };
 
-    const placement = findPlacement(() => {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = backgroundDist();
-        const x = Math.cos(angle) * distance;
-        const z = Math.sin(angle) * distance;
-        return {
-            x,
-            z,
-            footprint: makePlacementFootprint(x, z, outerBaseRadius + 40)
-        };
-    }, 320) || (() => {
+    const placement = findPlacementInRegion(volcanoRegion, point => ({
+        x: point.x,
+        z: point.z,
+        footprint: makePlacementFootprint(point.x, point.z, outerBaseRadius + 40)
+    }), 320, { pointDensity: 1.35 }) || (() => {
         const angle = Math.random() * Math.PI * 2;
         const distance = backgroundDist();
         const x = Math.cos(angle) * distance;

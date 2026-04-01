@@ -615,16 +615,12 @@ function createEnterableStructures() {
         { type: 'box', minX: 200,  maxX: 420, minZ: -150, maxZ: 40 },
     ];
     const housePlacements = houseRegions
-        .map(region => findPlacement(() => {
-            const point = samplePointInRegion(region);
-            const rotation = randomRotationY();
-            return {
-                x: point.x,
-                z: point.z,
-                rotation,
-                footprint: { ...makePlacementFootprint(point.x, point.z, 15), noTree: true }
-            };
-        }, 240))
+        .map(region => findPlacementInRegion(region, (point, rotation) => ({
+            x: point.x,
+            z: point.z,
+            rotation: rotation ?? randomRotationY(),
+            footprint: { ...makePlacementFootprint(point.x, point.z, 15), noTree: true }
+        }), 240, { rotationCount: 12, pointDensity: 1.1 }))
         .filter(Boolean);
     const chestHouseIndex = housePlacements.length > 0
         ? Math.floor(Math.random() * housePlacements.length)
@@ -772,24 +768,23 @@ function createEnterableStructures() {
         // Index 3: secret cave with writing, far out near the background mountains
         { type: 'ring', minRadius: 800, maxRadius: 1100 },
     ];
-    const volcanoNoteCaveIdx = Math.floor(Math.random() * 3); // random near-cave gets the volcano hint note
+    const volcanoNoteCandidates = [];
     let caveIdx = 0;
     caveRegions.forEach(region => {
-        const isChosenCave = caveIdx === 3; // only the far cave gets the writing
-        const isVolcanoNoteCave = (caveIdx === volcanoNoteCaveIdx);
+        const isWritingCave = caveIdx === 3;
+        const canHostVolcanoNote = !isWritingCave;
         caveIdx++;
 
-        const placement = findPlacement(() => {
-            const point = samplePointInRegion(region);
-            const rotation = randomRotationY();
-            const footprintCenter = localToWorldXZ(point.x, point.z, 0, -6, rotation);
+        const placement = findPlacementInRegion(region, (point, rotation) => {
+            const resolvedRotation = rotation ?? randomRotationY();
+            const footprintCenter = localToWorldXZ(point.x, point.z, 0, -6, resolvedRotation);
             return {
                 x: point.x,
                 z: point.z,
-                rotation,
+                rotation: resolvedRotation,
                 footprint: { ...makePlacementFootprint(footprintCenter.x, footprintCenter.z, 20), noTree: true }
             };
-        }, 260);
+        }, 260, { rotationCount: 12, pointDensity: isWritingCave ? 1.2 : 1.05 });
 
         if (!placement) return;
 
@@ -901,18 +896,17 @@ function createEnterableStructures() {
         caveSlab.position.set(0, -slabThickness / 2, -(cD + wT) / 2);
         cave.add(caveSlab);
 
+        const fireZ = -cD / 2;
+        const noteLocalX = cW / 2 - 1.5;   // local position of the volcano-hint note
+        const noteLocalZ = -(cD - 2);
         for (let r = 0; r < 5; r++) {
             let rx, rz;
-            const fireZ = -cD / 2;
-            // Note local position (only relevant when isVolcanoNoteCave, but safe to always compute)
-            const noteLocalX = cW / 2 - 1.5;
-            const noteLocalZ = -(cD - 2);
             do {
                 rx = (Math.random() - 0.5) * (cW * 2 - 2);
                 rz = -(Math.random() * (cD - 2) + 1);
             } while (
                 Math.hypot(rx, rz - fireZ) < 2.2 ||
-                (isVolcanoNoteCave && Math.hypot(rx - noteLocalX, rz - noteLocalZ) < 2.5)
+                (canHostVolcanoNote && Math.hypot(rx - noteLocalX, rz - noteLocalZ) < 2.5)
             );
 
             const rock = new THREE.Mesh(
@@ -968,7 +962,7 @@ function createEnterableStructures() {
         cave.add(fireLight);
         campfireLights.push(fireLight);
 
-        if (isChosenCave) {
+        if (isWritingCave) {
             const writingImg = new Image();
             writingImg.onload = () => {
                 const tex = new THREE.Texture(writingImg);
@@ -993,7 +987,7 @@ function createEnterableStructures() {
         cave.rotation.y = placement.rotation;
         scene.add(cave);
 
-        if (isChosenCave && DEBUG_CAVE_WRITING) {
+        if (isWritingCave && DEBUG_CAVE_WRITING) {
             const beaconHeight = 500;
             const hoverGap = 30;
             const beacon = new THREE.Mesh(
@@ -1028,43 +1022,57 @@ function createEnterableStructures() {
         cave.updateMatrixWorld(true);
         registerColliderMarkers(caveColliderMarkers);
 
-        if (isVolcanoNoteCave) {
-            // Spawn the note directly into the scene at its computed world position.
-            // groundY is guaranteed >= terrain height at [2.5, -10] (it's in caveSamplePts),
-            // so groundY + 0.16 is safely above terrain and 0.06 above the cave floor (groundY + 0.1).
-            // Using scene-root avoids any floating-point depth corruption that can arise from
-            // the cave-group → noteGroup → plane matrix chain.
-            const noteWorld = localToWorldXZ(placement.x, placement.z, cW / 2 - 1.5, -(cD - 2), placement.rotation);
-            spawnVolcanoNote(noteWorld.x, groundY + 0.14, noteWorld.z, 0.65 + placement.rotation, null);
-
-            if (DEBUG_VOLCANO_HINT) {
-                const beaconHeight = 500;
-                const hoverGap = 30;
-                const beacon = new THREE.Mesh(
-                    new THREE.CylinderGeometry(8, 8, beaconHeight, 18, 1, true),
-                    new THREE.MeshBasicMaterial({
-                        color: 0x00ff44,
-                        transparent: true,
-                        opacity: 0.65,
-                        side: THREE.DoubleSide,
-                        depthWrite: false
-                    })
-                );
-                const noteWorldPos = localToWorldXZ(placement.x, placement.z, cW / 2 - 1.5, -(cD - 2), placement.rotation);
-                beacon.position.set(
-                    noteWorldPos.x,
-                    groundY + cH + hoverGap + beaconHeight / 2,
-                    noteWorldPos.z
-                );
-                beacon.renderOrder = 930;
-                beacon.userData.ignoreCameraOcclusion = true;
-                scene.add(beacon);
-            }
+        if (canHostVolcanoNote) {
+            volcanoNoteCandidates.push({
+                x: placement.x,
+                z: placement.z,
+                rotation: placement.rotation,
+                groundY,
+                caveHeight: cH,
+                caveWidth: cW,
+                caveDepth: cD
+            });
         }
 
         const fireWorld = localToWorldXZ(placement.x, placement.z, 0, -cD / 2, placement.rotation);
         campfirePositions.push(new THREE.Vector3(fireWorld.x, groundY + 0.2, fireWorld.z));
     });
+
+    if (volcanoNoteCandidates.length > 0) {
+        const chosenCandidate = volcanoNoteCandidates[Math.floor(Math.random() * volcanoNoteCandidates.length)];
+        const noteWorld = localToWorldXZ(
+            chosenCandidate.x,
+            chosenCandidate.z,
+            chosenCandidate.caveWidth / 2 - 1.5,
+            -(chosenCandidate.caveDepth - 2),
+            chosenCandidate.rotation
+        );
+
+        spawnVolcanoNote(noteWorld.x, chosenCandidate.groundY + 0.14, noteWorld.z, 0.65 + chosenCandidate.rotation, null);
+
+        if (DEBUG_VOLCANO_HINT) {
+            const beaconHeight = 500;
+            const hoverGap = 30;
+            const beacon = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 8, beaconHeight, 18, 1, true),
+                new THREE.MeshBasicMaterial({
+                    color: 0x00ff44,
+                    transparent: true,
+                    opacity: 0.65,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                })
+            );
+            beacon.position.set(
+                noteWorld.x,
+                chosenCandidate.groundY + chosenCandidate.caveHeight + hoverGap + beaconHeight / 2,
+                noteWorld.z
+            );
+            beacon.renderOrder = 930;
+            beacon.userData.ignoreCameraOcclusion = true;
+            scene.add(beacon);
+        }
+    }
 
     const tentRegions = [
         { type: 'box', minX: 20,   maxX: 140, minZ: -20,  maxZ: 90 },
@@ -1077,16 +1085,15 @@ function createEnterableStructures() {
     const builtTentGroups = [];
 
     tentRegions.forEach(region => {
-        const placement = findPlacement(() => {
-            const point = samplePointInRegion(region);
-            const rotation = randomRotationY();
+        const placement = findPlacementInRegion(region, (point, rotation) => {
+            const resolvedRotation = rotation ?? randomRotationY();
             return {
                 x: point.x,
                 z: point.z,
-                rotation,
+                rotation: resolvedRotation,
                 footprint: { ...makePlacementFootprint(point.x, point.z, 11), noTree: true }
             };
-        }, 220);
+        }, 220, { rotationCount: 12, pointDensity: 1.05 });
 
         if (!placement) return;
 

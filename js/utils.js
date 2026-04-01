@@ -127,14 +127,107 @@ function reserveFootprint(footprint) {
     placementFootprints.push({ ...footprint });
 }
 
+function tryReservePlacementCandidate(candidate) {
+    if (!candidate || !candidate.footprint) return null;
+    if (!canPlaceFootprint(candidate.footprint)) return null;
+    reserveFootprint(candidate.footprint);
+    return candidate;
+}
+
 function findPlacement(createCandidate, attempts = 160) {
     for (let attempt = 0; attempt < attempts; attempt++) {
-        const candidate = createCandidate();
-        if (!candidate || !candidate.footprint) continue;
-        if (!canPlaceFootprint(candidate.footprint)) continue;
-        reserveFootprint(candidate.footprint);
-        return candidate;
+        const placement = tryReservePlacementCandidate(createCandidate());
+        if (placement) return placement;
     }
+    return null;
+}
+
+function getRegionSearchPoints(region, density = 1) {
+    const points = [];
+
+    if (region.type === 'ring') {
+        const radialSteps = Math.max(6, Math.round(12 * density));
+        const angleSteps = Math.max(16, Math.round(28 * density));
+        const span = Math.max(1e-5, region.maxRadius - region.minRadius);
+        const centerRadius = region.minRadius + span * 0.5;
+        const radii = [];
+
+        for (let i = 0; i <= radialSteps; i++) {
+            radii.push(region.minRadius + (span * i / radialSteps));
+        }
+        radii.sort((a, b) => Math.abs(a - centerRadius) - Math.abs(b - centerRadius));
+
+        radii.forEach((radius, radiusIndex) => {
+            const angleOffset = (radiusIndex % 2) * (Math.PI / angleSteps);
+            for (let step = 0; step < angleSteps; step++) {
+                const angle = angleOffset + (step / angleSteps) * Math.PI * 2;
+                points.push({
+                    x: Math.cos(angle) * radius,
+                    z: Math.sin(angle) * radius
+                });
+            }
+        });
+
+        return points;
+    }
+
+    const width = region.maxX - region.minX;
+    const depth = region.maxZ - region.minZ;
+    const stepsX = Math.max(5, Math.round(11 * density));
+    const stepsZ = Math.max(5, Math.round(11 * density));
+    const xs = [];
+    const zs = [];
+    const centerX = (region.minX + region.maxX) * 0.5;
+    const centerZ = (region.minZ + region.maxZ) * 0.5;
+
+    for (let i = 0; i <= stepsX; i++) {
+        xs.push(region.minX + (width * i / stepsX));
+    }
+    for (let i = 0; i <= stepsZ; i++) {
+        zs.push(region.minZ + (depth * i / stepsZ));
+    }
+
+    xs.sort((a, b) => Math.abs(a - centerX) - Math.abs(b - centerX));
+    zs.sort((a, b) => Math.abs(a - centerZ) - Math.abs(b - centerZ));
+
+    xs.forEach((x, ix) => {
+        zs.forEach((z, iz) => {
+            // ix=0 and iz=0 are closest to center (arrays are pre-sorted by distance from center),
+            // so ix+iz correctly orders points from center outward.
+            points.push({ x, z, _sortKey: ix + iz });
+        });
+    });
+
+    points.sort((a, b) => a._sortKey - b._sortKey);
+    points.forEach(point => delete point._sortKey);
+    return points;
+}
+
+function findPlacementInRegion(region, createCandidateFromPoint, attempts = 160, options = {}) {
+    const pointDensity = options.pointDensity ?? 1;
+    const rotationCount = options.rotationCount ?? 1;
+
+    const tryCandidate = (point, rotation) => {
+        return tryReservePlacementCandidate(createCandidateFromPoint(point, rotation));
+    };
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        const point = samplePointInRegion(region);
+        const placement = tryCandidate(point, null);
+        if (placement) return placement;
+    }
+
+    const searchPoints = getRegionSearchPoints(region, pointDensity);
+    for (const point of searchPoints) {
+        for (let step = 0; step < rotationCount; step++) {
+            const rotation = rotationCount <= 1
+                ? null
+                : (step / rotationCount) * Math.PI * 2;
+            const placement = tryCandidate(point, rotation);
+            if (placement) return placement;
+        }
+    }
+
     return null;
 }
 
@@ -225,5 +318,4 @@ function moveScalarToward(current, target, maxStep) {
     if (Math.abs(delta) <= maxStep) return target;
     return current + Math.sign(delta) * maxStep;
 }
-
 

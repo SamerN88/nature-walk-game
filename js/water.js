@@ -1,4 +1,81 @@
 function planWaterBodies() {
+    const buildWaterPlacement = (config, point, radius, allowedRange) => {
+        const R = radius;
+
+        const stats = sampleTerrainStats(point.x, point.z, R,
+            config.kind === 'lake' ? 4 : 3,
+            config.kind === 'lake' ? 14 : 10);
+        if (stats.range > allowedRange) return null;
+
+        const POLY_N = 50;
+        const polyVerts = [];
+        const WATER_EDGE_PERTURBATION = 0.4;
+        for (let i = 0; i < POLY_N; i++) {
+            polyVerts.push({ r: R * (1 - Math.random() * WATER_EDGE_PERTURBATION) });
+        }
+
+        const bankWidth = Math.max(8, R * 0.2);
+        const bankOuterRadius = R + bankWidth;
+
+        let minSurroundHeight = Infinity;
+        const bankSampleStep = Math.max(2, bankWidth * 0.25);
+        for (let sr = R; sr <= bankOuterRadius + bankWidth; sr += bankSampleStep) {
+            const rs = sampleTerrainRingStats(point.x, point.z, sr, 50);
+            minSurroundHeight = Math.min(minSurroundHeight, rs.min);
+        }
+        const surfaceDropMargin = config.kind === 'lake' ? 4 : 2;
+        const surfaceY = minSurroundHeight - surfaceDropMargin;
+
+        const craterFloorY = config.kind === 'lake' ? LAKE_CRATER_FLOOR_Y : POND_CRATER_FLOOR_Y;
+        const floorY = Math.min(
+            surfaceY - (config.kind === 'lake' ? 10 : 6),
+            craterFloorY
+        );
+
+        const CYL_CHECK_ANGLES = 36;
+        const CYL_STEP = 5;
+        const CYL_MAX_STEPS = 10;
+        let cylinderRadius = R + 10;
+        for (let step = 0; step < CYL_MAX_STEPS; step++) {
+            let ok = true;
+            for (let ci = 0; ci < CYL_CHECK_ANGLES; ci++) {
+                const a = (ci / CYL_CHECK_ANGLES) * 2 * Math.PI;
+                const h = getBaseTerrainHeight(
+                    point.x + Math.cos(a) * cylinderRadius,
+                    point.z + Math.sin(a) * cylinderRadius
+                );
+                if (h <= surfaceY) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) break;
+            cylinderRadius += CYL_STEP;
+        }
+
+        return {
+            kind: config.kind,
+            x: point.x,
+            z: point.z,
+            radius: R,
+            polyVerts,
+            surfaceY,
+            floorY,
+            floorRadius: R * 0.35,
+            bankOuterRadius,
+            cylinderRadius,
+            segments: config.segments,
+            opacity: config.opacity,
+            footprint: makePlacementFootprint(point.x, point.z, bankOuterRadius + 18)
+        };
+    };
+
+    const fallbackRadiiForConfig = config => {
+        const mid = (config.radiusMin + config.radiusMax) * 0.5;
+        return [mid, config.radiusMin, config.radiusMax]
+            .filter((radius, index, arr) => arr.findIndex(other => Math.abs(other - radius) < 1e-5) === index);
+    };
+
     const waterConfigs = [
         {
             kind: 'lake',
@@ -44,90 +121,26 @@ function planWaterBodies() {
         const flatnessPasses = [config.flatness, config.flatness + 2, Infinity];
 
         for (const allowedRange of flatnessPasses) {
-            placement = findPlacement(() => {
-                // R is the maximum crater radius; every polygon vertex lies within R.
-                const R = randRange(config.radiusMin, config.radiusMax);
-                const point = samplePointInRegion(config.region);
+            placement = findPlacement(
+                () => buildWaterPlacement(
+                    config,
+                    samplePointInRegion(config.region),
+                    randRange(config.radiusMin, config.radiusMax),
+                    allowedRange
+                ),
+                260
+            );
+            if (placement) break;
 
-                // Flatness check: terrain inside R must not vary too wildly.
-                const stats = sampleTerrainStats(point.x, point.z, R,
-                    config.kind === 'lake' ? 4 : 3,
-                    config.kind === 'lake' ? 14 : 10);
-                if (stats.range > allowedRange) return null;
-
-                // Build the crater polygon: 16 vertices evenly spaced in angle,
-                // each with radius R * (1 - rand(0, 0.25)).  All vertices lie
-                // strictly inside the circle of radius R.
-                const POLY_N = 50;
-                const polyVerts = [];
-                const WATER_EDGE_PERTURBATION = 0.4;
-                for (let i = 0; i < POLY_N; i++) {
-                    polyVerts.push({ r: R * (1 - Math.random() * WATER_EDGE_PERTURBATION) });
-                }
-
-                // Bank: smooth transition zone outside R before terrain returns
-                // to its natural height.
-                const bankWidth = Math.max(8, R * 0.2);
-                const bankOuterRadius = R + bankWidth;
-
-                // surfaceY: sample terrain from R out to bankOuterRadius + a
-                // margin, then drop below the minimum so the water surface never
-                // sits above surrounding terrain troughs.
-                let minSurroundHeight = Infinity;
-                const bankSampleStep = Math.max(2, bankWidth * 0.25);
-                for (let sr = R; sr <= bankOuterRadius + bankWidth; sr += bankSampleStep) {
-                    const rs = sampleTerrainRingStats(point.x, point.z, sr, 50);
-                    minSurroundHeight = Math.min(minSurroundHeight, rs.min);
-                }
-                const surfaceDropMargin = config.kind === 'lake' ? 4 : 2;
-                const surfaceY = minSurroundHeight - surfaceDropMargin;
-
-                const craterFloorY = config.kind === 'lake' ? LAKE_CRATER_FLOOR_Y : POND_CRATER_FLOOR_Y;
-                const floorY = Math.min(
-                    surfaceY - (config.kind === 'lake' ? 10 : 6),
-                    craterFloorY
+            for (const radius of fallbackRadiiForConfig(config)) {
+                placement = findPlacementInRegion(
+                    config.region,
+                    point => buildWaterPlacement(config, point, radius, allowedRange),
+                    0,
+                    { pointDensity: config.kind === 'lake' ? 1.2 : 1.05 }
                 );
-
-                // Expand cylinderRadius until its full boundary ring sits on
-                // terrain at or above surfaceY, so the water mesh never floats
-                // visibly above a terrain trough at its edge.
-                const CYL_CHECK_ANGLES = 36;
-                const CYL_STEP         = 5;
-                const CYL_MAX_STEPS    = 10;
-                let cylinderRadius = R + 10;
-                for (let step = 0; step < CYL_MAX_STEPS; step++) {
-                    let ok = true;
-                    for (let ci = 0; ci < CYL_CHECK_ANGLES; ci++) {
-                        const a = (ci / CYL_CHECK_ANGLES) * 2*Math.PI;
-                        const h = getBaseTerrainHeight(
-                            point.x + Math.cos(a) * cylinderRadius,
-                            point.z + Math.sin(a) * cylinderRadius
-                        );
-                        if (h <= surfaceY) { 
-                            ok = false; 
-                            break; 
-                        }
-                    }
-                    if (ok) break;
-                    cylinderRadius += CYL_STEP;
-                }
-
-                return {
-                    kind: config.kind,
-                    x: point.x,
-                    z: point.z,
-                    radius: R,           // used by getWaterBodyAt gameplay check
-                    polyVerts,
-                    surfaceY,
-                    floorY,
-                    floorRadius: R * 0.35,
-                    bankOuterRadius,
-                    cylinderRadius,
-                    segments: config.segments,
-                    opacity: config.opacity,
-                    footprint: makePlacementFootprint(point.x, point.z, bankOuterRadius + 18)
-                };
-            }, 260);
+                if (placement) break;
+            }
             if (placement) break;
         }
 
@@ -399,4 +412,3 @@ function getWaterTraversalState(x, z, y, entityHeight = 0) {
         isSwimming
     };
 }
-

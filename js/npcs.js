@@ -325,25 +325,23 @@ function findFarmerSpawnPosition(attempts = 160) {
         if (isValidFarmerSpawn(x, z)) return { x, z };
     }
 
-    for (let distance = FARMER_MIN_SPAWN_DISTANCE; distance <= FARMER_MAX_SPAWN_DISTANCE; distance += 15) {
-        for (let step = 0; step < 24; step++) {
-            const angle = (step / 24) * Math.PI * 2;
+    // Phase 2: exhaustive ring sweep — proportional angle density, random global offset so the
+    // sweep doesn't always start from the same direction.
+    const globalAngleOffset = Math.random() * Math.PI * 2;
+    const radialStep = 15;
+    for (let distance = FARMER_MIN_SPAWN_DISTANCE; distance <= FARMER_MAX_SPAWN_DISTANCE; distance += radialStep) {
+        const angleSteps = Math.max(24, Math.ceil((Math.PI * 2 * distance) / 30));
+        const shellOffset = (Math.floor(distance / radialStep) % 2) * (Math.PI / angleSteps);
+        for (let step = 0; step < angleSteps; step++) {
+            const angle = globalAngleOffset + shellOffset + (step / angleSteps) * Math.PI * 2;
             const x = anchorX + Math.cos(angle) * distance;
             const z = anchorZ + Math.sin(angle) * distance;
             if (isValidFarmerSpawn(x, z)) return { x, z };
         }
     }
 
-    const toCenterX = -anchorX;
-    const toCenterZ = -anchorZ;
-    const toCenterLen = Math.hypot(toCenterX, toCenterZ);
-    const dirX = toCenterLen > 1e-5 ? toCenterX / toCenterLen : 0;
-    const dirZ = toCenterLen > 1e-5 ? toCenterZ / toCenterLen : 1;
-    const fallbackDistance = (FARMER_MIN_SPAWN_DISTANCE + FARMER_MAX_SPAWN_DISTANCE) * 0.5;
-    return {
-        x: anchorX + dirX * fallbackDistance,
-        z: anchorZ + dirZ * fallbackDistance
-    };
+    console.warn('findFarmerSpawnPosition: no valid spot in farmer ring — farmer will not spawn');
+    return null;
 }
 
 function getDebugFarmerSpawnPosition() {
@@ -499,6 +497,7 @@ function createFarmer() {
     const spawnPosition = DEBUG_FARMER
         ? getDebugFarmerSpawnPosition()
         : findFarmerSpawnPosition();
+    if (!spawnPosition) return null;
     return createHuman({ isFarmer: true, spawnPosition });
 }
 
