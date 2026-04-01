@@ -82,7 +82,7 @@ function updateShadowManColor() {
     if (!partMeshes || !dayMaterial || !nightMaterial) return;
 
     const cycleProgress = gameTime / FULL_CYCLE;
-    const useNightMaterial = cycleProgress >= 14.9/24; // night starts at 19:54
+    const useNightMaterial = cycleProgress >= NIGHT_START;
     if (shadowMan.mesh.userData.usingNightMaterial === useNightMaterial) return;
 
     const nextMaterial = useNightMaterial ? nightMaterial : dayMaterial;
@@ -264,16 +264,16 @@ function updateShadowMan(currentTimeMs) {
     const elapsedMs = currentTimeMs - gameStartRealTimeMs;
     const unlockMs = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS;
 
-    // Initialize next check time once the unlock window arrives
-    if (shadowManNextCheckMs < 0 && elapsedMs >= unlockMs) {
-        shadowManNextCheckMs = unlockMs;
+    // The dragon gem overrides the initial peace period and starts checks immediately.
+    if (shadowManNextCheckMs < 0 && (dragonGemCollected || elapsedMs >= unlockMs)) {
+        shadowManNextCheckMs = dragonGemCollected ? elapsedMs : unlockMs;
     }
 
     // Periodic spawn check
     if (shadowManNextCheckMs >= 0 && elapsedMs >= shadowManNextCheckMs &&
         !shadowMan && !shadowManPostApocalypseUnlocked) {
 
-        const isNightPhase = (gameTime / FULL_CYCLE) >= 14.9/24;
+        const isNightPhase = (gameTime / FULL_CYCLE) >= NIGHT_START;
         const phase1Chance = isNightPhase ? 0.30 : SHADOW_MAN_BASE_SPAWN_CHANCE;
         const spawnChance = dragonGemCollected
             ? (shadowManPhase3Ready
@@ -675,4 +675,3 @@ function endShadowManCutscene() {
     shadowManCutscene = null;
     velocity.set(0, 0, 0);
 }
-
