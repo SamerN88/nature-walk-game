@@ -5,10 +5,98 @@ const NOTE_VOLCANO_HINT_ID  = 'volcano-hint';
 const NOTE_KEY_HINT_SRC     = 'img/key-hint.png';
 const NOTE_VOLCANO_HINT_SRC = 'img/volcano-hint.png';
 
-// Preload static icon images used in the handheld bar so they're cache-warm
-// before the player ever opens inventory.
-const _fistImg = new Image();
-_fistImg.src = 'img/fist.png';
+const INVENTORY_STARTUP_IMAGE_SRCS = {
+    fist: 'img/fist.png',
+    talisman: 'img/talisman.png',
+    keyHint: NOTE_KEY_HINT_SRC,
+    volcanoHint: NOTE_VOLCANO_HINT_SRC
+};
+
+const _inventoryImageCache = Object.create(null);
+const _handheldSlotNodeCache = Object.create(null);
+let _inventoryStartupPreloadPromise = null;
+
+function _getCachedInventoryImage(src) {
+    if (!src) return null;
+
+    let img = _inventoryImageCache[src];
+    if (img) return img;
+
+    img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    _inventoryImageCache[src] = img;
+    return img;
+}
+
+function _waitForInventoryImage(img) {
+    if (!img) return Promise.resolve();
+
+    // img.complete is true for both successful loads and errors (naturalWidth === 0).
+    // Handle both cases here so we never attach listeners that will never fire.
+    if (img.complete) {
+        return img.naturalWidth > 0 && img.decode
+            ? img.decode().catch(() => {})
+            : Promise.resolve();
+    }
+
+    return new Promise(resolve => {
+        const finish = () => {
+            if (img.decode) {
+                img.decode().catch(() => {}).finally(resolve);
+            } else {
+                resolve();
+            }
+        };
+        img.addEventListener('load', finish, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+    });
+}
+
+function _primeDisplayImage(img) {
+    if (img?.decode) img.decode().catch(() => {});
+}
+
+function _createPersistentDisplayImage(src, className, alt) {
+    const img = document.createElement('img');
+    if (className) img.className = className;
+    img.alt = alt;
+    img.draggable = false;
+    img.decoding = 'sync';
+    _getCachedInventoryImage(src); // ensure cache is populated
+    img.src = src;
+    _primeDisplayImage(img);
+    return img;
+}
+
+function _ensureObjectImageElement(item) {
+    if (!item?.imgSrc) return null;
+    if (!item._img) item._img = _getCachedInventoryImage(item.imgSrc);
+    if (!item._imgEl) {
+        item._imgEl = _createPersistentDisplayImage(item.imgSrc, 'inv-object-image', item.name);
+    }
+    item._imgEl.className = 'inv-object-image';
+    item._imgEl.alt = item.name;
+    return item._imgEl;
+}
+
+function preloadInventoryImagesOnStartup() {
+    if (_inventoryStartupPreloadPromise) return _inventoryStartupPreloadPromise;
+
+    // All inventory/UI image files should be registered here and preloaded during
+    // startup so first-open inventory renders never wait on a network fetch or decode.
+    const preloadTasks = Object.values(INVENTORY_STARTUP_IMAGE_SRCS).map(src => {
+        return _waitForInventoryImage(_getCachedInventoryImage(src));
+    });
+
+    _inventoryStartupPreloadPromise = Promise.allSettled(preloadTasks).then(results => {
+        _getHandheldSlotNode('fist');
+        return results;
+    });
+    return _inventoryStartupPreloadPromise;
+}
+
+preloadInventoryImagesOnStartup();
 
 // Generates a stable torn-edge polygon path as an array of [x,y] points.
 function makeTornEdgePath(W, H, step, jag) {
@@ -268,11 +356,12 @@ function tryPickupNote(aimDir, punchRange) {
 function addInventoryItem(id, name, imgSrc, opts = {}) {
     if (inventoryItems.find(i => i.id === id)) return;
     const item = { id, name, imgSrc, type: opts.type || 'note', itemKey: opts.itemKey };
-    // Preload image immediately so it's ready when the inventory is opened
+
     if (imgSrc) {
-        const img = new Image();
-        img.src = imgSrc;
-        item._img = img;
+        item._img = _getCachedInventoryImage(imgSrc);
+        if (item.type === 'object') {
+            _ensureObjectImageElement(item);
+        }
     } else if (item.itemKey) {
         // Pre-render the 3D icon now and cache it as a loaded Image
         const dataUrl = _renderItemIconDataURL(item.itemKey);
@@ -355,12 +444,7 @@ function renderInventoryGrid() {
         if (item.type === 'object') {
             // Static object art stays crisp as a plain <img>; rendered 3D items still use the canvas path.
             if (item.imgSrc) {
-                const img = document.createElement('img');
-                img.className = 'inv-object-image';
-                img.src = item.imgSrc;
-                img.alt = item.name;
-                img.draggable = false;
-                el.appendChild(img);
+                el.appendChild(_ensureObjectImageElement(item));
             } else {
                 const SLOT_SIZE = 62;
                 const thumbCanvas = document.createElement('canvas');
@@ -451,8 +535,7 @@ function openItemViewer(item) {
     if (item.imgSrc) {
         vctx.fillStyle = 'rgba(18,18,22,1)';
         vctx.fillRect(0, 0, VW, VH);
-        const vImg = item._img || new Image();
-        if (!item._img) vImg.src = item.imgSrc;
+        const vImg = item._img || _getCachedInventoryImage(item.imgSrc);
         if (vImg.complete) {
             drawContainedImage(vctx, vImg, VW, VH);
         } else {
@@ -595,6 +678,46 @@ function _renderItemIconDataURL(itemName) {
     return _iconRenderer.domElement.toDataURL();
 }
 
+function _getHandheldSlotNode(itemName) {
+    let slot = _handheldSlotNodeCache[itemName];
+    if (slot) return slot;
+
+    slot = document.createElement('div');
+    slot.className = 'handheld-slot';
+
+    const num = document.createElement('span');
+    num.className = 'handheld-slot-number';
+    slot.appendChild(num);
+
+    const imgSrc = itemName === 'fist'
+        ? _getCachedInventoryImage(INVENTORY_STARTUP_IMAGE_SRCS.fist).src
+        : _renderItemIconDataURL(itemName);
+    const img = _createPersistentDisplayImage(imgSrc, '', getItemDisplayName(itemName));
+    slot.appendChild(img);
+
+    slot._displayName = getItemDisplayName(itemName);
+    slot._numberEl = num;
+    slot._imageEl = img;
+
+    slot.addEventListener('mouseenter', () => {
+        const tooltip = document.getElementById('handheld-tooltip');
+        if (!tooltip) return;
+        tooltip.textContent = slot._displayName;
+        tooltip.style.display = 'block';
+        const r = slot.getBoundingClientRect();
+        tooltip.style.left = (r.left + r.width / 2) + 'px';
+        tooltip.style.top  = (r.top - 8) + 'px';
+        tooltip.style.transform = 'translate(-50%, -100%)';
+    });
+    slot.addEventListener('mouseleave', () => {
+        const tooltip = document.getElementById('handheld-tooltip');
+        if (tooltip) tooltip.style.display = 'none';
+    });
+
+    _handheldSlotNodeCache[itemName] = slot;
+    return slot;
+}
+
 function renderHandheldBar() {
     const panel = document.getElementById('handheld-panel');
     const row   = document.getElementById('handheld-slots-row');
@@ -607,42 +730,14 @@ function renderHandheldBar() {
     }
     panel.style.display = '';
 
-    const tooltip = document.getElementById('handheld-tooltip');
-
-    row.innerHTML = '';
+    row.textContent = '';
     for (let i = 0; i < handSlots.length; i++) {
         const item = handSlots[i];
         const displayName = getItemDisplayName(item);
-
-        const slot = document.createElement('div');
-        slot.className = 'handheld-slot';
-
-        const num = document.createElement('span');
-        num.className = 'handheld-slot-number';
-        num.textContent = i + 1;
-        slot.appendChild(num);
-
-        const img = document.createElement('img');
-        // Fist uses the preloaded PNG; everything else uses the 3D icon renderer
-        img.src = item === 'fist' ? _fistImg.src : _renderItemIconDataURL(item);
-        img.alt = displayName;
-        slot.appendChild(img);
-
-        // Hover tooltip
-        if (tooltip) {
-            slot.addEventListener('mouseenter', () => {
-                tooltip.textContent = displayName;
-                tooltip.style.display = 'block';
-                const r = slot.getBoundingClientRect();
-                tooltip.style.left = (r.left + r.width / 2) + 'px';
-                tooltip.style.top  = (r.top - 8) + 'px';
-                tooltip.style.transform = 'translate(-50%, -100%)';
-            });
-            slot.addEventListener('mouseleave', () => {
-                tooltip.style.display = 'none';
-            });
-        }
-
+        const slot = _getHandheldSlotNode(item);
+        slot._numberEl.textContent = i + 1;
+        slot._displayName = displayName;
+        slot._imageEl.alt = displayName;
         row.appendChild(slot);
     }
 }
