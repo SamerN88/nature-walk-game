@@ -971,7 +971,7 @@ function createEnterableStructures() {
                     map: tex,
                     transparent: true,
                     alphaTest: 0.05,
-                    color: 0xCC8844,
+                    color: 0x6e6e6e,  // OG color: 0xCC8844
                     depthWrite: false,
                     side: THREE.DoubleSide,
                 });

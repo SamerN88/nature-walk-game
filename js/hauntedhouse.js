@@ -647,7 +647,7 @@ function createHauntedHouse() {
         localX: 0, localY: 0, localZ: 0, halfW: HH_HALF_W + 2, halfD: HH_HALF_D + 2
     }));
 
-    // ── Alt-cave writing on north wall (floor 2) ─────────────────────────────
+    // ── Haunted house writing on north wall (floor 2) ─────────────────────────────
     const writingImg = new Image();
     writingImg.onload = () => {
         const tex = new THREE.Texture(writingImg);
