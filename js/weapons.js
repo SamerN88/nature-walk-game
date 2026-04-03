@@ -814,31 +814,47 @@ function punch() {
         if (tryDigTalismanGrave()) return;
     }
 
-    // Tree hit with shovel — 3 hits anywhere on the tree equip a wooden stake.
-    // Only show splinter effects before the stake has been obtained.
+    // Tree hit with shovel — both world trees and large dark forest trees can
+    // yield a stake after enough hits. Only show splinter effects before the
+    // stake has been obtained.
     if (hasShovel && currentHandItem === 'shovel' && !hasStake && !hasTorch) {
+        const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
         for (let i = 0; i < trees.length; i++) {
             const tree = trees[i];
             const treeScale = tree.userData.treeScale || 1;
-            // Use the visual center of the tree (midway through foliage) for hit detection
-            // so that hitting leaves or trunk both register correctly.
+            const treeHitCenterY = tree.userData.treeHitCenterY ?? (4 * treeScale);
+            const treeHitRadius = tree.userData.treeHitRadius ?? (3.5 * treeScale);
+            const _trunkHits = tree.userData.trunkMesh
+                ? _treeRay.intersectObject(tree.userData.trunkMesh, true)
+                : [];
+            const trunkHit = _trunkHits.length > 0 ? _trunkHits[0] : null;
+            // Use each tree's visual center and hit radius so both small and large
+            // trees register reliably when the player hits trunk or foliage.
             const treeCenterWorld = new THREE.Vector3(
                 tree.position.x,
-                tree.position.y + 4 * treeScale,
+                tree.position.y + treeHitCenterY,
                 tree.position.z
             );
             const toCenter = treeCenterWorld.clone().sub(camera.position);
             const proj = toCenter.dot(aimDir);
-            if (proj <= 0 || proj > punchRange) continue;
             const perp = toCenter.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 3.5 * treeScale) {
+            const foliageBroadphaseHit = proj > 0 && proj <= punchRange && perp < treeHitRadius;
+            if (trunkHit || foliageBroadphaseHit) {
                 tree.userData.treeHitCount = (tree.userData.treeHitCount || 0) + 1;
-                // Raycast against the actual tree geometry to find the surface hit point
-                const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
-                const _treeHits = _treeRay.intersectObject(tree, true);
-                const hitPoint = _treeHits.length > 0 ? _treeHits[0].point : camera.position.clone().addScaledVector(aimDir, proj);
-                spawnWoodSplinterEffect(hitPoint);
-                if (tree.userData.treeHitCount >= 3) {
+                // Prefer the trunk impact point for splinter FX on large trees; fall back
+                // to the overall tree hit if the swing ray only intersects foliage.
+                const _treeHits = trunkHit ? _trunkHits : _treeRay.intersectObject(tree, true);
+                const treeHit = _treeHits.length > 0
+                    ? _treeHits[0]
+                    : null;
+                const hitPoint = treeHit
+                    ? treeHit.point
+                    : camera.position.clone().addScaledVector(aimDir, proj);
+                const hitNormal = (treeHit && treeHit.face && treeHit.object)
+                    ? treeHit.face.normal.clone().transformDirection(treeHit.object.matrixWorld).normalize()
+                    : null;
+                spawnWoodSplinterEffect(hitPoint, hitNormal);
+                if (tree.userData.treeHitCount >= STAKE_TREE_HITS_REQUIRED) {
                     tree.userData.treeHitCount = 0;
                     hasStake = true;
                     addHandSlot('stake');
@@ -1077,31 +1093,36 @@ function tryDig() {
     return true;
 }
 
-function spawnWoodSplinterEffect(hitPoint) {
+function spawnWoodSplinterEffect(hitPoint, hitNormal = null) {
     const count = 20;
     const meshes = [];
     const velocities = [];
     const woodMat = new THREE.MeshLambertMaterial({ color: 0x7A5230, transparent: true, opacity: 1 });
+    const outward = hitNormal ? hitNormal.clone() : new THREE.Vector3(0, 0.4, 0);
+    if (outward.lengthSq() < 1e-6) outward.set(0, 0.4, 0);
+    outward.normalize();
+    const spawnBase = hitPoint.clone().addScaledVector(outward, 0.16);
     for (let i = 0; i < count; i++) {
         const len = 0.08 + Math.random() * 0.18;
         const mesh = new THREE.Mesh(
             new THREE.BoxGeometry(0.04, len, 0.04),
             woodMat.clone()
         );
-        mesh.position.copy(hitPoint).add(new THREE.Vector3(
-            (Math.random() - 0.5) * 0.4,
-            (Math.random() - 0.5) * 0.4,
-            (Math.random() - 0.5) * 0.4
+        mesh.position.copy(spawnBase).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 0.18,
+            (Math.random() - 0.5) * 0.18,
+            (Math.random() - 0.5) * 0.18
         ));
         mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
         mesh.userData.ignoreCameraOcclusion = true;
         scene.add(mesh);
         meshes.push(mesh);
-        velocities.push(new THREE.Vector3(
-            (Math.random() - 0.5) * 6,
-            2 + Math.random() * 5,
-            (Math.random() - 0.5) * 6
+        const vel = outward.clone().multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 3,
+            Math.random() * 3,
+            (Math.random() - 0.5) * 3
         ));
+        velocities.push(vel);
     }
     digParticles.push({ meshes, velocities, life: 0, maxLife: 0.7 });
 }

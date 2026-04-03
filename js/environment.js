@@ -13,6 +13,8 @@ function createTree(x, z, scale = 1) {
     tree.userData.trunkMesh = trunk;
     tree.userData.treeHitCount = 0;
     tree.userData.treeScale = scale;
+    tree.userData.treeHitCenterY = 5.15 * scale;
+    tree.userData.treeHitRadius = 3.5 * scale;
 
     // Foliage layers
     const foliageMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });

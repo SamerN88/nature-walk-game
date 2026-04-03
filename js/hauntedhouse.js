@@ -841,8 +841,12 @@ function _createHHForestTree(x, z) {
     const scale = 1.8 + Math.random() * 1.4;  // noticeably larger than world trees (0.7–1.3)
     const tree = new THREE.Group();
     tree.userData.ignoreCameraOcclusion = true;
+    tree.userData.treeHitCount = 0;
+    tree.userData.treeScale = scale;
+    tree.userData.treeHitCenterY = 8.7 * scale;
+    tree.userData.treeHitRadius = 4.2 * scale;
 
-    const trunkMat  = new THREE.MeshLambertMaterial({ color: 0x160c06 });  // near-black dark wood
+    const trunkMat  = new THREE.MeshLambertMaterial({ color: 0x26170e });  // near-black dark wood (OG color: #160c06)
     const trunkH = 5 * scale;
     const trunk = new THREE.Mesh(
         new THREE.CylinderGeometry(0.35 * scale, 0.55 * scale, trunkH, 8),
@@ -852,9 +856,10 @@ function _createHHForestTree(x, z) {
     trunk.castShadow = true;
     trunk.receiveShadow = true;
     tree.add(trunk);
+    tree.userData.trunkMesh = trunk;
 
     // Foliage — deep blackish-green, 4 layered cones
-    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x0b1f0b });
+    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x0d260d }); // OG color: #0b1f0b
     const foliageLayers = [
         { radiusMult: 0.95, height: 4.5 * scale, yOff: trunkH + 2.0 * scale },
         { radiusMult: 0.75, height: 4.0 * scale, yOff: trunkH + 3.8 * scale },
@@ -897,6 +902,7 @@ function _createHHForestTree(x, z) {
     const surfaceY = _hhHits.length > 0 ? _hhHits[0].point.y : getGroundHeight(x, z);
     tree.position.set(x, surfaceY, z);
     scene.add(tree);
+    trees.push(tree);
 }
 
 // ── Create HH forest — dense dark trees + boulders within a certain radius ─────
@@ -1023,7 +1029,7 @@ function createCemeteryForest(cemX, cemZ) {
 
     // Rocks: scattered throughout the cemetery forest ring
     // Cemetery half-diagonal ≈ sqrt(25²+25²) ≈ 35.4; add 5-unit buffer → 40.4
-    const ROCK_CEM_MIN_DIST_SQ = (Math.sqrt(CEM_HALF * CEM_HALF + CEM_HALF * CEM_HALF) + 5) ** 2;
+    const ROCK_CEM_MIN_DIST_SQ = (Math.sqrt(CEM_HALF * CEM_HALF + CEM_HALF * CEM_HALF) + 5) ** 2; //KEEP THIS FOR REFERENCE LATER
     const rockMatDark = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
     const ROCK_INNER_CLEAR = INNER_CLEAR - 20;
     const ROCK_COUNT = 80;
