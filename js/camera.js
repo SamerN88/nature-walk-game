@@ -16,6 +16,7 @@ function updateSunShadowFocus() {
     sun.position.y = focus.y + Math.sin(sunAngle) * 500;
     sun.position.z = focus.z + 200;
     sun.target.updateMatrixWorld();
+    sun.castShadow = sunAngle > 0 && sunAngle < Math.PI;
 }
 
 
