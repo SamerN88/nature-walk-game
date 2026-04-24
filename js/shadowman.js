@@ -352,6 +352,17 @@ function isShadowManOccluded() {
             if (isPlayerPart) continue;
         }
 
+        // Skip dragon's own meshes
+        if (dragon) {
+            let isDragonPart = false;
+            let dnode = obj;
+            while (dnode) {
+                if (dnode === dragon) { isDragonPart = true; break; }
+                dnode = dnode.parent;
+            }
+            if (isDragonPart) continue;
+        }
+
         // Skip objects already flagged as camera-transparent (water, particles, beams)
         if (obj.userData.ignoreCameraOcclusion) continue;
 
