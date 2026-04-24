@@ -1,5 +1,5 @@
 // Debug modes (for easy testing)
-const DEBUG_GEMS = true;  // makes gems spawn very close to origin
+const DEBUG_GEMS = false;  // makes gems spawn very close to origin
 const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
 const DEBUG_CHEST = false;  // for quick access to chest
 const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
@@ -19,7 +19,7 @@ const DEBUG_WATER = false;  // shows a tall red translucent wall around water cy
 const DEBUG_CAVE_WRITING = false;  // spawns a hovering red beacon above the cave with the writing
 const DEBUG_VOLCANO_HINT = false;  // spawns a hovering green beacon above the cave with the volcano hint note
 const DEBUG_FARMER = false;        // spawns the farmer 5 units in front of the player (which drops key-hint note)
-const DEBUG_CUTSCENE = true;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
+const DEBUG_CUTSCENE = false;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
 const DEBUG_HAUNTED_HOUSE = false; // spawn player 75 units from HH entrance at start
 const DEBUG_DESPAWN_HH = false;   // skip straight to post-despawn state: skeleton + boulder on world floor, HH gone
 const DEBUG_CEMETERY = false;      // spawn player 75 units from cemetery entrance at start
