@@ -257,6 +257,119 @@ function trySpawnShadowMan() {
     return false;
 }
 
+function relocateShadowManNearOrigin() {
+    // Remove the existing mesh
+    if (shadowMan) {
+        scene.remove(shadowMan.mesh);
+        shadowMan = null;
+    }
+
+    const RELOC_RADIUS   = 300;  // must land within this distance of world origin
+    const MIN_FROM_PLAYER = 60;  // don't spawn right on top of the player
+    const maxCoord = WORLD_SIZE - 40;
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+        // Random point on a ring within RELOC_RADIUS of origin
+        const angle = Math.random() * Math.PI * 2;
+        const r = RELOC_RADIUS * Math.sqrt(Math.random()); // uniform disc
+        const x = Math.cos(angle) * r;
+        const z = Math.sin(angle) * r;
+
+        if (Math.abs(x) > maxCoord || Math.abs(z) > maxCoord) continue;
+        if (isPointInWater(x, z)) continue;
+
+        const groundY   = getGroundHeight(x, z);
+        const structureY = getStructureHeight(x, z);
+        if (structureY > groundY + 1) continue;
+
+        if (player) {
+            const dx = player.position.x - x;
+            const dz = player.position.z - z;
+            if (Math.hypot(dx, dz) < MIN_FROM_PLAYER) continue;
+        }
+
+        const mesh = createShadowManMesh();
+        mesh.position.set(x, groundY, z);
+        if (player) {
+            mesh.rotation.y = Math.atan2(player.position.x - x, player.position.z - z);
+        }
+        scene.add(mesh);
+
+        if (DEBUG_SHADOW_MAN) spawnShadowManDebugBeacon(x, groundY, z);
+
+        shadowMan = {
+            mesh,
+            spawnDistance: Math.hypot(x, z),
+            disappearDistance: 0,       // irrelevant for finalPhase
+            maxPlayerDistance: Infinity, // irrelevant for finalPhase
+            finalPhase: true
+        };
+        return;
+    }
+
+    // All attempts failed — fall back to standard spawn
+    trySpawnShadowMan();
+}
+
+function isShadowManOccluded() {
+    if (!shadowMan || !camera) return false;
+
+    // Ray target: shadow man's torso center
+    const smPos = shadowMan.mesh.position;
+    const smCenter = new THREE.Vector3(smPos.x, smPos.y + 5.4, smPos.z);
+    const camPos = camera.position.clone();
+    const toSM = smCenter.clone().sub(camPos);
+    const dist = toSM.length();
+    if (dist < 0.1) return false;
+
+    const raycaster = new THREE.Raycaster(camPos, toSM.divideScalar(dist), 0.5, dist - 0.5);
+    const hits = raycaster.intersectObjects(scene.children, true);
+
+    // Geometry bounding-sphere radius below this threshold → tiny decorative object
+    // (flowers ~0.05–0.15, small rocks ~0.3–0.8; buildings/trees/mountains are >> 1.5)
+    const MIN_OCCLUDER_RADIUS = 1.5;
+
+    for (const hit of hits) {
+        const obj = hit.object;
+
+        // Skip shadow man's own meshes
+        let node = obj;
+        let isSMPart = false;
+        while (node) {
+            if (node === shadowMan.mesh) { isSMPart = true; break; }
+            node = node.parent;
+        }
+        if (isSMPart) continue;
+
+        // Skip player's own meshes
+        if (player) {
+            let isPlayerPart = false;
+            let pnode = obj;
+            while (pnode) {
+                if (pnode === player) { isPlayerPart = true; break; }
+                pnode = pnode.parent;
+            }
+            if (isPlayerPart) continue;
+        }
+
+        // Skip objects already flagged as camera-transparent (water, particles, beams)
+        if (obj.userData.ignoreCameraOcclusion) continue;
+
+        // Skip mostly-transparent materials
+        if (obj.material && obj.material.transparent && obj.material.opacity < 0.5) continue;
+
+        // Skip tiny geometry (flowers, small decorative rocks)
+        if (obj.geometry) {
+            if (!obj.geometry.boundingSphere) obj.geometry.computeBoundingSphere();
+            const bs = obj.geometry.boundingSphere;
+            if (bs && bs.radius < MIN_OCCLUDER_RADIUS) continue;
+        }
+
+        return true; // significant structure in the way
+    }
+    return false;
+}
+
 function updateShadowMan(currentTimeMs) {
     if (demonApocalypse) return;
     if (shadowManCutscene) return;
@@ -311,7 +424,12 @@ function updateShadowMan(currentTimeMs) {
     // Phase 3 final shadow man: no despawn, watches for cutscene trigger
     if (shadowMan.finalPhase) {
         if (distXZ <= SHADOW_MAN_CUTSCENE_TRIGGER_DIST) {
-            startShadowManCutscene();
+            if (isShadowManOccluded()) {
+                // A structure is blocking the view — vanish and respawn elsewhere
+                relocateShadowManNearOrigin();
+            } else {
+                startShadowManCutscene();
+            }
         }
         return;
     }
