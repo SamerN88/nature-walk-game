@@ -507,6 +507,8 @@ function openNoteViewer(item) {
     const VW = 640, VH = 480;
     canvas.width = VW;
     canvas.height = VH;
+    canvas.style.width = VW + 'px';
+    canvas.style.height = VH + 'px';
     const vctx = canvas.getContext('2d');
     const vTornPath = makeTornEdgePath(VW, VH, 22, 18);
     const vWrinkles = Array.from({ length: 6 }, () => [
