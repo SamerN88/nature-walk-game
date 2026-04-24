@@ -155,6 +155,7 @@ let shadowManTotalSpawns = 0;
 let shadowManPhase3Ready = false;
 let shadowManCutscene = null;
 let shadowManNextCheckMs = -1;
+let demonTeleportUnlockTimer = 0;
 
 // ── Hell Run system (Demon Rounds) ──────────────────────────────
 let roundKillCount   = 0;       // kills accumulated across all rounds this session

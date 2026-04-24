@@ -164,6 +164,7 @@ function startDemonRound(roundNumber) {
     roundSpawnTimer    = 0;
     roundBetweenActive = false;
     roundBetweenTimer  = 0;
+    demonTeleportUnlockTimer = DEMON_TELEPORT_UNLOCK_DELAY_SEC;
     roundMode          = true;
     demonApocalypse    = true;
     updateTopCornerHudVisibility();
@@ -435,6 +436,7 @@ function restartCurrentRound() {
 function exitRoundMode() {
     roundMode = false;
     demonApocalypse = false;
+    demonTeleportUnlockTimer = 0;
     updateTopCornerHudVisibility();
     roundBetweenActive = false;
 
@@ -479,4 +481,3 @@ function exitRoundMode() {
         dragon.position.set(player.position.x, player.position.y + 150, player.position.z);
     }
 }
-

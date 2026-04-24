@@ -43,6 +43,7 @@ const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge 
 const DEMON_TELEPORT_INTERVAL_SEC = 3;      // seconds between each teleport eligibility check
 const DEMON_TELEPORT_CHANCE   = 0.10;       // chance to teleport each check
 const DEMON_TELEPORT_DISABLE_DIST = 40;     // teleport disabled when demon is closer than this to player
+const DEMON_TELEPORT_UNLOCK_DELAY_SEC = 10; // teleports stay disabled for the first 10s of each round/apocalypse
 
 // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
 const FALL_TO_CUTSCENE = true;

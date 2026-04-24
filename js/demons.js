@@ -236,6 +236,7 @@ let _apocalypseRespawnCount = 0;
 function triggerDemonApocalypse() {
     if (demonApocalypse) return;
     demonApocalypse = true;
+    demonTeleportUnlockTimer = DEMON_TELEPORT_UNLOCK_DELAY_SEC;
     _apocalypseRespawnCount = 0;
     updateTopCornerHudVisibility();
 
@@ -449,6 +450,9 @@ let _demonSepFrame = 0;
 function updateDemons(delta) {
     if (!demonApocalypse || playerDead || demons.length === 0) return;
 
+    demonTeleportUnlockTimer = Math.max(0, demonTeleportUnlockTimer - delta);
+    const teleportsEnabled = demonTeleportUnlockTimer <= 0;
+
     const sepInterval = 3 + Math.floor(demons.length / 100);
     _demonSepFrame = (_demonSepFrame + 1) % sepInterval;
     const runSeparation = _demonSepFrame === 0;
@@ -584,14 +588,16 @@ function updateDemons(delta) {
         // ── Teleport: random angle around player, same XZ distance ──
         // Breaks single-file line formations when demons are far away.
         // Disabled within DEMON_TELEPORT_DISABLE_DIST to avoid unfair close-range snaps.
-        z.teleportTimer -= delta;
-        if (z.teleportTimer <= 0) {
-            z.teleportTimer = DEMON_TELEPORT_INTERVAL_SEC;
-            if (distXZ > DEMON_TELEPORT_DISABLE_DIST && Math.random() < DEMON_TELEPORT_CHANCE) {
-                const angle = Math.random() * Math.PI * 2;
-                zp.x = targetPos.x + Math.sin(angle) * distXZ;
-                zp.z = targetPos.z + Math.cos(angle) * distXZ;
-                zp.y = getGroundHeight(zp.x, zp.z);
+        if (teleportsEnabled) {
+            z.teleportTimer -= delta;
+            if (z.teleportTimer <= 0) {
+                z.teleportTimer = DEMON_TELEPORT_INTERVAL_SEC;
+                if (distXZ > DEMON_TELEPORT_DISABLE_DIST && Math.random() < DEMON_TELEPORT_CHANCE) {
+                    const angle = Math.random() * Math.PI * 2;
+                    zp.x = targetPos.x + Math.sin(angle) * distXZ;
+                    zp.z = targetPos.z + Math.cos(angle) * distXZ;
+                    zp.y = getGroundHeight(zp.x, zp.z);
+                }
             }
         }
 
@@ -638,6 +644,7 @@ function demonVictory() {
     if (roundMode) { endRound(); return; }
     shadowManPostApocalypseUnlocked = true;
     demonApocalypse = false;
+    demonTeleportUnlockTimer = 0;
     updateTopCornerHudVisibility();
     document.getElementById('demon-counter').style.display   = 'none';
     document.getElementById('campfire-shield').style.display  = 'none';
@@ -773,6 +780,7 @@ function hardReset() {
 
 function respawnWithMoreDemons() {
     _apocalypseRespawnCount++;
+    demonTeleportUnlockTimer = DEMON_TELEPORT_UNLOCK_DELAY_SEC;
 
     playerDead   = false;
     playerHealth = 100;
@@ -835,4 +843,3 @@ function positionDemonsAroundPlayer(demonList, centerX, centerZ) {
 }
 
 // ─────────────────────────────────────────────────────────────
-
