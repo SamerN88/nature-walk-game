@@ -184,6 +184,7 @@ function init() {
 
     if (DEBUG_GOLDEN_KEY_OBTAINED) {
         hasGoldenKey = true;
+        addInventoryItem('golden-key', 'Golden Key', null, { type: 'object', itemKey: 'golden-key' });
     }
 
     if (DEBUG_DIG_ZONE && bigLake) {
@@ -236,7 +237,6 @@ function init() {
     }
 
     syncHandItemVisuals();
-    updateKeyHUD();
     updateStats();
     updateMenuPanels();
 

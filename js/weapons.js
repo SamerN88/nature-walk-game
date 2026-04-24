@@ -650,7 +650,6 @@ function tryInteractWithAkChest(aimDir, range) {
         if (DEBUG_CHEST || hasGoldenKey) {
             akChest.opened = true;
             akChest.lidPivot.rotation.x = -Math.PI * 0.65;
-            updateKeyHUD();
             syncHandItemVisuals();
         }
     } else if (!akChest.collected) {
@@ -1058,12 +1057,6 @@ function toggleHouseDoor(door) {
     }
 }
 
-function updateKeyHUD() {
-    // Key is now shown in the inventory overlay, not the bottom-right HUD.
-    // Always keep the legacy HUD element hidden.
-    const el = document.getElementById('golden-key-hud');
-    if (el) el.style.display = 'none';
-}
 
 function flashEquipHint(label) {
     const el = document.getElementById('equip-hint');

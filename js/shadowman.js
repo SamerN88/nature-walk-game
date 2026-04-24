@@ -502,7 +502,7 @@ function startShadowManCutscene() {
 
     // Hide all HUD elements
     ['ui', 'stats', 'crosshair', 'demon-counter', 'health-bar-container',
-     'golden-key-hud', 'punch-ring', 'equip-hint'].forEach(id => {
+     'punch-ring', 'equip-hint'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -793,8 +793,6 @@ function endShadowManCutscene() {
     // Return control of these to normal game logic:
     document.getElementById('punch-ring').style.display = '';
     document.getElementById('equip-hint').style.display = '';
-    updateKeyHUD(); // restores golden-key-hud based on hasGoldenKey
-
     // Suppress future shadow man spawns
     shadowManPostApocalypseUnlocked = true;
 
