@@ -1,5 +1,5 @@
 // Debug modes (for easy testing)
-const DEBUG_GEMS = true;  // makes gems spawn very close to origin
+const DEBUG_GEMS = false;  // makes gems spawn very close to origin
 const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
 const DEBUG_CHEST = false;  // for quick access to chest
 const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
@@ -50,7 +50,7 @@ const FALL_TO_CUTSCENE = true;
 const SHADOW_MAN_CAMERA_TRANSITION_SEC = 1.0; // seconds to smoothly rotate camera to face SM at cutscene start
 
 // Game constants
-const GRAVITY = 35; // gravitational acceleration (units/s²)
+const GRAVITY = 40; // gravitational acceleration (units/s²)
 const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
 const NIGHT_DURATION = 5 * 60 * 1000; // 5 minutes in ms
 const FULL_CYCLE = DAY_DURATION + NIGHT_DURATION;
