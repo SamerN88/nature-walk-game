@@ -817,7 +817,7 @@ function punch() {
     // Tree hit with shovel — both world trees and large dark forest trees can
     // yield a stake after enough hits. Only show splinter effects before the
     // stake has been obtained.
-    if (hasShovel && currentHandItem === 'shovel' && !hasStake && !hasTorch) {
+    if ((currentHandItem === 'fist' || (hasShovel && currentHandItem === 'shovel')) && !hasStake && !hasTorch) {
         const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
         for (let i = 0; i < trees.length; i++) {
             const tree = trees[i];
