@@ -558,7 +558,7 @@ function updateShadowManCutscene(delta) {
         // Kill horizontal movement; let gravity bring the player down
         velocity.x = 0;
         velocity.z = 0;
-        velocity.y -= 35 * delta;
+        velocity.y -= GRAVITY * delta;
         player.position.y += velocity.y * delta;
 
         // Check if player has landed on solid surface

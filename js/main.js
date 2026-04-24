@@ -351,7 +351,7 @@ function update(delta) {
             const waterLerpFactor = 1 - Math.exp(-waterResponse * delta);
             velocity.y += (targetWaterVelocity - velocity.y) * waterLerpFactor;
         } else {
-            velocity.y -= 35 * delta;
+            velocity.y -= GRAVITY * delta;
         }
 
         player.position.y += velocity.y * delta;
