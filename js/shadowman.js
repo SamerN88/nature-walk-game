@@ -408,12 +408,14 @@ function startShadowManCutscene() {
         frozenPlayerPos: csStartFalling ? null : player.position.clone(),
         approachStart: null,
         approachTarget: null,
-        approachStep: -1,
         vignetteEl,
         eyes: null,
         parts,
         partBaseX,
         flashShown: false,
+        cameraStartPos: camera.position.clone(),
+        cameraStartQuat: camera.quaternion.clone(),
+        cameraTransitionTimer: 0,
     };
 }
 
@@ -453,7 +455,6 @@ function updateShadowManCutscene(delta) {
         if (cs.timer >= 2) {
             cs.phase = 'approach';
             cs.timer = 0;
-            cs.approachStep = 0;
 
             if (shadowMan) {
                 const smPos = shadowMan.mesh.position;
@@ -473,13 +474,9 @@ function updateShadowManCutscene(delta) {
 
     // ── PHASE: approach ────────────────────────────────────────
     else if (cs.phase === 'approach') {
-        // Each "frame" = 30ms; 3 steps bringing SM to final position
-        const frameLenSec = 0.030;
-        const newStep = Math.min(Math.floor(cs.timer / frameLenSec), 3);
-
-        if (newStep !== cs.approachStep && shadowMan && cs.approachStart && cs.approachTarget) {
-            cs.approachStep = newStep;
-            const t = newStep / 3;
+        if (shadowMan && cs.approachStart && cs.approachTarget) {
+            const durationSec = Math.max(0.001, SHADOW_MAN_CUTSCENE_APPROACH_DURATION_SEC);
+            const t = Math.min(cs.timer / durationSec, 1);
             shadowMan.mesh.position.lerpVectors(cs.approachStart, cs.approachTarget, t);
             shadowMan.mesh.position.y = cs.approachTarget.y; // match player foot height
             const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
@@ -487,7 +484,7 @@ function updateShadowManCutscene(delta) {
             shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
         }
 
-        if (cs.timer >= 3*frameLenSec) {
+        if (cs.timer >= SHADOW_MAN_CUTSCENE_APPROACH_DURATION_SEC) {
             // Snap to final and transition
             if (shadowMan && cs.approachTarget) {
                 shadowMan.mesh.position.copy(cs.approachTarget);

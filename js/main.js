@@ -11,6 +11,8 @@ const _right = new THREE.Vector3();
 const _cameraOffset = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
 const _desiredCameraPos = new THREE.Vector3();
+const _csCamMat  = new THREE.Matrix4();    // scratch for SM cutscene camera transition
+const _csCamQuat = new THREE.Quaternion(); // scratch for SM cutscene camera transition
 
 function createDigZoneGroundPatch(lake) {
     if (!lake) return;
@@ -480,8 +482,21 @@ function animate() {
         const dirToSM = smLookPos.clone().sub(refPos).normalize();
         const camPos = refPos.clone().addScaledVector(dirToSM, -8);
         camPos.y = refPos.y + 6;
-        camera.position.copy(camPos);
-        camera.lookAt(smLookPos);
+
+        shadowManCutscene.cameraTransitionTimer = Math.min(
+            shadowManCutscene.cameraTransitionTimer + delta,
+            SHADOW_MAN_CAMERA_TRANSITION_SEC
+        );
+        const ct = smoothstep01(shadowManCutscene.cameraTransitionTimer / SHADOW_MAN_CAMERA_TRANSITION_SEC);
+        if (ct < 1) {
+            camera.position.lerpVectors(shadowManCutscene.cameraStartPos, camPos, ct);
+            _csCamMat.lookAt(camPos, smLookPos, camera.up);
+            _csCamQuat.setFromRotationMatrix(_csCamMat);
+            camera.quaternion.slerpQuaternions(shadowManCutscene.cameraStartQuat, _csCamQuat, ct);
+        } else {
+            camera.position.copy(camPos);
+            camera.lookAt(smLookPos);
+        }
     }
     if (ak47TriggerHeld && isLocked && ak47Collected && ak47Equipped && !playerDead && !mountedOnDragon) {
         fireAK47();
