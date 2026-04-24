@@ -594,19 +594,19 @@ function createCollisionDebugVisuals() {
     }
 }
 
-function createDistanceDebugStake() {
+function createDistanceDebugStick() {
     if (DEBUG_DISTANCE < 0) return;
 
     const x = 0;
     const z = DEBUG_DISTANCE;
     const baseY = getGroundHeight(x, z);
 
-    const stakeHeight = 8.4;
-    const stake = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.75, 1.1, stakeHeight, 12),
+    const stickHeight = 8.4;
+    const stick = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.75, 1.1, stickHeight, 12),
         new THREE.MeshLambertMaterial({ color: 0xff2222 })
     );
-    stake.position.set(x, baseY + stakeHeight / 2, z);
-    stake.userData.ignoreCameraOcclusion = true;
-    scene.add(stake);
+    stick.position.set(x, baseY + stickHeight / 2, z);
+    stick.userData.ignoreCameraOcclusion = true;
+    scene.add(stick);
 }

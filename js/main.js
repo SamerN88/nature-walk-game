@@ -221,7 +221,7 @@ function init() {
     createFlowers();
     createGrass();
     createCollisionDebugVisuals();
-    createDistanceDebugStake();
+    createDistanceDebugStick();
     createNPCs();
     // createSecretGem() is now called in demonVictory() as a post-apocalypse reward
     if (DEBUG_GEMS) createSecretGem();

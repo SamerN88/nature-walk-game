@@ -94,15 +94,15 @@ function createGoldenKeyMesh() {
     return group;
 }
 
-// ── Stake / Torch meshes & hand slot system ──────────────────────────────────
+// ── Stick / Torch meshes & hand slot system ──────────────────────────────────
 
 function getItemDisplayName(item) {
-    const names = { fist: 'Fist', shovel: 'Shovel', ak47: 'AK47', stake: 'Stake', torch: 'Torch', 'sword-shield': 'Sword & Shield' };
+    const names = { fist: 'Fist', shovel: 'Shovel', ak47: 'AK47', stick: 'Stick', torch: 'Torch', 'sword-shield': 'Sword & Shield' };
     return names[item] || item;
 }
 
 // Adds an item to the dynamic hand slot list and auto-equips it.
-// If `replaces` is given, that item's slot is swapped in-place (e.g. stake -> torch).
+// If `replaces` is given, that item's slot is swapped in-place (e.g. stick -> torch).
 function addHandSlot(itemName, replaces = null) {
     if (replaces !== null) {
         const idx = handSlots.indexOf(replaces);
@@ -118,7 +118,7 @@ function addHandSlot(itemName, replaces = null) {
     currentHandItem = itemName;
 }
 
-function createPlayerStakeMesh(scale = 1) {
+function createPlayerStickMesh(scale = 1) {
     const group = new THREE.Group();
     const wood = new THREE.MeshLambertMaterial({ color: 0x7A5230 });
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045 * scale, 0.065 * scale, 1.4 * scale, 7), wood);
@@ -216,7 +216,7 @@ function updateTorchLight(delta) {
     torchEquippedLight.distance  = Math.max(20,  ud.currentDistance  + breath * ud.baseDistance * 0.10);
 }
 
-// ── End Stake / Torch ────────────────────────────────────────────────────────
+// ── End Stick / Torch ────────────────────────────────────────────────────────
 
 function syncHandItemVisuals() {
     ak47Equipped = ak47Collected && (currentHandItem === 'ak47');
@@ -241,8 +241,8 @@ function syncHandItemVisuals() {
     if (playerShovel) {
         playerShovel.visible = hasShovel && (currentHandItem === 'shovel') && !playerDead && !mountedOnDragon;
     }
-    if (playerStakeMesh) {
-        playerStakeMesh.visible = hasStake && (currentHandItem === 'stake') && !playerDead && !mountedOnDragon;
+    if (playerStickMesh) {
+        playerStickMesh.visible = hasStick && (currentHandItem === 'stick') && !playerDead && !mountedOnDragon;
     }
     if (playerTorchMesh) {
         playerTorchMesh.visible = hasTorch && (currentHandItem === 'torch') && !playerDead && !mountedOnDragon;
@@ -814,9 +814,9 @@ function punch() {
     }
 
     // Tree hit with shovel — both world trees and large dark forest trees can
-    // yield a stake after enough hits. Only show splinter effects before the
-    // stake has been obtained.
-    if ((currentHandItem === 'fist' || (hasShovel && currentHandItem === 'shovel')) && !hasStake && !hasTorch) {
+    // yield a stick after enough hits. Only show splinter effects before the
+    // stick has been obtained.
+    if ((currentHandItem === 'fist' || (hasShovel && currentHandItem === 'shovel')) && !hasStick && !hasTorch) {
         const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
         for (let i = 0; i < trees.length; i++) {
             const tree = trees[i];
@@ -853,12 +853,12 @@ function punch() {
                     ? treeHit.face.normal.clone().transformDirection(treeHit.object.matrixWorld).normalize()
                     : null;
                 spawnWoodSplinterEffect(hitPoint, hitNormal);
-                if (tree.userData.treeHitCount >= STAKE_TREE_HITS_REQUIRED) {
+                if (tree.userData.treeHitCount >= STICK_TREE_HITS_REQUIRED) {
                     tree.userData.treeHitCount = 0;
-                    hasStake = true;
-                    addHandSlot('stake');
+                    hasStick = true;
+                    addHandSlot('stick');
                     syncHandItemVisuals();
-                    flashEquipHint('Stake');
+                    flashEquipHint('Stick');
                 }
                 return;
             }
@@ -937,17 +937,17 @@ function punch() {
         if (tryHitHHWhiteSM(aimDir, punchRange)) return;
     }
 
-    // Campfire punch with stake equipped — light it into a torch
-    if (currentHandItem === 'stake' && hasStake) {
+    // Campfire punch with stick equipped — light it into a torch
+    if (currentHandItem === 'stick' && hasStick) {
         for (const cpPos of campfirePositions) {
             const toCampfire = cpPos.clone().sub(camera.position);
             const proj = toCampfire.dot(aimDir);
             if (proj <= 0 || proj > punchRange) continue;
             const perp = toCampfire.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
             if (perp < 4) {
-                hasStake = false;
+                hasStick = false;
                 hasTorch = true;
-                addHandSlot('torch', 'stake');
+                addHandSlot('torch', 'stick');
                 syncHandItemVisuals();
                 flashEquipHint('Torch');
                 break;

@@ -6,7 +6,11 @@ const NOTE_KEY_HINT_SRC     = 'img/key-hint.png';
 const NOTE_VOLCANO_HINT_SRC = 'img/volcano-hint.png';
 
 const INVENTORY_STARTUP_IMAGE_SRCS = {
-    fist: 'img/fist.png',
+    fist: 'img/fist-icon.png',
+    shovel: 'img/shovel-icon.png',
+    ak47: 'img/ak47-icon.png',
+    stick: 'img/stick-icon.png',
+    torch: 'img/torch-icon.png',
     talisman: 'img/talisman.png',
     keyHint: NOTE_KEY_HINT_SRC,
     volcanoHint: NOTE_VOLCANO_HINT_SRC
@@ -591,12 +595,12 @@ let _iconScene = null;
 let _iconCamera = null;
 let _iconMeshes = [];
 
-// Per-item camera positions and lookAt targets for best framing
+// Per-item camera positions and lookAt targets for best framing (only used for items without a PNG icon)
 const _iconCamConfigs = {
     fist:       { cam: [0, 0.5, 1.6],  look: [0, 0.3, 0] },
     shovel:     { cam: [1.0, 1.2, 2.6], look: [0, 0.3, 0] },
     ak47:       { cam: [0.3, 0.5, 1.8], look: [0, 0.2, 0] },
-    stake:      { cam: [0.6, 1.1, 1.9], look: [0, 0.6, 0] },
+    stick:      { cam: [0.6, 1.1, 1.9], look: [0, 0.6, 0] },
     torch:      { cam: [0.6, 0.9, 1.9], look: [0, 0.5, 0] },
     'golden-key': { cam: [1.2, 0.8, 2.0], look: [0, 0, 0] },
 };
@@ -631,38 +635,11 @@ function _renderItemIconDataURL(itemName) {
 
     let mesh = null;
     switch (itemName) {
-        case 'fist': {
-            // Skin-colored sphere representing the player's hand
-            // const mat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
-            // mesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), mat);
-            // mesh.position.set(0, 0.35, 0);
-            // break;
-            return 'img/fist.png';
-        }
-        case 'shovel':
-            mesh = createShovelMesh(0.42);
-            mesh.position.set(0, -0.4, 0);
-            break;
-        case 'ak47': {
-            const { mesh: gun } = createAK47Mesh(0.6);
-            gun.rotation.y = 0.25;
-            gun.position.set(-0.15, 0.15, -0.35);
-            mesh = gun;
-            break;
-        }
-        case 'stake':
-            mesh = createPlayerStakeMesh(0.82);
-            mesh.position.set(0, -0.2, 0);
-            break;
-        case 'torch':
-            mesh = createPlayerTorchMesh(0.82);
-            // Flip to match in-game orientation (flame at top).
-            // Icon only applies rotation.z = PI (no rotation.x tilt), so the flameGroup
-            // counter-rotation must be PI (not PI - PI/3.5) to keep flame pointing world +Y.
-            mesh.rotation.z = Math.PI;
-            if (mesh.userData.flameGroup) mesh.userData.flameGroup.rotation.x = Math.PI;
-            mesh.position.set(0, 0.2, 0);
-            break;
+        case 'fist':   return INVENTORY_STARTUP_IMAGE_SRCS.fist;
+        case 'shovel': return INVENTORY_STARTUP_IMAGE_SRCS.shovel;
+        case 'ak47':   return INVENTORY_STARTUP_IMAGE_SRCS.ak47;
+        case 'stick':  return INVENTORY_STARTUP_IMAGE_SRCS.stick;
+        case 'torch':  return INVENTORY_STARTUP_IMAGE_SRCS.torch;
         case 'golden-key':
             mesh = createGoldenKeyMesh();
             mesh.rotation.z = Math.PI * 0.25; // 45-degree tilt
@@ -691,9 +668,7 @@ function _getHandheldSlotNode(itemName) {
     num.className = 'handheld-slot-number';
     slot.appendChild(num);
 
-    const imgSrc = itemName === 'fist'
-        ? _getCachedInventoryImage(INVENTORY_STARTUP_IMAGE_SRCS.fist).src
-        : _renderItemIconDataURL(itemName);
+    const imgSrc = _renderItemIconDataURL(itemName);
     const img = _createPersistentDisplayImage(imgSrc, '', getItemDisplayName(itemName));
     slot.appendChild(img);
 

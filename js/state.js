@@ -214,18 +214,18 @@ let ak47TriggerHeld = false;
 
 // Hand-held item system
 let hasShovel = false;
-let currentHandItem = 'fist'; // 'fist' | 'shovel' | 'ak47' | 'stake' | 'torch'
+let currentHandItem = 'fist'; // 'fist' | 'shovel' | 'ak47' | 'stick' | 'torch'
 let playerShovel = null;
 let tentShovelMesh = null;
 
-// Tree / Stake / Torch system
-let trees = []; // all tree groups tracked for stake harvesting
-let hasStake = false;
+// Tree / Stick / Torch system
+let trees = []; // all tree groups tracked for stick harvesting
+let hasStick = false;
 let hasTorch = DEBUG_TORCH;  // start with torch if DEBUG_TORCH
-let playerStakeMesh = null;    // equipped stake mesh on player
+let playerStickMesh = null;    // equipped stick mesh on player
 let playerTorchMesh = null;    // equipped torch mesh on player
 let torchEquippedLight = null; // PointLight active when torch equipped
-const STAKE_TREE_HITS_REQUIRED = 5;
+const STICK_TREE_HITS_REQUIRED = 5;
 
 // Dynamic hand slot system — slot 0 is always fist; items added in acquisition order
 let handSlots = ['fist'];

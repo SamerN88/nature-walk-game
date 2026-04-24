@@ -5,12 +5,12 @@ const DEBUG_CHEST = false;  // for quick access to chest
 const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
 const DEBUG_AK47 = true;  // spawn with the AK47 already collected and equipped
 const DEBUG_SHOVEL = true; // spawn with the shovel already in hand
-const DEBUG_TORCH = true; // spawn with the torch already in hand
+const DEBUG_TORCH = false; // spawn with the torch already in hand
 const DEBUG_DIG_ZONE = false; // show dig zone at lake floor as translucent red square
 const DEBUG_GOLDEN_KEY = false;  // punchable box 30 units ahead; 3 hits reveals the golden key
 const DEBUG_GOLDEN_KEY_IN_LAKE = false; // key is already revealed when player first reaches the lake floor
 const DEBUG_GOLDEN_KEY_OBTAINED = true; // start with the golden key already collected
-const DEBUG_DISTANCE = -1;  // -1 means disabled; if >=0, spawns a single large red stake at that distance from origin along +Z
+const DEBUG_DISTANCE = 1;  // -1 means disabled; if >=0, spawns a single large red stick at that distance from origin along +Z
 const DEBUG_SHADOW_MAN = false;  // spawns shadow man immediately at game start with big red beacon
 const DEBUG_SHADOW_MAN_IGNORE_BUFFER = false;  // ignores the initial buffer when shadow man cannot spawn
 const DEBUG_FREEZE_SHADOW_MAN = false;  // prevents despawn and rotation

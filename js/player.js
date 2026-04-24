@@ -40,11 +40,11 @@ function createPlayer() {
     playerShovel.visible = false;
     player.add(playerShovel);
 
-    playerStakeMesh = createPlayerStakeMesh(0.85);
-    playerStakeMesh.position.set(-0.44, 1.7, 0.7);
-    playerStakeMesh.rotation.set(Math.PI/3.5, 0, Math.PI);
-    playerStakeMesh.visible = false;
-    player.add(playerStakeMesh);
+    playerStickMesh = createPlayerStickMesh(0.85);
+    playerStickMesh.position.set(-0.44, 1.7, 0.7);
+    playerStickMesh.rotation.set(Math.PI/3.5, 0, Math.PI);
+    playerStickMesh.visible = false;
+    player.add(playerStickMesh);
 
     playerTorchMesh = createPlayerTorchMesh(0.85);
     playerTorchMesh.position.set(-0.44, 1.7, 0.7);

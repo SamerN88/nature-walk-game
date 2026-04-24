@@ -1840,8 +1840,8 @@ function updateHauntedHouseSequence(delta) {
             hhTorchExtinguished = true;
             if (hasTorch) {
                 hasTorch = false;
-                hasStake = true;
-                addHandSlot('stake', 'torch');
+                hasStick = true;
+                addHandSlot('stick', 'torch');
                 syncHandItemVisuals();
             }
         }
