@@ -28,6 +28,7 @@ const DEBUG_INF_JUMP = false;  // gives player infinite jump
 const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
 const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge after 1 kill instead of 100
+const DEBUG_ALTAR = false; // spawn player 40 units from the sacrificial altar at start
 
 // Demon teleport ability
     /* 

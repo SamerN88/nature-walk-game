@@ -386,7 +386,7 @@ function updateShadowMan(currentTimeMs) {
     if (shadowManCutscene) return;
 
     const elapsedMs = currentTimeMs - gameStartRealTimeMs;
-    const unlockMs = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * SHADOW_MAN_SPAWN_CHECK_INTERVAL_MS;
+    const unlockMs = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * 60 * 1000;
 
     // The dragon gem overrides the initial peace period and starts checks immediately.
     if (shadowManNextCheckMs < 0 && (dragonGemCollected || elapsedMs >= unlockMs)) {

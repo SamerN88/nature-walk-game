@@ -297,3 +297,14 @@ let swordSwipeTimer = 0;
 let swordAuraActive = false;      // true when sword blade is charged / aurafied
 let swordPostAuraKills = 0;       // kills since aura was last discharged (toward next 100-kill recharge)
 let lightningEffects = [];        // active lightning strike visual effects
+
+// ── Sacrificial Altar ─────────────────────────────────────────────────────────
+let altarData = null;
+let altarState = 'idle'; // 'idle' | 'torches_lit' | 'struck' | 'ascending' | 'complete'
+let altarTorchesLit = 0;
+let altarCorpseStruck = false;
+let altarBeamActive = false;
+
+// ── Holy Gem (altar reward) ───────────────────────────────────────────────────
+let holyGem = null;
+let holyGemCollected = false;

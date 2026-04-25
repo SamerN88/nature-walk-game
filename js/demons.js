@@ -640,6 +640,32 @@ function updateDemons(delta) {
     }
 }
 
+function applyAscendedDragonMaterials(dragonMesh) {
+    dragonMesh.traverse(child => {
+        if (!child.isMesh || !child.material) return;
+        if (child.userData.isDragonSpike || child.userData.isDragonClaw) {
+            child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
+            return;
+        }
+        if (child.material.type === 'MeshBasicMaterial') {
+            child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
+            return;
+        }
+        const hex = child.material.color ? child.material.color.getHex() : 0;
+        if (hex === 0x2a0a0a) {
+            child.material = new THREE.MeshBasicMaterial({
+                color: 0x00DDFF, side: THREE.DoubleSide, transparent: true, opacity: 0.88
+            });
+            return;
+        }
+        if (hex === 0xcc0000) {
+            child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
+            return;
+        }
+        child.material = new THREE.MeshLambertMaterial({ color: 0x444455 });
+    });
+}
+
 function demonVictory() {
     if (roundMode) { endRound(); return; }
     shadowManPostApocalypseUnlocked = true;
@@ -670,34 +696,7 @@ function demonVictory() {
 
     // ── Transform existing dragon into white post-apocalypse dragon ──
     if (dragon) {
-        dragon.traverse(child => {
-            if (!child.isMesh || !child.material) return;
-
-            // Tail spikes & foot claws: electric blue, BasicMaterial (self-lit, visible in dark)
-            if (child.userData.isDragonSpike || child.userData.isDragonClaw) {
-                child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
-                return;
-            }
-            // Eyes: already BasicMaterial — keep electric blue
-            if (child.material.type === 'MeshBasicMaterial') {
-                child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
-                return;
-            }
-            const hex = child.material.color ? child.material.color.getHex() : 0;
-            // Wing membranes: electric-blue translucent
-            if (hex === 0x2a0a0a) {
-                child.material = new THREE.MeshBasicMaterial({
-                    color: 0x00DDFF, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
-                return;
-            }
-            // Horns (redMaterial, 0xcc0000): BasicMaterial electric blue
-            if (hex === 0xcc0000) {
-                child.material = new THREE.MeshBasicMaterial({ color: 0x00DDFF });
-                return;
-            }
-            // Everything else (body, neck, head, legs, wing bones, tail): dark blue-grey
-            child.material = new THREE.MeshLambertMaterial({ color: 0x444455 });
-        });
+        applyAscendedDragonMaterials(dragon);
         dragonAscended = true;
         dragon.visible = true;
         // Trigger dragon descent

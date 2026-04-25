@@ -213,17 +213,25 @@ function getDragonVolcanoPlatformTopHeight(x, z) {
 }
 
 function getDragonSupportHeight(x, z) {
-    return Math.max(getLandSurfaceHeight(x, z), getDragonVolcanoPlatformTopHeight(x, z));
+    return Math.max(
+        getLandSurfaceHeight(x, z),
+        getDragonVolcanoPlatformTopHeight(x, z),
+        getHolyGemPlatformHeight(x, z)
+    );
 }
 
 // Like getDragonSupportHeight but only counts surfaces that are strictly below
 // `aboveY`.  This prevents the platform (or any raised surface) from being used
 // as a landing target when the dragon is already below it.
 function getDragonSupportHeightBelow(x, z, aboveY) {
-    const land     = getLandSurfaceHeight(x, z);
-    const platform = getDragonVolcanoPlatformTopHeight(x, z);
-    const effectivePlatform = (platform < aboveY) ? platform : -Infinity;
-    return Math.max(land, effectivePlatform);
+    const land    = getLandSurfaceHeight(x, z);
+    const volcano = getDragonVolcanoPlatformTopHeight(x, z);
+    const altar   = getHolyGemPlatformHeight(x, z);
+    return Math.max(
+        land,
+        volcano < aboveY ? volcano : -Infinity,
+        altar   < aboveY ? altar   : -Infinity
+    );
 }
 
 function respawnPlayerAtOrigin() {

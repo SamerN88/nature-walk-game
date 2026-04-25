@@ -955,6 +955,11 @@ function punch() {
         }
     }
 
+    // Light altar torches with equipped player torch
+    if (currentHandItem === 'torch' && hasTorch) {
+        if (tryLightAltarTorch(aimDir, punchRange)) return;
+    }
+
     // Sword swipe hits up to 3 targets; regular melee hits 1
     const isSwordAttack = currentHandItem === 'sword-shield';
     const maxMeleeHits = isSwordAttack ? 3 : 1;
@@ -990,16 +995,33 @@ function punch() {
     candidateDemons.sort((a, b) => a.dist - b.dist);
 
     if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)) {
-        // Aurafied sword: strike the nearest hit target with lightning; AoE handles all kills
-        const nearestNPC = candidateNPCs[0];
+        // Also check altar corpse as a lightning target
+        let altarCorpseCandidate = null;
+        if (tryHitAltarCorpseWithLightning(aimDir, punchRange)) {
+            const toC = altarData.corpseHitPos.clone().sub(camera.position);
+            altarCorpseCandidate = { kind: 'altar', dist: toC.dot(aimDir) };
+        }
+
+        const nearestNPC   = candidateNPCs[0];
         const nearestDemon = candidateDemons[0];
-        const firstTarget = (nearestNPC && nearestDemon)
-            ? (nearestNPC.dist < nearestDemon.dist ? nearestNPC : nearestDemon)
-            : (nearestNPC || nearestDemon);
+
+        // Pick the closest of NPC, demon, or altar corpse
+        const allCandidates = [
+            nearestNPC    ? { kind: 'npc',   ref: nearestNPC,   dist: nearestNPC.dist }   : null,
+            nearestDemon  ? { kind: 'demon', ref: nearestDemon, dist: nearestDemon.dist } : null,
+            altarCorpseCandidate,
+        ].filter(Boolean).sort((a, b) => a.dist - b.dist);
+
+        const firstTarget = allCandidates[0] || null;
 
         if (firstTarget) {
-            const strikePos = (firstTarget.npc || firstTarget.demon).mesh.position.clone();
-            triggerLightningStrike(strikePos);
+            if (firstTarget.kind === 'altar') {
+                triggerLightningStrike(altarData.corpseHitPos);
+                _triggerAltarCorpseStrike();
+            } else {
+                const strikePos = (firstTarget.ref.npc || firstTarget.ref.demon).mesh.position.clone();
+                triggerLightningStrike(strikePos);
+            }
             if (!DEBUG_SWORD_THUNDER_INF) _deactivateSwordAura();
             swordPostAuraKills = 0;
             // Lightning AoE kills everything — skip normal hit loop

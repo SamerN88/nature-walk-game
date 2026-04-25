@@ -213,6 +213,9 @@ function init() {
     createDragonVolcano();
     createHauntedHouse();
     createCemetery();
+    // Altar must run before vegetation so flattenTerrainRotatedRect updates terrainHeights
+    // before trees/rocks/grass sample their ground height.
+    createSacrificialAltar();
     createEnterableStructures();
     createClimbableStructures();
     createMountains();
@@ -227,6 +230,14 @@ function init() {
     if (DEBUG_GEMS) createSecretGem();
     createDragonGem();
     createDragon();
+    if (DEBUG_ALTAR && altarData) {
+        applyAscendedDragonMaterials(dragon);
+        dragonAscended = true;
+        dragonGemCollected = true;
+        dragonDescending = true;
+        dragon.visible = true;
+        dragon.position.set(altarData.worldX, altarData.worldGroundY + 20, altarData.worldZ + 40);
+    }
     if (DEBUG_SWORD_THUNDER || DEBUG_SWORD_THUNDER_INF) {
         // Sword + aurafied blade in inventory
         hasSwordShield = true;
@@ -515,6 +526,8 @@ function animate() {
         camera.position.z
     ) ? '1' : '0';
 
+    updateAltar(delta, performance.now() / 1000);
+    updateHolyGem(delta, performance.now() / 1000);
     updateHauntedHouseSequence(delta);
     updateHHHallDoor(delta);
     updateSwordBladeParticles(delta);
