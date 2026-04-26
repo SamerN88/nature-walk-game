@@ -178,6 +178,13 @@ function createPlayerTorchMesh(scale = 1) {
     flameCore.receiveShadow = false;
     flameGroup.add(flameCore);
 
+    // Point light parented to flameGroup so it sits exactly on the flame.
+    // player.js retrieves it via group.userData.torchLight.
+    const torchLt = new THREE.PointLight(0xFF6600, 0, 150, 1.2);
+    torchLt.position.set(0, 0.2 * scale, 0);  // center of outer flame cone
+    flameGroup.add(torchLt);
+    group.userData.torchLight = torchLt;
+
     enableMeshShadows(group);
     // Flames are transparent light effects — must not cast shadows after enableMeshShadows overwrites them.
     flameGroup.traverse(obj => {

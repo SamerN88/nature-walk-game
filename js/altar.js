@@ -392,8 +392,17 @@ function createSacrificialAltar() {
         altarGrp.add(torchMesh);
         torches.push({
             mesh: torchMesh, lit: false, localX: tx, localZ: tz,
-            freqA: 6  + Math.random() * 4,   // large flicker: 6–10 Hz
-            freqB: 35 + Math.random() * 20,   // small flicker: 35–55 Hz
+            // Flicker state — mirrors updateTorchLight; frequencies randomised so torches aren't in sync
+            flickerTimer:     0,
+            baseIntensity:    65,
+            currentIntensity: 65,
+            targetIntensity:  65,
+            baseDistance:     30,
+            currentDistance:  30,
+            targetDistance:   30,
+            breathFreq1:  10 + Math.random() * 6,          // 10–16
+            breathFreq2:  18 + Math.random() * 7,          // 18–25
+            breathPhase2: Math.random() * Math.PI * 2,
         });
     }
 
@@ -498,6 +507,7 @@ function _activateAltarPurpleBeam() {
             mat
         );
         beam.position.copy(mid);
+        beam.position.y -= 0.4;
         beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
         beam.frustumCulled = false;
         beam.userData.ignoreCameraOcclusion = true;
@@ -607,8 +617,20 @@ function updateAltar(delta, time) {
         if (!torch.lit) continue;
         const light = torch.mesh.userData.torchLight;
         if (light) {
-            light.intensity = 65 + Math.sin(time * torch.freqA + torch.localX) * 8
-                                 + Math.sin(time * torch.freqB + torch.localZ) * 4;
+            torch.flickerTimer -= delta;
+            if (torch.flickerTimer <= 0) {
+                torch.flickerTimer    = 0.03 + Math.random() * 0.12;
+                torch.targetIntensity = torch.baseIntensity * (0.7 + Math.random() * 0.6);
+                torch.targetDistance  = torch.baseDistance  * (0.7 + Math.random() * 0.6);
+            }
+            torch.currentIntensity += (torch.targetIntensity - torch.currentIntensity) * Math.min(1, delta * 9);
+            torch.currentDistance  += (torch.targetDistance  - torch.currentDistance)  * Math.min(1, delta * 6);
+
+            const t = performance.now() * 0.0005;
+            const breath = Math.sin(t * torch.breathFreq1) * 0.17
+                         + Math.sin(t * torch.breathFreq2 + torch.breathPhase2) * 0.09;
+            light.intensity = Math.max(1,  torch.currentIntensity + breath * torch.baseIntensity);
+            light.distance  = Math.max(10, torch.currentDistance  + breath * torch.baseDistance * 0.10);
         }
 
         // Smoke particles rising from flame tip

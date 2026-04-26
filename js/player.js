@@ -52,8 +52,8 @@ function createPlayer() {
     playerTorchMesh.visible = false;
     player.add(playerTorchMesh);
 
-    torchEquippedLight = new THREE.PointLight(0xFF6600, 0, 150, 1.2);
-    torchEquippedLight.position.set(0, 2.5, 1);
+    // Light lives inside flameGroup (via createPlayerTorchMesh) so it tracks the flame exactly.
+    torchEquippedLight = playerTorchMesh.userData.torchLight;
     torchEquippedLight.castShadow = false; // DEBUG SHADOW - decided to keep this but mitigate it for performance
     torchEquippedLight.shadow.mapSize.set(256, 256);
     torchEquippedLight.shadow.bias = -0.0008;
@@ -66,7 +66,6 @@ function createPlayer() {
     torchEquippedLight.userData.currentDistance  = 100;
     torchEquippedLight.userData.targetDistance   = 100;
     torchEquippedLight.userData.flickerTimer     = 0;
-    player.add(torchEquippedLight);
 
     const flashMat = new THREE.MeshBasicMaterial({
         color: AK47_BEAM_COLOR,

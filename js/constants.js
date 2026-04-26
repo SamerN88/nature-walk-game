@@ -5,7 +5,7 @@ const DEBUG_CHEST = false;  // for quick access to chest
 const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
 const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
 const DEBUG_SHOVEL = false; // spawn with the shovel already in hand
-const DEBUG_TORCH = false; // spawn with the torch already in hand
+const DEBUG_TORCH = true; // spawn with the torch already in hand
 const DEBUG_DIG_ZONE = false; // show dig zone at lake floor as translucent red square
 const DEBUG_GOLDEN_KEY = false;  // punchable box 30 units ahead; 3 hits reveals the golden key
 const DEBUG_GOLDEN_KEY_IN_LAKE = false; // key is already revealed when player first reaches the lake floor
@@ -28,7 +28,7 @@ const DEBUG_INF_JUMP = false;  // gives player infinite jump
 const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inventory + demon shrine in place
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
 const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge after 1 kill instead of 100
-const DEBUG_ALTAR = false; // spawn player 40 units from the sacrificial altar at start
+const DEBUG_ALTAR = true; // spawn player 40 units from the sacrificial altar at start
 
 // Demon teleport ability
     /* 
