@@ -35,6 +35,7 @@ nature-walk-game/
 │   ├── inventory.js    Notes and inventory overlay system (press I), paper/image rendering
 │   ├── hauntedhouse.js Haunted house and cemetery: buildings, dark forests, shadow man combat
 │   ├── creatures.js    Night creature system: zombie, crawler, weeping angel, cemetery zombies
+│   ├── noose.js        Special noose portal landmark, rope/body construction, debug spawn
 │   ├── altar.js        Sacrificial altar: ritual mechanics, pillar symbols, corpse ascent, holy gem
 │   └── main.js         `init()`, `animate()`, `update()` — the game loop
 └── CODEBASE.md         This file
@@ -192,6 +193,7 @@ Also contains:
 
 **To add a new building:** call the `addRigidBoxStructureParts` / `addSolidWallRect` helpers in `createEnterableStructures`.
 **To add a new climbable platform:** add to `createClimbableStructures`.
+**To change the special noose portal:** edit `noose.js`; `createClimbableStructures()` only calls into it.
 
 ---
 
@@ -438,6 +440,19 @@ The haunted house and cemetery, plus their surrounding dark forests:
 
 **To change the haunted house layout:** edit the wall/floor box builders in `createHauntedHouse`.
 **To change the dark forest density:** edit `TOTAL_TREES` / ring counts in `createHHForest` or `createCemeteryForest`.
+
+---
+
+### `js/noose.js`
+Special noose portal landmark:
+- `createSpecialHangingPortalFrame(stoneMaterial)` — places one tall portal frame in the inner world, registers its climbable stone parts, and handles `DEBUG_NOOSE` / `DEBUG_NOOSE_BODY` player placement
+- `createSpecialPortalNoose(parent, archHeight)` — builds the beige rope tied around the portal lintel and hanging noose loop
+- `createSpecialPortalHangingBodyMesh()` — builds the hanging body from the zombie mesh and color in `creatures.js`
+- `spawnSpecialPortalHangingBody()` — adds the body after talisman pickup or immediately with `DEBUG_NOOSE_BODY`
+
+Loaded after `creatures.js` so its zombie mesh/color dependencies are explicit. Called from `structures.js` during `createClimbableStructures()`, and from `hauntedhouse.js` when the talisman is picked up.
+
+**To change the noose portal, rope, hanging body, or noose debug spawn:** edit here.
 
 ---
 

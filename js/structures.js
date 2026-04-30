@@ -5,6 +5,8 @@ function createClimbableStructures() {
 
     const wideRegion = { type: 'box', minX: -2600, maxX: 2600, minZ: -2600, maxZ: 2600 };
 
+    createSpecialHangingPortalFrame(stoneMaterial);
+
     for (let i = 0; i < 50; i++) {
         const placement = findPlacement(() => {
             const size = randRange(8, 23);

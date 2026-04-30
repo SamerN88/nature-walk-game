@@ -306,6 +306,7 @@ let talismanItemMesh = null;
 let talismanLockTimer = 0;
 let talismanSpawnTime = 0;
 let talismanBaseY = 0;
+let specialPortalFrameData = null;
 let hhSkullOnGround = null;
 let swordSwipeGroup = null;
 let swordSwipeTimer = 0;

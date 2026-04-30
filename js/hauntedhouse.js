@@ -1791,6 +1791,9 @@ function tryPickupTalisman(aimDir, punchRange) {
     scene.remove(talismanItemMesh);
     talismanItemMesh = null;
     addInventoryItem('talisman', 'Talisman', TALISMAN_ICON_SRC, { type: 'object', itemKey: 'talisman' });
+    if (typeof spawnSpecialPortalHangingBody === 'function') {
+        spawnSpecialPortalHangingBody();
+    }
     flashEquipHint('TALISMAN FOUND');
 
     // Lock gates and start zombie emergence countdown
