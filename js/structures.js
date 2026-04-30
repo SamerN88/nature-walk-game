@@ -766,6 +766,7 @@ function createEnterableStructures() {
             halfW: 6.0,
             halfD: 5.0,
             rotation: placement.rotation,
+            barrierTopY: groundY + 9,
             door: doorData,
             doorwayX: doorOpeningWorld.x,
             doorwayZ: doorOpeningWorld.z,
@@ -1023,13 +1024,14 @@ function createEnterableStructures() {
             scene.add(beacon);
         }
 
+        const caveWallColliderHeight = cH - 0.1;
         caveColliderMarkers.push(
-            createColliderMarker(cave, 'solidWall', { localX: -cW - wT / 2, localY: cH / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: cH, extra: { isEnclosed: true } }),
-            createColliderMarker(cave, 'solidWall', { localX: cW + wT / 2, localY: cH / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: cH, extra: { isEnclosed: true } }),
-            createColliderMarker(cave, 'solidWall', { localX: 0, localY: cH / 2, localZ: -cD - wT / 2, halfW: cW + wT, halfD: wT / 2, height: cH, extra: { isEnclosed: true } }),
+            createColliderMarker(cave, 'solidWall', { localX: -cW - wT / 2, localY: caveWallColliderHeight / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: caveWallColliderHeight, extra: { isEnclosed: true } }),
+            createColliderMarker(cave, 'solidWall', { localX: cW + wT / 2, localY: caveWallColliderHeight / 2, localZ: -cD / 2, halfW: wT / 2, halfD: cD / 2, height: caveWallColliderHeight, extra: { isEnclosed: true } }),
+            createColliderMarker(cave, 'solidWall', { localX: 0, localY: caveWallColliderHeight / 2, localZ: -cD - wT / 2, halfW: cW + wT, halfD: wT / 2, height: caveWallColliderHeight, extra: { isEnclosed: true } }),
             createColliderMarker(cave, 'structureBox', { localX: 0, localY: 0.1, localZ: -cD / 2, width: cW * 2, height: 0.2, depth: cD }),
-            createColliderMarker(cave, 'ceilingRect', { localX: 0, localY: cH, localZ: (-cD + leanInset) / 2, halfW: ceilingInnerW / 2, halfD: ceilingInnerD / 2 }),
-            createColliderMarker(cave, 'roofCollider', { localX: 0, localY: cH - roofThickness / 2, localZ: (-cD - wT + leanInset) / 2, halfW: roofTopOuterW / 2, halfD: roofTopOuterD / 2, thickness: roofThickness }),
+            createColliderMarker(cave, 'ceilingRect', { localX: 0, localY: cH - roofThickness, localZ: -cD / 2, halfW: cW, halfD: cD / 2 }),
+            createColliderMarker(cave, 'roofCollider', { localX: 0, localY: cH - roofThickness / 2, localZ: -(cD + wT) / 2, halfW: cW + wT, halfD: (cD + wT) / 2, thickness: roofThickness }),
             createColliderMarker(cave, 'enclosedBound', { localX: 0, localY: 0, localZ: -cD / 2, halfW: cW + wT + 2, halfD: cD / 2 + wT + 1 })
         );
         cave.updateMatrixWorld(true);
@@ -1045,6 +1047,7 @@ function createEnterableStructures() {
             rotation: placement.rotation,
             centerLocalZ: -cD / 2,
             outerCenterLocalZ: -(cD + wT) / 2,
+            barrierTopY: groundY + cH,
             entryX: caveEntryWorld.x,
             entryZ: caveEntryWorld.z,
             entryHalfW: cW + 0.75,

@@ -830,6 +830,11 @@ function _enforceCreatureHouseRegions(c, prevXZ) {
             continue;
         }
 
+        if (isEntityAboveEnclosureBarrier(region, c.mesh.position.y)) {
+            c.houseRegion = isInside ? region : null;
+            continue;
+        }
+
         const doorOpen = region.door?.isOpen || region.door?.wallEntry?.active === false;
         const enteringThroughDoorway = doorOpen && _isPointInCreatureHouseDoorway(c.mesh.position.x, c.mesh.position.z, region);
         if (enteringThroughDoorway) {
@@ -867,6 +872,11 @@ function _enforceCreatureCemeteryRegions(c, prevXZ) {
             continue;
         }
 
+        if (isEntityAboveEnclosureBarrier(region, c.mesh.position.y)) {
+            c.cemeteryRegion = isInside ? region : null;
+            continue;
+        }
+
         const gateOpen = region.gateWall?.active === false;
         const enteringThroughGate = gateOpen && _isPointInCreatureCemeteryEntry(c.mesh.position.x, c.mesh.position.z, region);
         if (enteringThroughGate) {
@@ -901,6 +911,11 @@ function _enforceCreatureCaveRegions(c, prevXZ) {
 
         if (wasInside && isInside) {
             c.caveRegion = region;
+            continue;
+        }
+
+        if (isEntityAboveEnclosureBarrier(region, c.mesh.position.y)) {
+            c.caveRegion = isInside ? region : null;
             continue;
         }
 

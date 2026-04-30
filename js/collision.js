@@ -464,6 +464,10 @@ function isPointInEnclosureEntryBand(x, z, region) {
     return Math.abs(local.x) <= halfW && Math.abs(local.z) <= halfD;
 }
 
+function isEntityAboveEnclosureBarrier(region, y) {
+    return region.barrierTopY !== undefined && y >= region.barrierTopY;
+}
+
 function isOpenEnclosureTransitionLegal(prevXZ, region) {
     const x = player.position.x;
     const z = player.position.z;
@@ -487,6 +491,7 @@ function isOpenEnclosureTransitionLegal(prevXZ, region) {
     );
     const inEntryBand = isPointInEnclosureEntryBand(x, z, region);
 
+    if (isEntityAboveEnclosureBarrier(region, player.position.y)) return true;
     if (isInsideOuter && !isInsideInner && !inEntryBand) return false;
     if (!wasInsideOuter && isInsideOuter && !inEntryBand) return false;
     if (wasInsideInner !== isInsideInner && !inEntryBand) return false;
@@ -502,6 +507,8 @@ function isPlayerEnclosureTransitionLegal(prevXZ) {
         const isInside = isPointInEnclosureRegion(x, z, region);
         if (wasInside === isInside) continue;
 
+        if (isEntityAboveEnclosureBarrier(region, player.position.y)) continue;
+
         const doorOpen = region.door?.isOpen || region.door?.wallEntry?.active === false;
         if (!doorOpen || !isPointInEnclosureEntryBand(x, z, region)) return false;
     }
@@ -514,6 +521,8 @@ function isPlayerEnclosureTransitionLegal(prevXZ) {
         const wasInside = isPointInEnclosureRegion(prevXZ.x, prevXZ.z, region);
         const isInside = isPointInEnclosureRegion(x, z, region);
         if (wasInside === isInside) continue;
+
+        if (isEntityAboveEnclosureBarrier(region, player.position.y)) continue;
 
         const gateOpen = region.gateWall?.active === false;
         if (!gateOpen || !isPointInEnclosureEntryBand(x, z, region)) return false;
