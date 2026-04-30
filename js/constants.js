@@ -29,6 +29,11 @@ const DEBUG_SWORD_THUNDER = false; // spawn at origin with aurafied sword in inv
 const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sword hit triggers lightning without recharge
 const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge after 1 kill instead of 100
 const DEBUG_ALTAR = false; // spawn player 40 units from the sacrificial altar at start
+const DEBUG_ALTAR_PRELOCATION = false; // spawn player near the flattened altar site before the altar is built
+const DEBUG_CREATURES = false; // makes creatures start spawning right away, and deal zero damage
+const DEBUG_CREATURES_2 = false; // spawn 10 creatures 500 units from player at start; they do not despawn during daytime
+const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a row at start; they stay frozen (no movement/attack/night-end despawn) but are killable
+
 
 // Demon teleport ability
     /* 
@@ -51,7 +56,9 @@ const FALL_TO_CUTSCENE = true;
 const SHADOW_MAN_CAMERA_TRANSITION_SEC = 1.0; // seconds to smoothly rotate camera to face SM at cutscene start
 
 // Game constants
+const WALK_SPEED = 20;
+const RUN_SPEED  = WALK_SPEED * 2;
 const GRAVITY = 40; // gravitational acceleration (units/s²)
-const DAY_DURATION = 5 * 60 * 1000; // 5 minutes in ms
-const NIGHT_DURATION = 5 * 60 * 1000; // 5 minutes in ms
+const DAY_DURATION = 6 * (60 * 1000); // 6 minutes in ms
+const NIGHT_DURATION = 6 * (60 * 1000); // 6 minutes in ms
 const FULL_CYCLE = DAY_DURATION + NIGHT_DURATION;

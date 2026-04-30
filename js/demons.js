@@ -239,6 +239,7 @@ function triggerDemonApocalypse() {
     demonTeleportUnlockTimer = DEMON_TELEPORT_UNLOCK_DELAY_SEC;
     _apocalypseRespawnCount = 0;
     updateTopCornerHudVisibility();
+    if (typeof killAllNightCreatures === 'function') killAllNightCreatures();
 
     // ── Blood-red apocalypse sky ──
     scene.background = new THREE.Color(0x6B0000);

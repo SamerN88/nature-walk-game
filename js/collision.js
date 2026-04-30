@@ -214,16 +214,16 @@ function addLocalEnclosedBound(originX, originZ, localX, localZ, halfW, halfD, r
 }
 
 function getCollisionPushSign(currentCoord, previousCoord, limit) {
-    if (previousCoord !== null && previousCoord !== undefined && Math.abs(previousCoord) > limit + 1e-5) {
+    // Use previous position's side whenever available and non-zero.
+    // The old guard (|prev| > limit) incorrectly rejects positions at the AABB
+    // boundary (|prev| == limit), which is the normal post-resolve state.
+    // That caused the next separation impulse to push through the wall.
+    if (previousCoord !== null && previousCoord !== undefined && Math.abs(previousCoord) > 1e-5) {
         return previousCoord >= 0 ? 1 : -1;
     }
 
     if (Math.abs(currentCoord) > 1e-5) {
         return currentCoord >= 0 ? 1 : -1;
-    }
-
-    if (previousCoord !== null && previousCoord !== undefined && Math.abs(previousCoord) > 1e-5) {
-        return previousCoord >= 0 ? 1 : -1;
     }
 
     return 1;
@@ -243,12 +243,17 @@ function resolveCircularWallCollision(position, radius, wall, previousPosition =
     if (overlapX <= 0 || overlapZ <= 0) return null;
 
     if (overlapX < overlapZ) {
-        const pushX = overlapX * getCollisionPushSign(local.x, previousLocal?.x, limitX);
-        return rotateXZ(pushX, 0, rotation);
+        const sign = getCollisionPushSign(local.x, previousLocal?.x, limitX);
+        // Push to the correct boundary in one step. Using (sign*limit - coord) instead
+        // of (overlap * sign) handles the tunneling case: when the entity has crossed
+        // to the wrong side, overlap measures distance to the wrong boundary and
+        // under-shoots, leaving the entity still inside for subsequent passes which
+        // then push it the wrong way (using currentCoord with no prevXZ).
+        return rotateXZ(sign * limitX - local.x, 0, rotation);
     }
 
-    const pushZ = overlapZ * getCollisionPushSign(local.z, previousLocal?.z, limitZ);
-    return rotateXZ(0, pushZ, rotation);
+    const sign = getCollisionPushSign(local.z, previousLocal?.z, limitZ);
+    return rotateXZ(0, sign * limitZ - local.z, rotation);
 }
 
 function clampPlayerToWorldBounds() {
@@ -429,17 +434,117 @@ function getPlayerMovementSubsteps(totalDX, totalDZ) {
     return Math.max(1, Math.min(24, Math.ceil(maxComponent / 0.35)));
 }
 
+function isPointInEnclosureRect(x, z, region, halfW, halfD, centerLocalZ = 0) {
+    const local = worldToLocalXZ(x, z, region.x, region.z, region.rotation || 0);
+    const localZ = local.z - centerLocalZ;
+    return Math.abs(local.x) <= halfW && Math.abs(localZ) <= halfD;
+}
+
+function isPointInEnclosureRegion(x, z, region) {
+    return isPointInEnclosureRect(
+        x,
+        z,
+        region,
+        region.halfW,
+        region.halfD,
+        region.centerLocalZ || 0
+    );
+}
+
+function isPointInEnclosureEntryBand(x, z, region) {
+    const local = worldToLocalXZ(
+        x,
+        z,
+        region.entryX ?? region.doorwayX,
+        region.entryZ ?? region.doorwayZ,
+        region.rotation || 0
+    );
+    const halfW = region.entryHalfW ?? region.doorwayHalfW;
+    const halfD = region.entryHalfD ?? region.doorwayHalfD;
+    return Math.abs(local.x) <= halfW && Math.abs(local.z) <= halfD;
+}
+
+function isOpenEnclosureTransitionLegal(prevXZ, region) {
+    const x = player.position.x;
+    const z = player.position.z;
+    const wasInsideInner = isPointInEnclosureRegion(prevXZ.x, prevXZ.z, region);
+    const isInsideInner = isPointInEnclosureRegion(x, z, region);
+    const wasInsideOuter = isPointInEnclosureRect(
+        prevXZ.x,
+        prevXZ.z,
+        region,
+        region.outerHalfW ?? region.halfW,
+        region.outerHalfD ?? region.halfD,
+        region.outerCenterLocalZ ?? region.centerLocalZ ?? 0
+    );
+    const isInsideOuter = isPointInEnclosureRect(
+        x,
+        z,
+        region,
+        region.outerHalfW ?? region.halfW,
+        region.outerHalfD ?? region.halfD,
+        region.outerCenterLocalZ ?? region.centerLocalZ ?? 0
+    );
+    const inEntryBand = isPointInEnclosureEntryBand(x, z, region);
+
+    if (isInsideOuter && !isInsideInner && !inEntryBand) return false;
+    if (!wasInsideOuter && isInsideOuter && !inEntryBand) return false;
+    if (wasInsideInner !== isInsideInner && !inEntryBand) return false;
+    return true;
+}
+
+function isPlayerEnclosureTransitionLegal(prevXZ) {
+    const x = player.position.x;
+    const z = player.position.z;
+
+    for (const region of creatureHouseRegions) {
+        const wasInside = isPointInEnclosureRegion(prevXZ.x, prevXZ.z, region);
+        const isInside = isPointInEnclosureRegion(x, z, region);
+        if (wasInside === isInside) continue;
+
+        const doorOpen = region.door?.isOpen || region.door?.wallEntry?.active === false;
+        if (!doorOpen || !isPointInEnclosureEntryBand(x, z, region)) return false;
+    }
+
+    for (const region of creatureCaveRegions) {
+        if (!isOpenEnclosureTransitionLegal(prevXZ, region)) return false;
+    }
+
+    for (const region of creatureCemeteryRegions) {
+        const wasInside = isPointInEnclosureRegion(prevXZ.x, prevXZ.z, region);
+        const isInside = isPointInEnclosureRegion(x, z, region);
+        if (wasInside === isInside) continue;
+
+        const gateOpen = region.gateWall?.active === false;
+        if (!gateOpen || !isPointInEnclosureEntryBand(x, z, region)) return false;
+    }
+
+    for (const region of playerEnclosureRegions) {
+        if (!isOpenEnclosureTransitionLegal(prevXZ, region)) return false;
+    }
+
+    return true;
+}
+
 function movePlayerAxisWithCollisions(axis, amount, radius) {
-    if (Math.abs(amount) <= 1e-8) return false;
+    if (Math.abs(amount) <= 1e-8) {
+        return { blocked: false, hardBlocked: false, regionBlocked: false };
+    }
 
     const previousPosition = { x: player.position.x, z: player.position.z };
     player.position[axis] += amount;
     const bounded = clampPlayerToWorldBounds();
     const overlaps = resolvePlayerWallOverlaps(radius, 3, previousPosition);
+    const regionBlocked = !isPlayerEnclosureTransitionLegal(previousPosition);
+    if (regionBlocked) {
+        player.position.x = previousPosition.x;
+        player.position.z = previousPosition.z;
+    }
 
-    return axis === 'x'
+    const hardBlocked = axis === 'x'
         ? (bounded.hitX || overlaps.blockedX)
         : (bounded.hitZ || overlaps.blockedZ);
+    return { blocked: hardBlocked || regionBlocked, hardBlocked, regionBlocked };
 }
 
 function movePlayerHorizontallyWithCollisions(delta, radius) {
@@ -453,7 +558,7 @@ function movePlayerHorizontallyWithCollisions(delta, radius) {
     for (let i = 0; i < substeps; i++) {
         if (stepDX !== 0) {
             const blockedX = movePlayerAxisWithCollisions('x', stepDX, radius);
-            if (blockedX) {
+            if (blockedX.hardBlocked) {
                 velocity.x = 0;
                 stepDX = 0;
             }
@@ -461,7 +566,7 @@ function movePlayerHorizontallyWithCollisions(delta, radius) {
 
         if (stepDZ !== 0) {
             const blockedZ = movePlayerAxisWithCollisions('z', stepDZ, radius);
-            if (blockedZ) {
+            if (blockedZ.hardBlocked) {
                 velocity.z = 0;
                 stepDZ = 0;
             }

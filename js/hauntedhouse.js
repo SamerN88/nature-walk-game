@@ -1159,6 +1159,7 @@ function createCemetery() {
     const cemeteryFloorYShift = -0.2; // tune to shift entire cemetery up/down (stone posts are exempt)
     const cemeteryFloorY = groundY + CEM_Y_OFFSET + cemeteryFloorYShift;
     const cemGrp = new THREE.Group();
+    // cemGrp.userData.ignoreCameraOcclusion = true;
 
     const ironMat  = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
     const stoneMat = new THREE.MeshLambertMaterial({ color: 0x5a5a62 });
@@ -1360,10 +1361,11 @@ function createCemetery() {
     // ── Small stone room (northeast corner: x≈+16, z≈-16) ────────────────────
     const srX = 16, srZ = -16, srS = 8, srH = 6;
     const srDoorW = 2.2, srDoorH = 3.6;
+    const srWallT = 0.6;
     const srWallSink = 5;
     const srMat = new THREE.MeshLambertMaterial({ color: 0x5a5a5a });
     const srSouthZ = srZ + srS / 2;
-    const srSouthSideW = (srS + 0.6 - srDoorW) / 2;
+    const srSouthSideW = (srS + srWallT - srDoorW) / 2;
     const srSouthLeftX = srX - (srDoorW / 2 + srSouthSideW / 2);
     const srSouthRightX = srX + (srDoorW / 2 + srSouthSideW / 2);
 
@@ -1410,6 +1412,7 @@ function createCemetery() {
     };
 
     let cemeteryGraveCount = 0;
+    const gravePositions = []; // {localX, localZ} for each non-talisman grave
     for (let gz = -18; gz <= 18.001; gz += gravePitch) {
         for (let gx = -18; gx <= 18.001; gx += gravePitch) {
             const isOnWalkway = Math.abs(gx) < 0.1 || Math.abs(gz) < 0.1;
@@ -1426,16 +1429,17 @@ function createCemetery() {
             const isTalisman = roundedX === tgX && roundedZ === tgZ;
             addGrave(roundedX, roundedZ, isTalisman);
             cemeteryGraveCount++;
+            if (!isTalisman) gravePositions.push({ localX: roundedX, localZ: roundedZ });
         }
     }
 
     // Walls with a south-facing doorway toward the cemetery interior
-    CB(srS + 0.6, srH + srWallSink, 0.6, srX, -srWallSink, srZ - srS / 2, srMat);            // North wall
-    CB(srSouthSideW, srH + srWallSink, 0.6, srSouthLeftX, -srWallSink, srSouthZ, srMat);     // South wall left
-    CB(srSouthSideW, srH + srWallSink, 0.6, srSouthRightX, -srWallSink, srSouthZ, srMat);    // South wall right
-    CB(srDoorW, srH - srDoorH, 0.6, srX, srDoorH, srSouthZ, srMat);   // Door lintel
-    CB(0.6, srH + srWallSink, srS, srX - srS / 2, -srWallSink, srZ, srMat);                  // West wall
-    CB(0.6, srH + srWallSink, srS, srX + srS / 2, -srWallSink, srZ, srMat);                  // East wall
+    CB(srS + srWallT, srH + srWallSink, srWallT, srX, -srWallSink, srZ - srS / 2, srMat);            // North wall
+    CB(srSouthSideW, srH + srWallSink, srWallT, srSouthLeftX, -srWallSink, srSouthZ, srMat);     // South wall left
+    CB(srSouthSideW, srH + srWallSink, srWallT, srSouthRightX, -srWallSink, srSouthZ, srMat);    // South wall right
+    CB(srDoorW, srH - srDoorH, srWallT, srX, srDoorH, srSouthZ, srMat);   // Door lintel
+    CB(srWallT, srH + srWallSink, srS, srX - srS / 2, -srWallSink, srZ, srMat);                  // West wall
+    CB(srWallT, srH + srWallSink, srS, srX + srS / 2, -srWallSink, srZ, srMat);                  // East wall
     // Roof
     CB(srS + 1.2, 0.5, srS + 1.2, srX, srH, srZ, srMat);
     // Floor (raised 0.1 above cemetery slab to eliminate Z-fighting)
@@ -1545,19 +1549,83 @@ function createCemetery() {
     cemGrp.add(lamp);
     // Robust collision for the room and fence, registered directly in world space.
     const bonusCollisionHeight = 1.75;
-    addCemeteryWall(0.5 * (-CEM_HALF - CEM_ENT_HALF_W), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
-    addCemeteryWall(0.5 * (CEM_ENT_HALF_W + CEM_HALF), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
-    addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight);
-    addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
-    addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, 0.9, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
-    addCemeteryWall(srX, srZ - srS / 2, srS / 2 + 0.3, 0.9, -srWallSink, srH);         // North wall
-    addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH);  // South left
-    addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, 0.9, -srWallSink, srH); // South right
-    addCemeteryWall(srX, srSouthZ, srDoorW / 2, 0.9, srDoorH, srH);          // Lintel above door
-    addCemeteryWall(srX - srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // West wall
-    addCemeteryWall(srX + srS / 2, srZ, srS / 2, 0.9, -srWallSink, srH, Math.PI / 2); // East wall
+    const cemeteryFenceHalfT = cemStepW / 2;
+    addCemeteryWall(0.5 * (-CEM_HALF - CEM_ENT_HALF_W), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(0.5 * (CEM_ENT_HALF_W + CEM_HALF), CEM_HALF, (CEM_HALF - CEM_ENT_HALF_W) / 2 + 0.2, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(0, -CEM_HALF, CEM_HALF + 0.2, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    addCemeteryWall(-CEM_HALF, 0, CEM_HALF + 0.2, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
+    addCemeteryWall(CEM_HALF, 0, CEM_HALF + 0.2, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight, Math.PI / 2);
+    const srWallHalfT = srWallT / 2;
+    addCemeteryWall(srX, srZ - srS / 2, srS / 2 + srWallHalfT, srWallHalfT, -srWallSink, srH);         // North wall
+    addCemeteryWall(srSouthLeftX, srSouthZ, srSouthSideW / 2, srWallHalfT, -srWallSink, srH);  // South left
+    addCemeteryWall(srSouthRightX, srSouthZ, srSouthSideW / 2, srWallHalfT, -srWallSink, srH); // South right
+    addCemeteryWall(srX, srSouthZ, srDoorW / 2, srWallHalfT, srDoorH, srH);          // Lintel above door
+    addCemeteryWall(srX - srS / 2, srZ, srS / 2, srWallHalfT, -srWallSink, srH, Math.PI / 2); // West wall
+    addCemeteryWall(srX + srS / 2, srZ, srS / 2, srWallHalfT, -srWallSink, srH, Math.PI / 2); // East wall
     addCemeteryCeiling(srX, srZ, srS / 2 + 0.5, srS / 2 + 0.5, srH);              // Roof (inside — blocks jump-through)
     addCemeteryRoofCollider(srX, srZ, srS / 2 + 0.6, srS / 2 + 0.6, srH + 0.5, srH); // Roof (outside — supports standing on top)
+    const cemeteryRoomWorld = localToWorldXZ(ox, oz, srX, srZ, rot);
+    const cemeteryRoomEntryWorld = localToWorldXZ(ox, oz, srX, srSouthZ, rot);
+    playerEnclosureRegions.push({
+        x: cemeteryRoomWorld.x,
+        z: cemeteryRoomWorld.z,
+        halfW: srS / 2 - srWallHalfT,
+        halfD: srS / 2 - srWallHalfT,
+        outerHalfW: srS / 2 + srWallHalfT,
+        outerHalfD: srS / 2 + srWallHalfT,
+        rotation: rot,
+        entryX: cemeteryRoomEntryWorld.x,
+        entryZ: cemeteryRoomEntryWorld.z,
+        entryHalfW: srDoorW / 2 + srWallHalfT,
+        entryHalfD: srWallT + 0.4,
+    });
+
+    // ── Iron gates (pivot at each entrance post, initially open outward) ───────
+    // Gate open angles: left gate rotation.y = -π/2, right = +π/2 (panels swing south outside cemetery).
+    // Closed angle = 0 for both (panels span across entrance gap).
+    const rad15deg = Math.PI/12;
+    const GATE_OPEN_L  = -Math.PI / 2 - rad15deg;
+    const GATE_OPEN_R  =  Math.PI / 2 + rad15deg;
+    const GATE_SPEED   = 2.5; // rad/s
+
+    const _makeGatePanel = (pivotGrp, panelDir) => {
+        const panelLen  = CEM_ENT_HALF_W; // 3.5
+        const panelCX   = panelDir * panelLen / 2;
+        const fenceRailH = 0.12;
+
+        const rTop = new THREE.Mesh(new THREE.BoxGeometry(panelLen, fenceRailH, fenceRailH), ironMat);
+        rTop.position.set(panelCX, CEM_FENCE_H - 0.3, 0);
+        pivotGrp.add(rTop);
+
+        const rBot = new THREE.Mesh(new THREE.BoxGeometry(panelLen, fenceRailH, fenceRailH), ironMat);
+        rBot.position.set(panelCX, 0.8, 0);
+        pivotGrp.add(rBot);
+
+        const numPickets = 3; //Math.max(1, Math.floor(panelLen - 1));
+        for (let p = 0; p < numPickets; p++) {
+            const t  = (p + 0.5) / numPickets;
+            const px = panelDir * t * panelLen;
+            const picket = new THREE.Mesh(new THREE.BoxGeometry(0.08, CEM_FENCE_H, 0.08), ironMat);
+            picket.position.set(px, CEM_FENCE_H / 2, 0);
+            pivotGrp.add(picket);
+        }
+    };
+
+    const leftGatePivot = new THREE.Group();
+    leftGatePivot.position.set(-CEM_ENT_HALF_W, 0, CEM_HALF);
+    leftGatePivot.rotation.y = GATE_OPEN_L;
+    _makeGatePanel(leftGatePivot, +1);
+    cemGrp.add(leftGatePivot);
+
+    const rightGatePivot = new THREE.Group();
+    rightGatePivot.position.set(CEM_ENT_HALF_W, 0, CEM_HALF);
+    rightGatePivot.rotation.y = GATE_OPEN_R;
+    _makeGatePanel(rightGatePivot, -1);
+    cemGrp.add(rightGatePivot);
+
+    // Invisible collision wall for the closed gates — disabled when gates are open
+    const gateWall = addCemeteryWall(0, CEM_HALF, CEM_ENT_HALF_W, cemeteryFenceHalfT, -4.4, CEM_FENCE_H + bonusCollisionHeight);
+    gateWall.active = false; // gates start open
 
     cemGrp.position.set(ox, cemeteryFloorY, oz);
     cemGrp.rotation.y = rot;
@@ -1566,6 +1634,7 @@ function createCemetery() {
 
     // Compute talisman grave world position for dig detection
     const tgWorld = localToWorldXZ(ox, oz, tgX, tgZ, rot);
+    const entranceWorld = localToWorldXZ(ox, oz, 0, CEM_HALF, rot);
     cemeteryData = {
         group: cemGrp,
         worldX: ox, worldZ: oz, worldGroundY: cemeteryFloorY, rotation: rot,
@@ -1574,9 +1643,34 @@ function createCemetery() {
         talismanGraveLocalX: tgX,
         talismanGraveLocalZ: tgZ,
         graveCount: cemeteryGraveCount,
+        gravePositions,
         roomLampLight: lampLight,
         roomLampGlassMat: hhGlassMat,
+        // Gate system
+        gatePivotL:     leftGatePivot,
+        gatePivotR:     rightGatePivot,
+        gateTargetL:    GATE_OPEN_L,
+        gateTargetR:    GATE_OPEN_R,
+        gateOpenL:      GATE_OPEN_L,
+        gateOpenR:      GATE_OPEN_R,
+        gateSpeed:      GATE_SPEED,
+        gatesLocked:    false,
+        gateWall,
+        entranceWorldX: entranceWorld.x,
+        entranceWorldZ: entranceWorld.z,
     };
+    creatureCemeteryRegions.push({
+        x: ox,
+        z: oz,
+        halfW: CEM_HALF,
+        halfD: CEM_HALF,
+        rotation: rot,
+        gateWall,
+        entryX: entranceWorld.x,
+        entryZ: entranceWorld.z,
+        entryHalfW: CEM_ENT_HALF_W + 0.65,
+        entryHalfD: 1.8,
+    });
 
     createCemeteryForest(ox, oz);
 
@@ -1696,7 +1790,64 @@ function tryPickupTalisman(aimDir, punchRange) {
     talismanItemMesh = null;
     addInventoryItem('talisman', 'Talisman', TALISMAN_ICON_SRC, { type: 'object', itemKey: 'talisman' });
     flashEquipHint('TALISMAN FOUND');
+
+    // Lock gates and start zombie emergence countdown
+    if (cemeteryData) {
+        cemeteryData.gatesLocked  = true;
+        cemeteryData.gateTargetL  = 0;
+        cemeteryData.gateTargetR  = 0;
+        cemeteryData.gateWall.active = true;
+    }
+    if (typeof startCemeteryZombieSequence === 'function') {
+        startCemeteryZombieSequence();
+    }
+    if (typeof createSacrificialAltar === 'function') {
+        createSacrificialAltar();
+    }
+
     return true;
+}
+
+// ── Cemetery gate toggle (called from punch) ─────────────────────────────────
+function tryToggleCemeteryGate(aimDir, punchRange) {
+    if (!cemeteryData || !cemeteryData.gatePivotL) return false;
+    if (cemeteryData.gatesLocked) return false;
+
+    // Check if player is aiming toward the entrance area
+    const entrancePos = new THREE.Vector3(
+        cemeteryData.entranceWorldX,
+        cemeteryData.worldGroundY + CEM_FENCE_H / 2,
+        cemeteryData.entranceWorldZ
+    );
+    const toEnt = entrancePos.clone().sub(camera.position);
+    const proj  = toEnt.dot(aimDir);
+    if (proj <= 0 || proj > punchRange) return false;
+    const perp = toEnt.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
+    if (perp > 5) return false;
+
+    const isOpen = Math.abs(cemeteryData.gatePivotL.rotation.y - cemeteryData.gateOpenL) < 0.1;
+    if (isOpen) {
+        cemeteryData.gateTargetL = 0;
+        cemeteryData.gateTargetR = 0;
+        cemeteryData.gateWall.active = true;
+    } else {
+        cemeteryData.gateTargetL = cemeteryData.gateOpenL;
+        cemeteryData.gateTargetR = cemeteryData.gateOpenR;
+        cemeteryData.gateWall.active = false;
+    }
+    return true;
+}
+
+// ── Cemetery gate animation (called from animate()) ───────────────────────────
+function updateCemeteryGates(delta) {
+    if (!cemeteryData || !cemeteryData.gatePivotL) return;
+    const speed = cemeteryData.gateSpeed;
+    cemeteryData.gatePivotL.rotation.y = moveScalarToward(
+        cemeteryData.gatePivotL.rotation.y, cemeteryData.gateTargetL, speed * delta
+    );
+    cemeteryData.gatePivotR.rotation.y = moveScalarToward(
+        cemeteryData.gatePivotR.rotation.y, cemeteryData.gateTargetR, speed * delta
+    );
 }
 
 // ── tryPickupSSItem (called from punch) ──────────────────────────────────────

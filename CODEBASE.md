@@ -34,6 +34,8 @@ nature-walk-game/
 │   ├── input.js        Keyboard and mouse event handlers
 │   ├── inventory.js    Notes and inventory overlay system (press I), paper/image rendering
 │   ├── hauntedhouse.js Haunted house and cemetery: buildings, dark forests, shadow man combat
+│   ├── creatures.js    Night creature system: zombie, crawler, weeping angel, cemetery zombies
+│   ├── altar.js        Sacrificial altar: ritual mechanics, pillar symbols, corpse ascent, holy gem
 │   └── main.js         `init()`, `animate()`, `update()` — the game loop
 └── CODEBASE.md         This file
 ```
@@ -54,11 +56,14 @@ All HTML markup and CSS. Contains:
 
 ### `js/constants.js`
 All `const` declarations that never change at runtime:
-- `DEBUG_*` flags (toggle to true to enable testing shortcuts)
+- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_SWORD_THUNDER`, etc.
+- `WALK_SPEED = 20`, `RUN_SPEED = WALK_SPEED * 2` — base movement speeds (moved here from `main.js` so `creatures.js` can reference them at parse time)
 - `DAY_DURATION`, `NIGHT_DURATION`, `FULL_CYCLE`
 - `FALL_TO_CUTSCENE` — controls cutscene transition behavior
+- Demon teleport constants: `DEMON_TELEPORT_INTERVAL_SEC`, `DEMON_TELEPORT_CHANCE`, `DEMON_TELEPORT_DISABLE_DIST`, `DEMON_TELEPORT_UNLOCK_DELAY_SEC`
 
 **To change a debug mode or timing constant:** edit here.
+**To change walk/run speed:** edit `WALK_SPEED` here (both player and creatures reference it).
 
 ---
 
@@ -81,6 +86,7 @@ All mutable `let` global variables — the single source of truth for runtime ga
 - Dragon: `dragon`, `mountedOnDragon`, `dragonBondFormed`, `dragonTethered`
 - Shadow man: `shadowMan`, `shadowManCutscene`, `shadowManPhase3Ready`
 - Hell run: `shrine`, `shrineActive`, `roundKillCount`, `bestDemonRoundsReached`
+- Enclosure regions: `creatureHouseRegions`, `creatureCaveRegions`, `creatureCemeteryRegions`, `playerEnclosureRegions`
 - Also contains constants that were mixed with state in the original: `DRAGON_BOND_KILLS_REQUIRED`, `AK47_*`, `SHADOW_MAN_*`, etc.
 
 **To add new global state:** add it here.
@@ -145,6 +151,7 @@ All collision geometry registration and resolution:
 - `resolveCircularEntityWallOverlaps(position, y, radius)` — same for NPCs/demons
 - `resolveCircularBodyRoofCollision` — handles vertical collision with arched roofs
 - `movePlayerHorizontallyWithCollisions` — sub-stepped horizontal movement with wall avoidance
+- Region-based enclosure checks prevent the player from tunneling through house, cave, cemetery fence/gate, and cemetery-room walls; legal transitions must pass through the door/gate/open side
 - `clampPlayerToWorldBounds` — keeps player inside the world edge
 
 **Debug visualization:**
@@ -267,6 +274,7 @@ All player weapons and interactive items:
 - `createAK47Mesh(scale)` — builds gun geometry
 - `updateAK47VisualState()` — syncs gun/shovel visibility with equipped state
 - `fireAK47()` — raycast hit detection, damage application, NPC/demon kill handling
+- AK47 hits regular creatures and cemetery zombies through `getCreatureGunHits()` / `damageCreatureFromGun()`, merged into the same sorted hit list as NPCs/demons/structures
 - `triggerAk47ShotFX(aimDir, hits)` — spawns bullet beam, muzzle flash, light flash
 - `updateAK47Effects(delta)` — ages and removes beam/flash effects
 
@@ -307,7 +315,8 @@ Both functions call `enableMeshShadows` and return a `THREE.Group`. Loaded betwe
 ### `js/demons.js`
 The demon apocalypse system:
 - `createDemon(biasedSpeed)` — builds a demon mesh (humanoid with glowing red eyes, horns), sets AI state
-- `triggerDemonApocalypse()` — called after cutscene ends; spawns initial 50 demons, switches world to hell color palette
+- `triggerDemonApocalypse()` — called after cutscene ends; spawns `DEMON_SPAWN_COUNT` demons, switches world to hell color palette
+- Apocalypse start kills any currently alive night creatures before demon combat begins
 - `updateDemons(delta)` — demon AI per-frame: pathfinding toward player, water avoidance, wall phasing, attack when in range
 - `explodeDemon(zData, index)` — death animation, removes from `demons[]`
 - `updateDemonCounter()` — updates the skull counter in the HUD
@@ -319,7 +328,7 @@ The demon apocalypse system:
 - `respawnWithMoreDemons()` — respawn in place with 50 extra demons added
 - `positionDemonsAroundPlayer` — teleports a list of demons around the player (used by hell run)
 
-**To change demon speed/damage:** edit constants at top of `demons.js` (`DEMON_WALK_SPEED`, `DEMON_HIT_DAMAGE`).
+**To change demon count/damage:** edit constants at top of `demons.js` (`DEMON_SPAWN_COUNT`, `DEMON_HIT_DAMAGE`).
 **To change apocalypse spawn count:** edit `triggerDemonApocalypse`.
 
 ---
@@ -337,9 +346,9 @@ The shadow man — a horror stalker entity that appears before the apocalypse:
 - `endShadowManCutscene()` — cleans up cutscene state, calls `triggerDemonApocalypse`
 
 **Spawn phases:**
-- Phase 1 (base): 15% chance every 30s, after 10 min of play
+- Phase 1 (base): 15% chance every 30s after the initial full-cycle peace buffer; at night this uses 30%
 - Phase 2 (post-gem): 40% chance every 30s
-- Phase 3 (post-dragon-bond): 70% chance every 10s within 500 units of player
+- Phase 3 (after 10 total shadow-man spawns): 70% chance every 10s within 500 units of player
 
 **To change stalker behavior:** edit `updateShadowMan`.
 **To change cutscene sequence:** edit `updateShadowManCutscene`.
@@ -350,7 +359,7 @@ The shadow man — a horror stalker entity that appears before the apocalypse:
 The optional "Hell Run" demon-rounds challenge (shrine-activated):
 - `createShrine()` — places a glowing shrine structure near origin
 - `updateShrine(delta, time)` — animates shrine, shows prompt when player is near
-- `startDemonRound(roundNumber)` — begins a round: sets demon count, sets night time, spawns first batch
+- `startDemonRound(roundNumber)` — begins a round: sets demon count, enters `demonApocalypse`/`roundMode`, kills existing night creatures, spawns first batch
 - `updateRoundSpawning(delta)` — trickle-spawns demons over the round duration
 - `getRoundDemonCount`, `getRoundMaxDist`, `getRoundMinDist`, `getRoundNumBatches` — round scaling formulas
 - `endRound()` — called when all demons killed; starts between-round countdown
@@ -369,8 +378,8 @@ Sky, lighting, and time-of-day:
 - `updateDayNightCycle(delta)` — advances `gameTime`, interpolates sky background color, fog color, sun position, sun intensity, ambient light intensity across dawn/day/sunset/dusk/night phases
 - `setTimeOfDay(time)` — jump to a named time ('dawn', 'day', 'sunset', 'dusk', 'night'); called by in-game menu buttons
 
-**Time intervals** (in fractions of `FULL_CYCLE`):
-- Dawn: 0–0.10, Day: 0.10–0.42, Sunset: 0.42–0.52, Dusk: 0.52–0.60, Night: 0.60–1.0
+**Time intervals** (`FULL_CYCLE` starts at 5:00 AM):
+- Dawn: 5:00–6:42, Day: 6:42–17:30, Sunset: 17:30–18:42, Dusk: 18:42–19:54, Night: 19:54–5:00
 
 **To change sky colors:** edit the interpolation targets in `updateDayNightCycle`.
 **To change how long day/night last:** edit `DAY_DURATION` and `NIGHT_DURATION` in `constants.js`.
@@ -416,7 +425,9 @@ The haunted house and cemetery, plus their surrounding dark forests:
 
 **Cemetery** (`createCemetery()`):
 - Randomly placed at least 500 units from the haunted house
-- Fenced enclosure with gate, gravestones, talisman collectible, dig mechanic
+- Fenced enclosure with openable/lockable gate, gravestones, talisman collectible, dig mechanic, and a small stone room
+- Talisman pickup locks the cemetery gates, starts the cemetery zombie countdown, and creates the sacrificial altar
+- Cemetery fence and room now use thin visual-matching wall colliders; anti-tunneling is handled by the player region-based enclosure system
 
 **Dark forests:**
 - `_createHHForestTree(x, z)` — tall, near-black tree (scale 1.8–3.2, 4 foliage cones) with shadow casting
@@ -446,11 +457,12 @@ Raw input event handlers:
 ### `js/main.js`
 The game loop orchestrator:
 
-**Constants** (movement physics, declared here since only used in `update()`):
-- `WALK_SPEED = 20`, `RUN_SPEED = 40`, `ACCEL = 14`, `DECEL = 20`
+**Constants** (declared here):
+- `ACCEL = 14`, `DECEL = 20`
 - `PLAYER_RADIUS = 0.5`, `DRAGON_COLLISION_RADIUS = 4.5`
+- `WALK_SPEED` and `RUN_SPEED` are in `constants.js` (referenced here but defined there)
 
-**`init()`** — creates scene, camera, renderer, lights; calls all `create*()` functions in order; registers event listeners; sets start time to noon. Also calls `createHauntedHouse()` and `createCemetery()` from `hauntedhouse.js`.
+**`init()`** — creates scene, camera, renderer, lights; calls all `create*()` functions in order; registers event listeners; sets start time to noon. It creates haunted house/cemetery landmarks early and calls `prepareAltarPlacement()` so altar terrain is reserved before vegetation; the altar mesh is normally created after talisman pickup.
 
 **`update(delta)`** — the per-frame update called from `animate()`:
 1. Player movement (gravity, jump, water buoyancy, horizontal movement with collision)
@@ -463,14 +475,102 @@ The game loop orchestrator:
 8. Campfire shield
 9. Dragon updates
 10. Hell run round system
-11. Underwater tint
-12. Final render call
+11. Altar + holy gem updates
+12. Creature updates
+13. Underwater tint
+14. Final render call
 
 **`animate()`** — `requestAnimationFrame` loop; computes `delta`, caps it at 100ms, calls `update(delta)`.
 
-**To change movement feel:** edit `WALK_SPEED`, `RUN_SPEED`, `ACCEL`, `DECEL` at the top of this file.
+**To change movement feel:** edit `WALK_SPEED`, `RUN_SPEED` in `constants.js`; edit `ACCEL`, `DECEL` at the top of this file.
 **To add a new per-frame system:** add its update call inside `update(delta)`.
 **To change world initialization order:** edit `init()`.
+
+---
+
+### `js/creatures.js`
+Night creature system — three enemy types that spawn during the night outside the demon apocalypse:
+
+**Types:**
+- `zombie` — standing undead with outstretched arms; matches altar corpse proportions
+- `crawler` — low-to-ground horror with elbows-high pose and beady red eyes; fast
+- `angel` (weeping angel) — only moves when fully off-screen; freezes when in player's FOV; stone-grey
+
+**Key constants** (at top of file):
+- `CREATURE_SPEED = 0.9 * WALK_SPEED`, `CEMETERY_ZOMBIE_SPEED = 0.3 * WALK_SPEED`
+- `CREATURE_MAX_HP = 5`, `CREATURE_HIT_DAMAGE`, `CREATURE_SPAWN_INTERVAL = 10` (seconds)
+- `SPOTLIGHT` — if true, attaches a dim white PointLight above each creature
+
+**Spawn logic** (in `updateCreatures`): every 10s during night, not during demon apocalypse/hell-run rounds:
+- Regular night spawns unlock only after the cemetery zombie sequence is cleared (`_ncSpawnUnlocked`); `DEBUG_CREATURES` bypasses this
+- Outer band (beyond mountains): 60% chance, 2 creatures
+- Torch equipped: 40% chance, 1–2 creatures
+- Default: 20% chance, 1 creature
+- First two open-world spawns are forced crawlers; later types are random from `['zombie', 'crawler', 'angel']`
+- `DEBUG_CREATURES_2` spawns 10 creatures 500 units from the player at startup and prevents daytime despawn
+
+**Cemetery zombie sequence** (separate from regular spawns):
+- Triggered by `startCemeteryZombieSequence()` 30s after talisman pickup
+- 10 zombies emerge from graves (excluding talisman grave), rise from underground over 3s, face player while emerging
+- The sequence forces a delayed night transition; after all killed, `_unlockCemeteryGates()` opens/unlocks the gates and unlocks regular night creature spawns
+
+**Public functions:**
+- `updateCreatures(delta)` — main per-frame update; also runs separation loop every 2 frames
+- `getCreatureGunHits(aimDir, maxRange)` — exact mesh raycast first, sphere fallback for near misses; consumed by AK47 hit sorting
+- `damageCreatureFromGun(creature)` — applies AK47 damage
+- `getMeleeCreatureCandidates(aimDir, punchRange)` — returns hittable creatures for melee
+- `meleeHitCreature(creature)` — decrements HP; kills at 0, shows hit particles otherwise
+- `lightningAoeKillCreatures(centerPos, radius)` — kills all creatures within radius (sword lightning)
+- `startCemeteryZombieSequence()` — begins the 30s countdown to cemetery zombie emergence
+- `killAllNightCreatures()` — kills all current night creatures when demon apocalypse or hell-run rounds begin
+
+**Player damage/death:** creature hits deal `CREATURE_HIT_DAMAGE`; if player health reaches 0, `hardReset()` reloads the page.
+
+**Enclosure collision:** regular creatures use region-based rules for houses, caves, and the cemetery fence/gate, with boundary sliding. They can enter only through legal openings (open house doors, cave open side, open cemetery gate). Cemetery zombies are exempt from the cemetery-region rule and are clamped to the cemetery sequence area.
+
+**To change spawn rate/chance:** edit the spawn timer block in `updateCreatures`.
+**To change creature speed:** edit `CREATURE_SPEED` / `CEMETERY_ZOMBIE_SPEED` constants.
+**To add a new creature type:** add a `_buildFooMesh()`, handle in `_spawnNightCreature`, add to `types[]` array.
+
+---
+
+### `js/altar.js`
+The sacrificial altar — a ritual structure that triggers a corpse-ascent cutscene when fully activated:
+
+Placement is reserved and terrain is flattened during `main.js:init()` via `prepareAltarPlacement()`. The actual altar meshes are normally created idempotently by `createSacrificialAltar()` when the talisman is picked up (`DEBUG_ALTAR` creates it immediately).
+
+**Structure:** triangular arrangement of 3 torches on a 3-step dark stone platform; each pillar has engraved symbols (thunderbolt, crescent, cross); a light stone altar slab holds a corpse.
+
+**Ritual sequence:**
+1. Player shoots all 3 altar torches with the sword lightning (`tryLightAltarTorch`)  — must be done at night
+2. Purple beams activate between torches; corpse eyes glow white
+3. Player shoots the corpse with lightning (`tryHitAltarCorpseWithLightning`) — triggers corpse ascent
+4. Corpse levitates 7.5 units over 3s, then rapidly rises and fades out
+5. `_doAltarComplete()` — spawns the holy gem on its platform
+
+**Holy gem** (`_createHolyGem`, `updateHolyGem`, `collectHolyGem`):
+- Glowing animated gem that spawns after altar ritual completes
+- Collection triggers a power/unlock (edit `collectHolyGem` for effect)
+- Platform height queryable via `getHolyGemPlatformHeight(x, z)`
+
+**Key state variables** (global, read by other files):
+- `altarData` — all altar mesh refs, torch state, beam refs
+- `altarTorchesLit` — 0–3
+- `altarCorpseStruck` — bool, true after corpse is hit
+- `altarState` — `'idle'` | `'torches_lit'` | `'ascending'` | `'complete'`
+
+**Public functions:**
+- `prepareAltarPlacement()` — preselects/flattens the altar site during world initialization
+- `createSacrificialAltar()` — creates altar meshes idempotently after placement is prepared
+- `tryLightAltarTorch(aimDir, range)` — called from sword lightning hit handler
+- `tryHitAltarCorpseWithLightning(aimDir, range)` — called from sword lightning hit handler
+- `updateAltar(delta, time)` — per-frame: torch flicker, beam pulse, corpse ascent animation
+- `updateHolyGem(delta, time)` — per-frame gem animation and collection check
+- `collectHolyGem()` — called when player walks into gem
+- `getHolyGemPlatformHeight(x, z)` — height query for player standing on platform
+
+**To change altar appearance:** edit `createSacrificialAltar` and the `_build*` helpers.
+**To change what the holy gem does:** edit `collectHolyGem`.
 
 ---
 
@@ -481,7 +581,8 @@ index.html
     └─ loads scripts in order ──► constants → state → images → utils → terrain → water → collision
                                   → environment → structures → player → camera → npcs
                                   → gems → dragon → weapons → skeleton → demons → shadowman
-                                  → hellrun → daynight → hud → input → inventory → hauntedhouse → main
+                                  → hellrun → daynight → hud → input → inventory → hauntedhouse
+                                  → creatures → altar → main
 
 main.js:init()
     ├─ planWaterBodies()     [water.js]
@@ -498,7 +599,8 @@ main.js:init()
     ├─ createDragon()        [dragon.js]
     ├─ createShrine()        [hellrun.js]  ← called inside triggerDemonApocalypse → demonVictory
     ├─ createHauntedHouse()  [hauntedhouse.js]
-    └─ createCemetery()      [hauntedhouse.js]
+    ├─ createCemetery()      [hauntedhouse.js]
+    └─ prepareAltarPlacement() [altar.js]
 
 main.js:update(delta) calls per-frame:
     ├─ updateNPCs()          [npcs.js]
@@ -513,10 +615,16 @@ main.js:update(delta) calls per-frame:
     ├─ updateDigParticles()  [weapons.js]
     ├─ updateRoundSpawning() [hellrun.js]
     ├─ updateBetweenRound()  [hellrun.js]
-    └─ updateShrine()        [hellrun.js]
+    ├─ updateShrine()        [hellrun.js]
+    ├─ updateAltar()         [altar.js]
+    ├─ updateHolyGem()       [altar.js]
+    └─ updateCreatures()     [creatures.js]
 
-Progression flow:
-    Explore world
+Progression flow: There are multiple ways the game could play out, but here is one standard order:
+    Explore world (night creatures spawn each night)  [creatures.js]
+    → find cemetery, collect talisman → cemetery zombies emerge  [hauntedhouse.js, creatures.js]
+    → find haunted house, get sword, survive haunted house sequence [hauntedhouse.js]
+    → find sacrificial altar → light 3 torches + strike corpse with sword lightning → holy gem  [altar.js]
     → collect dragonGem at volcano  [gems.js → dragon.js]
     → dragon descends, bond with dragon via 150 beam kills (unlocks tether)  [dragon.js]
     → shadow man phase 3 triggers cutscene  [shadowman.js]
@@ -533,7 +641,7 @@ Progression flow:
 | What to change | File | Key function/variable |
 |---|---|---|
 | Debug shortcuts | `constants.js` | `DEBUG_*` flags |
-| Player walk/run speed | `main.js` | `WALK_SPEED`, `RUN_SPEED` |
+| Player walk/run speed | `constants.js` | `WALK_SPEED`, `RUN_SPEED` |
 | Jump height | `main.js` → `update()` | jump velocity line |
 | Day/night duration | `constants.js` | `DAY_DURATION`, `NIGHT_DURATION` |
 | Sky colors | `daynight.js` | `updateDayNightCycle` color lerp targets |
@@ -544,6 +652,10 @@ Progression flow:
 | AK47 fire rate | `state.js` | `AK47_SHOT_INTERVAL_MS` |
 | Gem power values | `gems.js` | `collectGem()` |
 | Round scaling | `hellrun.js` | `getRoundDemonCount` |
+| Creature spawn rate/chance | `creatures.js` | spawn timer block in `updateCreatures` |
+| Creature speed | `creatures.js` | `CREATURE_SPEED`, `CEMETERY_ZOMBIE_SPEED` |
+| Creature HP / hit damage | `creatures.js` | `CREATURE_MAX_HP`, `CREATURE_HIT_DAMAGE` |
+| Holy gem effect | `altar.js` | `collectHolyGem()` |
 | New structure | `structures.js` | `createEnterableStructures` or `createClimbableStructures` |
 | New NPC type | `npcs.js` | add `createFoo()`, call in `createNPCs` |
 | Keybindings | `input.js` | `onKeyDown` / `onKeyUp` |

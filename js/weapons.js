@@ -717,11 +717,17 @@ function fireAK47() {
         }
     });
 
+    hits.push(...getCreatureGunHits(aimDir));
     hits.sort((a, b) => a.projected - b.projected);
     triggerAk47ShotFX(aimDir, hits, beamEndPoint);
 
     let penetratedDemons = 0;
     for (const hit of hits) {
+        if (hit.kind === 'creature') {
+            damageCreatureFromGun(hit.target);
+            break; // creatures stop AK47 penetration
+        }
+
         if (hit.kind === 'npc') {
             const idx = npcs.indexOf(hit.target);
             if (idx !== -1) explodeNPC(hit.target, idx);
@@ -936,6 +942,9 @@ function punch() {
     // Sword & Shield item pickup from HH floor-2 display
     if (tryPickupSSItem(aimDir, punchRange)) return;
 
+    // Cemetery gate toggle
+    tryToggleCemeteryGate(aimDir, punchRange);
+
     // Talisman pickup from cemetery grave
     if (tryPickupTalisman(aimDir, punchRange)) return;
 
@@ -1001,6 +1010,9 @@ function punch() {
     }
     candidateDemons.sort((a, b) => a.dist - b.dist);
 
+    // Creature melee candidates
+    const candidateCreatures = getMeleeCreatureCandidates(aimDir, punchRange);
+
     if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)) {
         // Also check altar corpse as a lightning target
         let altarCorpseCandidate = null;
@@ -1009,13 +1021,15 @@ function punch() {
             altarCorpseCandidate = { kind: 'altar', dist: toC.dot(aimDir) };
         }
 
-        const nearestNPC   = candidateNPCs[0];
-        const nearestDemon = candidateDemons[0];
+        const nearestNPC     = candidateNPCs[0];
+        const nearestDemon   = candidateDemons[0];
+        const nearestCreature = candidateCreatures[0];
 
-        // Pick the closest of NPC, demon, or altar corpse
+        // Pick the closest of NPC, demon, creature, or altar corpse
         const allCandidates = [
-            nearestNPC    ? { kind: 'npc',   ref: nearestNPC,   dist: nearestNPC.dist }   : null,
-            nearestDemon  ? { kind: 'demon', ref: nearestDemon, dist: nearestDemon.dist } : null,
+            nearestNPC      ? { kind: 'npc',     ref: nearestNPC,      dist: nearestNPC.dist }      : null,
+            nearestDemon    ? { kind: 'demon',   ref: nearestDemon,    dist: nearestDemon.dist }    : null,
+            nearestCreature ? { kind: 'creature', ref: nearestCreature, dist: nearestCreature.dist } : null,
             altarCorpseCandidate,
         ].filter(Boolean).sort((a, b) => a.dist - b.dist);
 
@@ -1025,6 +1039,8 @@ function punch() {
             if (firstTarget.kind === 'altar') {
                 triggerLightningStrike(altarData.corpseHitPos);
                 _triggerAltarCorpseStrike();
+            } else if (firstTarget.kind === 'creature') {
+                triggerLightningStrike(firstTarget.ref.creature.mesh.position.clone());
             } else {
                 const strikePos = (firstTarget.ref.npc || firstTarget.ref.demon).mesh.position.clone();
                 triggerLightningStrike(strikePos);
@@ -1041,6 +1057,9 @@ function punch() {
             candidateDemons.slice(0, maxMeleeHits).forEach(h => {
                 const curIdx = demons.indexOf(h.demon);
                 if (curIdx !== -1) explodeDemon(h.demon, curIdx);
+            });
+            candidateCreatures.slice(0, maxMeleeHits).forEach(h => {
+                meleeHitCreature(h.creature);
             });
         }
     } else {
@@ -1060,6 +1079,11 @@ function punch() {
                 explodeDemon(h.demon, curIdx);
                 if (isSwordAttack) swordKillsThisSwing++;
             }
+        });
+
+        candidateCreatures.slice(0, maxMeleeHits).forEach(h => {
+            meleeHitCreature(h.creature);
+            if (isSwordAttack) swordKillsThisSwing++;
         });
 
         if (isSwordAttack && hasSwordShield && swordKillsThisSwing > 0) {
@@ -1489,6 +1513,7 @@ function _lightningAoeKill(centerPos, radius) {
             explodeNPC(npcs[i], i);
         }
     }
+    lightningAoeKillCreatures(centerPos, radius);
 }
 
 function updateLightningEffects(delta) {

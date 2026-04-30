@@ -25,6 +25,7 @@ const ALTAR_LIGHT_STONE_COLOR = 0x777777;  // matches normal game rocks
 const ALTAR_CORPSE_COLOR      = 0x802f26;
 
 // Internal state (not shared across files, no need to put in state.js)
+let _altarPrePlaced  = null;  // set by prepareAltarPlacement(); consumed by createSacrificialAltar()
 let _altarPulseTimer = 0;
 let _altarAscendTimer = 0;
 let _altarSkyFlashTimer = 0;
@@ -233,6 +234,8 @@ function _buildCorpseMesh() {
     const eyeR   = new THREE.Mesh(eyeGeo.clone(), new THREE.MeshBasicMaterial({ color: 0xFF0000 }));
     eyeL.position.set(-0.10, eyeY, headZ);
     eyeR.position.set( 0.10, eyeY, headZ);
+    eyeL.userData.isEye = true;
+    eyeR.userData.isEye = true;
     eyeL.visible = false;
     eyeR.visible = false;
     bodyGrp.add(eyeL);
@@ -299,7 +302,10 @@ function _buildAltarTorchMesh() {
 
 // ── Create altar ──────────────────────────────────────────────────────────────
 
-function createSacrificialAltar() {
+// Called at world init (before trees/rocks) — finds a valid position in the outer band,
+// flattens terrain, and reserves the footprint so vegetation respects the altar site.
+// Mesh creation is deferred to createSacrificialAltar(), called at talisman pickup.
+function prepareAltarPlacement() {
     const region = { type: 'ring', minRadius: 2100, maxRadius: 2700 };
 
     const placement = findPlacementInRegion(region, (pt) => {
@@ -320,12 +326,25 @@ function createSacrificialAltar() {
         return;
     }
 
-    const { x: ox, z: oz } = placement;
-    // Flatten terrain under the altar.  Terrain vertex spacing = 30 units (WORLD_SIZE*2/TERRAIN_SEGS),
-    // so halfW/halfD must exceed 30 to guarantee the full-flat zone catches the adjacent vertex row.
-    // halfW=35 places every vertex within ±30 of center inside the fully-flat zone; blend=30 fades out
-    // to ±65, well beyond the outermost step (±15).
-    const groundY = flattenTerrainRotatedRect(ox, oz, 35, 35, 0, null, 30);
+    // Flatten terrain before trees/rocks sample ground heights.
+    // Vertex spacing = 30 units; halfW=35 fully flattens the ±30 radius; blend=30 fades to ±65.
+    const groundY = flattenTerrainRotatedRect(placement.x, placement.z, 35, 35, 0, null, 30);
+    _altarPrePlaced = { x: placement.x, z: placement.z, groundY };
+
+    if (DEBUG_ALTAR_PRELOCATION) {
+        player.position.set(placement.x, groundY + 2, placement.z + 40);
+    } else if (DEBUG_ALTAR) {
+        createSacrificialAltar();
+    }
+}
+
+function createSacrificialAltar() {
+    if (altarData) return altarData;
+    if (!_altarPrePlaced) {
+        console.warn('Sacrificial altar: placement not prepared');
+        return;
+    }
+    const { x: ox, z: oz, groundY } = _altarPrePlaced;
 
     const altarGrp = new THREE.Group();
     const darkStoneMat = new THREE.MeshLambertMaterial({ color: ALTAR_DARK_STONE_COLOR });
@@ -464,9 +483,17 @@ function createSacrificialAltar() {
 
     if (DEBUG_ALTAR) {
         player.position.set(ox, groundY + 2, oz + 40);
-        // Dragon setup is deferred to main.js (after createDragon()) because
-        // createSacrificialAltar() now runs before createDragon().
+        if (dragon) {
+            applyAscendedDragonMaterials(dragon);
+            dragonAscended = true;
+            dragonGemCollected = true;
+            dragonDescending = true;
+            dragon.visible = true;
+            dragon.position.set(ox, groundY + 20, oz + 40);
+        }
     }
+
+    return altarData;
 }
 
 // ── Torch lighting ────────────────────────────────────────────────────────────
@@ -753,7 +780,10 @@ function updateAltar(delta, time) {
                     opacity: 0.82,
                 });
                 altarData.corpse.traverse(obj => {
-                    if (obj.isMesh && obj.material !== undefined) obj.material = ascendMat;
+                    if (obj.isMesh && obj.material !== undefined) {
+                        if (obj.userData.isEye) { obj.visible = false; return; }
+                        obj.material = ascendMat;
+                    }
                 });
                 altarState = 'ascending';
                 _altarAscendTimer = 0;

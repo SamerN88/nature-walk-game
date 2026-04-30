@@ -11,6 +11,7 @@ const INVENTORY_STARTUP_IMAGE_SRCS = {
     ak47: 'img/ak47-icon.png',
     stick: 'img/stick-icon.png',
     torch: 'img/torch-icon.png',
+    'sword-shield': 'img/sword-shield-icon.png',
     talisman: 'img/talisman.png',
     keyHint: NOTE_KEY_HINT_SRC,
     volcanoHint: NOTE_VOLCANO_HINT_SRC
@@ -639,7 +640,8 @@ function _renderItemIconDataURL(itemName) {
         case 'shovel': return INVENTORY_STARTUP_IMAGE_SRCS.shovel;
         case 'ak47':   return INVENTORY_STARTUP_IMAGE_SRCS.ak47;
         case 'stick':  return INVENTORY_STARTUP_IMAGE_SRCS.stick;
-        case 'torch':  return INVENTORY_STARTUP_IMAGE_SRCS.torch;
+        case 'torch':        return INVENTORY_STARTUP_IMAGE_SRCS.torch;
+        case 'sword-shield': return INVENTORY_STARTUP_IMAGE_SRCS['sword-shield'];
         case 'golden-key':
             mesh = createGoldenKeyMesh();
             mesh.rotation.z = Math.PI * 0.25; // 45-degree tilt

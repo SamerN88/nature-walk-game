@@ -54,9 +54,32 @@ function setTimeOfDay(time) {
     // Menu stays open; close only via M
 }
 
+let _timeTransition = null; // { fromTime, toTime, elapsed, duration } — all in ms
+
+function startDayNightTransition(targetFraction, durationSec) {
+    _timeTransition = {
+        fromTime: gameTime,
+        toTime:   targetFraction * FULL_CYCLE,
+        elapsed:  0,
+        duration: durationSec * 1000,
+    };
+}
+
 function updateDayNightCycle(delta) {
     if (demonApocalypse) return; // time is frozen during apocalypse
-    gameTime = (gameTime + delta) % FULL_CYCLE;
+
+    if (_timeTransition) {
+        _timeTransition.elapsed += delta;
+        const t      = Math.min(_timeTransition.elapsed / _timeTransition.duration, 1);
+        const smooth = t * t * (3 - 2 * t);
+        gameTime = _timeTransition.fromTime + (_timeTransition.toTime - _timeTransition.fromTime) * smooth;
+        if (t >= 1) {
+            gameTime = _timeTransition.toTime % FULL_CYCLE;
+            _timeTransition = null;
+        }
+    } else {
+        gameTime = (gameTime + delta) % FULL_CYCLE;
+    }
 
     const cycleProgress = gameTime / FULL_CYCLE;
 

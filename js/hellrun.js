@@ -168,6 +168,7 @@ function startDemonRound(roundNumber) {
     roundMode          = true;
     demonApocalypse    = true;
     updateTopCornerHudVisibility();
+    if (typeof killAllNightCreatures === 'function') killAllNightCreatures();
     playerDead         = false;
     playerHealth       = 100;
     dragonHealth       = 100;

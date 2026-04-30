@@ -1,5 +1,3 @@
-const WALK_SPEED = 20;
-const RUN_SPEED = WALK_SPEED*2;
 const ACCEL = 14;  // MODIFIED: accel controls how quickly you reach full speed while holding movement
 const DECEL = 20;  // MODIFIED: decel controls how quickly you come to a stop after releasing movement
 const PLAYER_RADIUS = 0.5;
@@ -213,9 +211,9 @@ function init() {
     createDragonVolcano();
     createHauntedHouse();
     createCemetery();
-    // Altar must run before vegetation so flattenTerrainRotatedRect updates terrainHeights
-    // before trees/rocks/grass sample their ground height.
-    createSacrificialAltar();
+    // Reserve altar footprint and flatten terrain before vegetation so trees/rocks
+    // sample the correct ground height. Meshes are built at talisman pickup.
+    prepareAltarPlacement();
     createEnterableStructures();
     createClimbableStructures();
     createMountains();
@@ -230,14 +228,7 @@ function init() {
     if (DEBUG_GEMS) createSecretGem();
     createDragonGem();
     createDragon();
-    if (DEBUG_ALTAR && altarData) {
-        applyAscendedDragonMaterials(dragon);
-        dragonAscended = true;
-        dragonGemCollected = true;
-        dragonDescending = true;
-        dragon.visible = true;
-        dragon.position.set(altarData.worldX, altarData.worldGroundY + 20, altarData.worldZ + 40);
-    }
+
     if (DEBUG_SWORD_THUNDER || DEBUG_SWORD_THUNDER_INF) {
         // Sword + aurafied blade in inventory
         hasSwordShield = true;
@@ -468,8 +459,17 @@ function animate() {
     requestAnimationFrame(animate);
 
     const currentTime = performance.now();
-    const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
+    const rawDelta = currentTime - lastTime;
     lastTime = currentTime;
+
+    if (rawDelta > 250) {
+        // Tab was backgrounded; the huge accumulated delta would teleport physics
+        // entities through walls. Skip the update and just re-render.
+        renderer.render(scene, camera);
+        return;
+    }
+
+    const delta = Math.min(rawDelta / 1000, 0.1);
 
     if (!playerDead && (isLocked || mountedOnDragon)) {
         update(delta);
@@ -530,6 +530,8 @@ function animate() {
     updateHolyGem(delta, performance.now() / 1000);
     updateHauntedHouseSequence(delta);
     updateHHHallDoor(delta);
+    updateCemeteryGates(delta);
+    updateCreatures(delta);
     updateSwordBladeParticles(delta);
     updateSwordAuraOrbPulse(delta);
     updatePlayerTalismanPulse(delta);

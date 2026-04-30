@@ -758,7 +758,20 @@ function createEnterableStructures() {
             placement.rotation,
             { isEnclosed: true }
         );
-        houseDoors.push({ pivot: doorPivot, mesh: doorPanel, wallEntry: doorWallEntry, isOpen: false, angle: 0, targetAngle: 0 });
+        const doorData = { pivot: doorPivot, mesh: doorPanel, wallEntry: doorWallEntry, isOpen: false, angle: 0, targetAngle: 0 };
+        houseDoors.push(doorData);
+        creatureHouseRegions.push({
+            x: placement.x,
+            z: placement.z,
+            halfW: 6.0,
+            halfD: 5.0,
+            rotation: placement.rotation,
+            door: doorData,
+            doorwayX: doorOpeningWorld.x,
+            doorwayZ: doorOpeningWorld.z,
+            doorwayHalfW: 2.25,
+            doorwayHalfD: 1.4,
+        });
     });
 
     const caveRegions = [
@@ -1021,6 +1034,22 @@ function createEnterableStructures() {
         );
         cave.updateMatrixWorld(true);
         registerColliderMarkers(caveColliderMarkers);
+        const caveEntryWorld = localToWorldXZ(placement.x, placement.z, 0, 0, placement.rotation);
+        creatureCaveRegions.push({
+            x: placement.x,
+            z: placement.z,
+            halfW: cW,
+            halfD: cD / 2,
+            outerHalfW: cW + wT,
+            outerHalfD: (cD + wT) / 2,
+            rotation: placement.rotation,
+            centerLocalZ: -cD / 2,
+            outerCenterLocalZ: -(cD + wT) / 2,
+            entryX: caveEntryWorld.x,
+            entryZ: caveEntryWorld.z,
+            entryHalfW: cW + 0.75,
+            entryHalfD: 1.4,
+        });
 
         if (canHostVolcanoNote) {
             volcanoNoteCandidates.push({

@@ -385,10 +385,11 @@ function updateShadowMan(currentTimeMs) {
     if (demonApocalypse) return;
     if (shadowManCutscene) return;
 
-    const elapsedMs = currentTimeMs - gameStartRealTimeMs;
-    const unlockMs = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * 60 * 1000;
+    const elapsedMs    = currentTimeMs - gameStartRealTimeMs;
+    const unlockMs     = SHADOW_MAN_SPAWN_UNLOCK_MINUTE * 60 * 1000;
+    const inOuterBand  = typeof isPlayerInOuterBand === 'function' && isPlayerInOuterBand();
 
-    // The dragon gem overrides the initial peace period and starts checks immediately.
+    // Dragon gem bypasses the initial peace period; outer band no longer does.
     if (shadowManNextCheckMs < 0 && (dragonGemCollected || elapsedMs >= unlockMs)) {
         shadowManNextCheckMs = dragonGemCollected ? elapsedMs : unlockMs;
     }
@@ -399,11 +400,14 @@ function updateShadowMan(currentTimeMs) {
 
         const isNightPhase = (gameTime / FULL_CYCLE) >= NIGHT_START;
         const phase1Chance = isNightPhase ? 0.30 : SHADOW_MAN_BASE_SPAWN_CHANCE;
-        const spawnChance = dragonGemCollected
+        const currentSpawnChance = dragonGemCollected
             ? (shadowManPhase3Ready
                 ? SHADOW_MAN_PHASE3_SPAWN_CHANCE
                 : SHADOW_MAN_PHASE2_SPAWN_CHANCE)
             : phase1Chance;
+        const spawnChance = inOuterBand
+            ? Math.max(0.5, currentSpawnChance)
+            : currentSpawnChance;
 
         if (Math.random() < spawnChance) {
             trySpawnShadowMan();
