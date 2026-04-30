@@ -488,7 +488,7 @@ function animate() {
     // During 'falling' phase frozenPlayerPos is null — use live player position instead.
     if (shadowManCutscene && !playerDead && !mountedOnDragon && shadowMan) {
         const smLookPos = shadowMan.mesh.position.clone();
-        smLookPos.y += 8.4;
+        smLookPos.y += 7.3;
         const refPos = shadowManCutscene.frozenPlayerPos || player.position;
         const dirToSM = smLookPos.clone().sub(refPos).normalize();
         const camPos = refPos.clone().addScaledVector(dirToSM, -8);

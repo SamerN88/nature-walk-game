@@ -44,16 +44,12 @@ const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a ro
           train, but prevents player from exploiting the train strategy too much
         - 40 units makes it so in rounds 1 and 2, it's easy to maintain a train of all or most demons 
           without them teleporting; but in higher rounds, it's difficult to put all demons in a train 
-          because they will keep exiting the 40-unit raidus, forcing the player to move and stay alert
+          because they will keep exiting the 40-unit radius, forcing the player to move and stay alert
     */
 const DEMON_TELEPORT_INTERVAL_SEC = 3;      // seconds between each teleport eligibility check
 const DEMON_TELEPORT_CHANCE   = 0.10;       // chance to teleport each check
 const DEMON_TELEPORT_DISABLE_DIST = 40;     // teleport disabled when demon is closer than this to player
 const DEMON_TELEPORT_UNLOCK_DELAY_SEC = 10; // teleports stay disabled for the first 10s of each round/apocalypse
-
-// true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
-const FALL_TO_CUTSCENE = true;
-const SHADOW_MAN_CAMERA_TRANSITION_SEC = 1.0; // seconds to smoothly rotate camera to face SM at cutscene start
 
 // Game constants
 const WALK_SPEED = 20;

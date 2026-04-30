@@ -65,6 +65,13 @@ function startDayNightTransition(targetFraction, durationSec) {
     };
 }
 
+function setDayNightCycleProgress(targetFraction) {
+    _timeTransition = null;
+    const normalizedFraction = ((targetFraction % 1) + 1) % 1;
+    gameTime = normalizedFraction * FULL_CYCLE;
+    updateDayNightCycle(0);
+}
+
 function updateDayNightCycle(delta) {
     if (demonApocalypse) return; // time is frozen during apocalypse
 

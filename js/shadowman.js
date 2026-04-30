@@ -170,6 +170,49 @@ function removeShadowMan() {
     shadowMan = null;
 }
 
+function poofAndHideDragonForShadowManCutscene() {
+    if (!dragon || !dragon.visible) return;
+
+    const poofPos = dragon.position.clone();
+    const poofGroup = new THREE.Group();
+    poofGroup.userData.ignoreCameraOcclusion = true;
+    for (let i = 0; i < 30; i++) {
+        const p = new THREE.Mesh(
+            new THREE.SphereGeometry(0.4 + Math.random() * 0.8, 5, 5),
+            new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.9 })
+        );
+        p.position.copy(poofPos).add(new THREE.Vector3(
+            (Math.random() - 0.5) * 6,
+            (Math.random() - 0.5) * 6,
+            (Math.random() - 0.5) * 6
+        ));
+        p.userData.vel = new THREE.Vector3(
+            (Math.random() - 0.5) * 20,
+            Math.random() * 15 + 5,
+            (Math.random() - 0.5) * 20
+        );
+        poofGroup.add(p);
+    }
+    scene.add(poofGroup);
+
+    dragon.visible = false;
+    dragonDescending = false;
+    dragonTethered = false;
+    dragonVelocity.set(0, 0, 0);
+
+    let pt = 0;
+    const animPoof = () => {
+        pt += 0.016;
+        poofGroup.children.forEach(p => {
+            p.position.addScaledVector(p.userData.vel, 0.016);
+            p.material.opacity = Math.max(0, 0.9 - pt * 1.5);
+        });
+        if (pt < 0.8) requestAnimationFrame(animPoof);
+        else scene.remove(poofGroup);
+    };
+    animPoof();
+}
+
 function trySpawnShadowMan() {
     if (shadowMan || !player) return false;
 
@@ -381,6 +424,53 @@ function isShadowManOccluded() {
     return false;
 }
 
+function isShadowManFramedForCutscene() {
+    if (!shadowMan || !camera) return false;
+
+    camera.updateMatrixWorld();
+    shadowMan.mesh.updateMatrixWorld();
+
+    const smCenter = new THREE.Vector3(0, 5.4, 0).applyMatrix4(shadowMan.mesh.matrixWorld);
+    const cameraForward = new THREE.Vector3();
+    camera.getWorldDirection(cameraForward);
+
+    const toCenter = smCenter.clone().sub(camera.position);
+    if (toCenter.lengthSq() < 0.01 || toCenter.normalize().dot(cameraForward) <= 0) {
+        return false;
+    }
+
+    const projectedCenter = smCenter.clone().project(camera);
+    if (
+        projectedCenter.z < -1 ||
+        projectedCenter.z > 1 ||
+        Math.abs(projectedCenter.x) > SHADOW_MAN_CUTSCENE_CENTER_NDC_X ||
+        Math.abs(projectedCenter.y) > SHADOW_MAN_CUTSCENE_CENTER_NDC_Y
+    ) {
+        return false;
+    }
+
+    const bodyPoints = [
+        new THREE.Vector3(0, 0.2, 0),
+        new THREE.Vector3(0, 8.9, 0),
+        new THREE.Vector3(-1.35, 5.4, 0),
+        new THREE.Vector3(1.35, 5.4, 0)
+    ];
+
+    for (const point of bodyPoints) {
+        const projectedPoint = point.applyMatrix4(shadowMan.mesh.matrixWorld).project(camera);
+        if (
+            projectedPoint.z < -1 ||
+            projectedPoint.z > 1 ||
+            Math.abs(projectedPoint.x) > SHADOW_MAN_CUTSCENE_SCREEN_EDGE_NDC ||
+            Math.abs(projectedPoint.y) > SHADOW_MAN_CUTSCENE_SCREEN_EDGE_NDC
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function updateShadowMan(currentTimeMs) {
     if (demonApocalypse) return;
     if (shadowManCutscene) return;
@@ -439,9 +529,19 @@ function updateShadowMan(currentTimeMs) {
     // Phase 3 final shadow man: no despawn, watches for cutscene trigger
     if (shadowMan.finalPhase) {
         if (distXZ <= SHADOW_MAN_CUTSCENE_TRIGGER_DIST) {
+            const elevationDelta = Math.abs(player.position.y - shadowMan.mesh.position.y);
+            if (mountedOnDragon || elevationDelta > SHADOW_MAN_CUTSCENE_MAX_ELEVATION_DELTA) {
+                removeShadowMan();
+                return;
+            }
+
+            if (!isShadowManFramedForCutscene()) {
+                removeShadowMan();
+                return;
+            }
+
             if (isShadowManOccluded()) {
-                // A structure is blocking the view — vanish and respawn elsewhere
-                relocateShadowManNearOrigin();
+                removeShadowMan();
             } else {
                 startShadowManCutscene();
             }
@@ -464,38 +564,7 @@ function updateShadowMan(currentTimeMs) {
 function startShadowManCutscene() {
     if (shadowManCutscene || !shadowMan) return;
 
-    // If riding dragon, dismount and poof it
-    if (mountedOnDragon) unmountDragon();
-    if (dragon && !dragonTethered) {
-        const poofPos = dragon.position.clone();
-        const poofGroup = new THREE.Group();
-        poofGroup.userData.ignoreCameraOcclusion = true;
-        for (let i = 0; i < 30; i++) {
-            const p = new THREE.Mesh(
-                new THREE.SphereGeometry(0.4 + Math.random() * 0.8, 5, 5),
-                new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.9 })
-            );
-            p.position.copy(poofPos).add(new THREE.Vector3(
-                (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6));
-            p.userData.vel = new THREE.Vector3(
-                (Math.random() - 0.5) * 20, Math.random() * 15 + 5, (Math.random() - 0.5) * 20);
-            poofGroup.add(p);
-        }
-        scene.add(poofGroup);
-        dragon.visible = false;
-        dragonDescending = false;
-        let pt = 0;
-        const animPoof = () => {
-            pt += 0.016;
-            poofGroup.children.forEach(p => {
-                p.position.addScaledVector(p.userData.vel, 0.016);
-                p.material.opacity = Math.max(0, 0.9 - pt * 1.5);
-            });
-            if (pt < 0.8) requestAnimationFrame(animPoof);
-            else scene.remove(poofGroup);
-        };
-        animPoof();
-    }
+    poofAndHideDragonForShadowManCutscene();
 
     // Freeze player
     velocity.set(0, 0, 0);
@@ -585,7 +654,7 @@ function updateShadowManCutscene(delta) {
 
     // ── PHASE: freeze ──────────────────────────────────────────
     if (cs.phase === 'freeze') {
-        if (cs.timer >= 2) {
+        if (cs.timer >= SHADOW_MAN_CUTSCENE_FREEZE_DURATION_SEC) {
             cs.phase = 'approach';
             cs.timer = 0;
 
@@ -611,7 +680,6 @@ function updateShadowManCutscene(delta) {
             const durationSec = Math.max(0.001, SHADOW_MAN_CUTSCENE_APPROACH_DURATION_SEC);
             const t = Math.min(cs.timer / durationSec, 1);
             shadowMan.mesh.position.lerpVectors(cs.approachStart, cs.approachTarget, t);
-            shadowMan.mesh.position.y = cs.approachTarget.y; // match player foot height
             const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
             const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
             shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
@@ -664,6 +732,7 @@ function updateShadowManCutscene(delta) {
                     shadowMan.mesh.add(eye);
                     cs.eyes.push(eye);
                 });
+                setDayNightCycleProgress(SHADOW_MAN_CUTSCENE_MIDNIGHT_PROGRESS);
             }
             // Reveal vignette
             if (cs.vignetteEl) cs.vignetteEl.style.opacity = '1';
@@ -692,16 +761,16 @@ function updateShadowManCutscene(delta) {
             shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
         }
 
-        // Vignette: radial red creeps inward over 4 seconds
+        // Vignette: radial red creeps inward while the red eyes are visible
         if (cs.vignetteEl) {
-            const prog = Math.min(cs.timer / 4.0, 1.0);
+            const prog = Math.min(cs.timer / SHADOW_MAN_CUTSCENE_RED_EYES_DURATION_SEC, 1.0);
             const inner = (70 * (1 - prog)).toFixed(1);
             const outer = Math.min(100, parseFloat(inner) + 20).toFixed(1);
             cs.vignetteEl.style.background =
                 `radial-gradient(ellipse at center, transparent 0%, transparent ${inner}%, rgba(140,0,0,0.95) ${outer}%)`;
         }
 
-        if (cs.timer >= 4.0) {
+        if (cs.timer >= SHADOW_MAN_CUTSCENE_RED_EYES_DURATION_SEC) {
             cs.phase = 'flash';
             cs.timer = 0;
         }
