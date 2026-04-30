@@ -26,10 +26,13 @@ function createShadowManMesh() {
     parts.push(head);
 
     // Arms
+    const armLength = 4.6;
     [-1, 1].forEach(side => {
+        const armGeometry = new THREE.BoxGeometry(0.28, armLength, 0.28);
+        armGeometry.translate(0, -armLength / 2, 0);
         const arm = { 
-            geometry: new THREE.BoxGeometry(0.28, 4.6, 0.28),
-            position: [side * 1.2, 5.1, 0]
+            geometry: armGeometry,
+            position: [side * 1.2, 5.1 + armLength / 2, 0]
         };
         parts.push(arm);
     });
@@ -42,11 +45,14 @@ function createShadowManMesh() {
     parts.push(arm);
 
     // Legs
+    const legLength = 4.6;
     [-1, 1].forEach(side => {
+        const legGeometry = new THREE.CylinderGeometry(0.24, 0.15, legLength);
+        legGeometry.translate(0, -legLength / 2, 0);
         const leg = {
             // geometry: new THREE.BoxGeometry(0.45, 4.6, 0.45),
-            geometry: new THREE.CylinderGeometry(0.24, 0.15, 4.6),
-            position: [side * 0.4, 2.3, 0]
+            geometry: legGeometry,
+            position: [side * 0.4, 2.3 + legLength / 2, 0]
         };
         parts.push(leg);
     });
@@ -471,6 +477,31 @@ function isShadowManFramedForCutscene() {
     return true;
 }
 
+function applyShadowManApproachGait(cs) {
+    if (!cs || !cs.parts || !cs.partBaseRotX) return;
+
+    const leftArm = cs.parts[2];
+    const rightArm = cs.parts[3];
+    const leftLeg = cs.parts[5];
+    const rightLeg = cs.parts[6];
+    if (!leftArm || !rightArm || !leftLeg || !rightLeg) return;
+
+    const phase = cs.timer * SHADOW_MAN_CUTSCENE_GAIT_CYCLE_HZ * Math.PI * 2;
+    const swing = Math.sin(phase);
+
+    leftArm.rotation.x = cs.partBaseRotX[2] + swing * SHADOW_MAN_CUTSCENE_GAIT_ARM_SWING;
+    rightArm.rotation.x = cs.partBaseRotX[3] - swing * SHADOW_MAN_CUTSCENE_GAIT_ARM_SWING;
+    leftLeg.rotation.x = cs.partBaseRotX[5] - swing * SHADOW_MAN_CUTSCENE_GAIT_LEG_SWING;
+    rightLeg.rotation.x = cs.partBaseRotX[6] + swing * SHADOW_MAN_CUTSCENE_GAIT_LEG_SWING;
+}
+
+function resetShadowManPartRotations(cs) {
+    if (!cs || !cs.parts || !cs.partBaseRotX) return;
+    cs.parts.forEach((part, i) => {
+        part.rotation.x = cs.partBaseRotX[i];
+    });
+}
+
 function updateShadowMan(currentTimeMs) {
     if (demonApocalypse) return;
     if (shadowManCutscene) return;
@@ -572,6 +603,7 @@ function startShadowManCutscene() {
     // Store SM part base X positions for oscillation reset
     const parts = shadowMan.mesh.userData.partMeshes;
     const partBaseX = parts.map(m => m.position.x);
+    const partBaseRotX = parts.map(m => m.rotation.x);
 
     // Hide all HUD elements
     ['ui', 'stats', 'crosshair', 'demon-counter', 'health-bar-container',
@@ -614,6 +646,7 @@ function startShadowManCutscene() {
         eyes: null,
         parts,
         partBaseX,
+        partBaseRotX,
         flashShown: false,
         cameraStartPos: camera.position.clone(),
         cameraStartQuat: camera.quaternion.clone(),
@@ -680,6 +713,7 @@ function updateShadowManCutscene(delta) {
             const durationSec = Math.max(0.001, SHADOW_MAN_CUTSCENE_APPROACH_DURATION_SEC);
             const t = Math.min(cs.timer / durationSec, 1);
             shadowMan.mesh.position.lerpVectors(cs.approachStart, cs.approachTarget, t);
+            applyShadowManApproachGait(cs);
             const adx = cs.frozenPlayerPos.x - shadowMan.mesh.position.x;
             const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
             shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
@@ -693,6 +727,7 @@ function updateShadowManCutscene(delta) {
                 const adz = cs.frozenPlayerPos.z - shadowMan.mesh.position.z;
                 shadowMan.mesh.rotation.y = Math.atan2(adx, adz);
             }
+            resetShadowManPartRotations(cs);
             cs.phase = 'face_freeze';
             cs.timer = 0;
         }
@@ -854,6 +889,7 @@ function endShadowManCutscene() {
     // Reset SM part positions then remove shadow man
     if (shadowMan) {
         cs.parts.forEach((part, i) => { part.position.x = cs.partBaseX[i]; });
+        resetShadowManPartRotations(cs);
         scene.remove(shadowMan.mesh);
         shadowMan = null;
     }
