@@ -534,6 +534,7 @@ function animate() {
     updateHHHallDoor(delta);
     updateCemeteryGates(delta);
     updateCreatures(delta);
+    updateSpecialPortalNoose(delta);
     updateSwordBladeParticles(delta);
     updateSwordAuraOrbPulse(delta);
     updatePlayerTalismanPulse(delta);

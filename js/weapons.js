@@ -718,11 +718,19 @@ function fireAK47() {
     });
 
     hits.push(...getCreatureGunHits(aimDir));
+    if (typeof getSpecialPortalBodyGunHits === 'function') {
+        hits.push(...getSpecialPortalBodyGunHits(aimDir));
+    }
     hits.sort((a, b) => a.projected - b.projected);
     triggerAk47ShotFX(aimDir, hits, beamEndPoint);
 
     let penetratedDemons = 0;
     for (const hit of hits) {
+        if (hit.kind === 'nooseBody') {
+            damageSpecialPortalHangingBody();
+            break; // the hanging body stops AK47 penetration
+        }
+
         if (hit.kind === 'creature') {
             damageCreatureFromGun(hit.target);
             break; // creatures stop AK47 penetration
@@ -951,6 +959,10 @@ function punch() {
     // Hit HH white shadow man (sword-shield only)
     if (currentHandItem === 'sword-shield') {
         if (tryHitHHWhiteSM(aimDir, punchRange)) return;
+    }
+
+    if (typeof tryHitSpecialPortalBodyMelee === 'function' && tryHitSpecialPortalBodyMelee(aimDir, punchRange)) {
+        return;
     }
 
     // Campfire punch with stick equipped — light it into a torch
