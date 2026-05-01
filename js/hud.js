@@ -10,16 +10,20 @@ function updateMenuPanels() {
         controls.innerHTML = lines.map(line => `<div>${line}</div>`).join('');
     }
 
-    const npcTypes = ['deer', 'rabbit', 'bird', 'human'];
-    npcTypes.forEach(type => {
-        const el = document.getElementById(`kills-${type}`);
-        if (el) el.textContent = killBreakdown[type];
-    });
-    // Demon kill row only visible after apocalypse begins
-    const demonKillRow = document.getElementById('kills-demon-row');
-    if (demonKillRow) demonKillRow.style.display = demonApocalypse ? '' : 'none';
-    const demonEl = document.getElementById('kills-demon');
-    if (demonEl) demonEl.textContent = killBreakdown.demon;
+    const kills = document.getElementById('menu-kill-breakdown');
+    if (kills) {
+        const knownTypes = KILL_CATEGORY_ORDER.filter(type => (killBreakdown[type] || 0) > 0);
+        const extraTypes = Object.keys(killBreakdown)
+            .filter(type => !KILL_CATEGORY_ORDER.includes(type) && killBreakdown[type] > 0)
+            .sort();
+        kills.innerHTML = knownTypes.concat(extraTypes).map(type => {
+            const label = KILL_CATEGORY_LABELS[type] || type
+                .split('_')
+                .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+                .join(' ');
+            return `<div class="kill-row"><span>${label}</span><span>${killBreakdown[type]}</span></div>`;
+        }).join('');
+    }
 
     const bestSection = document.getElementById('best-hell-run-section');
     if (bestSection) {

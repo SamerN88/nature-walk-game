@@ -2272,7 +2272,7 @@ function _removeHHAngel(angel, animateDeath) {
 
     if (animateDeath && wasTracked && !angel.killRecorded) {
         angel.killRecorded = true;
-        recordKill('hh_angel');
+        recordKill('angel');
         updateStats();
     }
 

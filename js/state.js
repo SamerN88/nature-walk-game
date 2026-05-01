@@ -143,13 +143,27 @@ let timeMenuOpen = false;
 
 // Kill counter
 let killCount = 0;
-let killBreakdown = {
-    deer: 0,
-    rabbit: 0,
-    bird: 0,
-    human: 0,
-    demon: 0
+const KILL_CATEGORY_ORDER = [
+    'deer',
+    'rabbit',
+    'bird',
+    'human',
+    'zombie',
+    'crawler',
+    'angel',
+    'demon',
+];
+const KILL_CATEGORY_LABELS = {
+    deer: 'Deer',
+    rabbit: 'Rabbits',
+    bird: 'Birds',
+    human: 'Humans',
+    zombie: 'Zombies',
+    crawler: 'Crawlers',
+    angel: 'Weeping Angels',
+    demon: 'Demons',
 };
+let killBreakdown = {};
 
 // Respawn rate (how many NPCs spawn per natural kill, default 0)
 let respawnRate = 0;

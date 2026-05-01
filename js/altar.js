@@ -629,7 +629,7 @@ function _triggerAltarCorpseStrike() {
     altarCorpseStruck = true;
     altarState = 'struck';
     _altarPulseTimer = 0;
-    recordKill('altar_corpse');
+    recordKill('zombie');
     updateStats();
 
     // Turn the pre-created eyes white and ensure they're visible.

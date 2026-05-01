@@ -755,9 +755,8 @@ function spawnRandomNPC() {
 
 function recordKill(type, npcData = null, deathPos = null) {
     killCount++;
-    if (killBreakdown[type] !== undefined) {
-        killBreakdown[type]++;
-    }
+    if (killBreakdown[type] === undefined) killBreakdown[type] = 0;
+    killBreakdown[type]++;
     if (type === 'human' && npcData?.isFarmer) {
         farmerPermanentlyKilled = true;
         if (!keyHintNoteDropped && deathPos) {

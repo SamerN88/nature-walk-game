@@ -536,7 +536,7 @@ function _killCreature(creature) {
     const idx = nightCreatures.indexOf(creature);
     if (idx === -1) return;
     nightCreatures.splice(idx, 1);
-    recordKill(creature.isCemZombie ? 'cemetery_zombie' : creature.type);
+    recordKill(creature.isCemZombie ? 'zombie' : creature.type);
     updateStats();
     if (creature.isCemZombie) {
         _fadeCemZombieOut(creature.mesh);
