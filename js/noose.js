@@ -46,6 +46,20 @@ function createSpecialPortalNoose(parent, archHeight) {
     addWrapSegment(0, lintelCenterY, wrapZHalf, wrapYHalf * 2, 'y');
     addWrapSegment(0, lintelCenterY + wrapYHalf, 0, wrapZHalf * 2, 'z');
     addWrapSegment(0, lintelCenterY - wrapYHalf, 0, wrapZHalf * 2, 'z');
+    for (const y of [lintelCenterY - wrapYHalf, lintelCenterY + wrapYHalf]) {
+        for (const z of [-wrapZHalf, wrapZHalf]) {
+            const corner = new THREE.Mesh(new THREE.SphereGeometry(ropeRadius, 10, 8), ropeMat);
+            corner.position.set(0, y, z);
+            corner.castShadow = true;
+            parent.add(corner);
+        }
+    }
+
+    const pivotKnot = new THREE.Mesh(new THREE.SphereGeometry(ropeRadius * 1.9, 10, 8), ropeMat);
+    pivotKnot.position.set(0, ropeTopY-0.05, 0);
+    // pivotKnot.scale.set(1.12, 0.86, 1.12);
+    pivotKnot.castShadow = true;
+    parent.add(pivotKnot);
 
     const swingGroup = new THREE.Group();
     swingGroup.position.set(0, ropeTopY, 0);
@@ -149,6 +163,7 @@ function createSpecialPortalHangingBodyMesh() {
         const shoulder = new THREE.Group();
         shoulder.position.set(side * 0.55 * S, 2.72, 0.02);
         body.add(shoulder);
+        shoulder.add(_createNooseJointCap(0.145, material));
 
         const upperLen = 0.80;
         const lowerLen = 1.18;
@@ -158,14 +173,14 @@ function createSpecialPortalHangingBodyMesh() {
         const elbow = new THREE.Group();
         elbow.position.y = -upperLen;
         shoulder.add(elbow);
-        elbow.add(_createNooseJointCap(0.135, material));
+        elbow.add(_createNooseJointCap(0.12, material));
 
         const lowerMesh = _createNooseLimbSegment(0.12, 0.095, lowerLen, material);
         elbow.add(lowerMesh);
 
-        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), material);
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), material);
         hand.position.set(0, -lowerLen, 0);
-        hand.scale.set(1.05, 0.72, 0.95);
+        // hand.scale.set(1.05, 0.72, 0.95);
         hand.castShadow = true;
         hand.receiveShadow = true;
         elbow.add(hand);
@@ -183,7 +198,7 @@ function createSpecialPortalHangingBodyMesh() {
 
     [-1, 1].forEach(side => {
         const hip = new THREE.Group();
-        hip.position.set(side * 0.31 * S, 1.42, 0);
+        hip.position.set(side * 0.25 * S, 1.42, 0);
         body.add(hip);
 
         const upperLen = 0.94;
@@ -194,7 +209,7 @@ function createSpecialPortalHangingBodyMesh() {
         const knee = new THREE.Group();
         knee.position.y = -upperLen;
         hip.add(knee);
-        knee.add(_createNooseJointCap(0.15, material));
+        knee.add(_createNooseJointCap(0.145, material));
 
         const lowerMesh = _createNooseLimbSegment(0.145, 0.118, lowerLen, material);
         knee.add(lowerMesh);
