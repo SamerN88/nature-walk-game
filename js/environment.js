@@ -81,6 +81,46 @@ function createTrees() {
     }
 }
 
+function createWoodenMarkerSticks() {
+    const stickCount = 3;
+    const stickHeight = 4;
+    const stickMaterial = new THREE.MeshLambertMaterial({ color: 0x4a3728 });
+    const innerRegion = {
+        type: 'box',
+        minX: -WORLD_SIZE * 0.5,
+        maxX: WORLD_SIZE * 0.5,
+        minZ: -WORLD_SIZE * 0.5,
+        maxZ: WORLD_SIZE * 0.5
+    };
+
+    for (let i = 0; i < stickCount; i++) {
+        const placement = findPlacement(() => {
+            const point = samplePointInRegion(innerRegion);
+            if (Math.abs(point.x) < 5 && Math.abs(point.z) < 60) return null;
+            if (isPointInWater(point.x, point.z)) return null;
+
+            return {
+                x: point.x,
+                z: point.z,
+                footprint: { ...makePlacementFootprint(point.x, point.z, 3), noTree: true }
+            };
+        }, 180);
+
+        if (!placement) continue;
+
+        const baseY = getGroundHeight(placement.x, placement.z);
+        const stick = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.75, 1.1, stickHeight, 12),
+            stickMaterial
+        );
+        stick.position.set(placement.x, baseY + stickHeight / 2 - 0.5, placement.z);
+        stick.castShadow = true;
+        stick.receiveShadow = true;
+        stick.userData.ignoreCameraOcclusion = false;
+        scene.add(stick);
+    }
+}
+
 function createRocks() {
     const rockMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
 

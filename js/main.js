@@ -217,6 +217,7 @@ function init() {
     createEnterableStructures();
     createClimbableStructures();
     createMountains();
+    createWoodenMarkerSticks();
     createTrees();
     createRocks();
     createFlowers();
