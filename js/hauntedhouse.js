@@ -30,12 +30,22 @@ const HH_ENT_STEP_H = HH_ELEV / HH_N_ENT_STEPS;   // 1.0
 const HH_ENT_STEP_D = 1.6;    // tread depth per step
 const HH_ENT_STAIR_W = 7.0;   // width of entry stair (wider than entrance)
 
-// SM combat constants
-const HH_SM_V0 = 10;
-const HH_SM_ACCEL = 1.07;
-const HH_SM_MAX_APPROACHES = 11;
+// HH angel combat constants
+const HH_FIRST_ANGEL_SPEED = 10;
+const HH_ANGEL_SPEED = 0.9 * WALK_SPEED;
+const HH_ANGEL_FREEZE_LOCK_DIST = 10;
+const HH_ANGEL_HIT_CENTER_Y = 1.8;
+const HH_ANGEL_CONTACT_DIST = 2.0;
+const HH_ANGEL_WAVE_SCHEDULE = [
+    { interval: 3, count: 4, oscillate: false },
+    { interval: 2, count: 5, oscillate: false },
+    { interval: 1, count: 8, oscillate: false },
+    { interval: 1, count: 7, oscillate: true },
+    // { interval: 1, count: 8, oscillate: false },
+    // { interval: 0.5, count: 10, oscillate: true },
+];
 const HH_DESPAWN_DIST = 900;
-// Maximum angle (degrees) between camera aim direction and the direction to the SM
+// Maximum angle (degrees) between camera aim direction and the direction to the HH angel
 // for a sword hit to register. Tune this to make the hit window wider or narrower.
 const HH_SWORD_HIT_MAX_ANGLE = 10;
 
@@ -1915,6 +1925,22 @@ function _setHHItemsLit(lit) {
     _blacken(hd.worldSkeleton, !lit);
 }
 
+function _saveHHSequenceTime() {
+    if (hhSavedSequenceGameTime < 0) {
+        hhSavedSequenceGameTime = ((gameTime % FULL_CYCLE) + FULL_CYCLE) % FULL_CYCLE;
+    }
+}
+
+function _setHHSequenceNight() {
+    setDayNightCycleProgress(NIGHT_START + 0.05);
+}
+
+function _restoreHHSequenceTime() {
+    if (hhSavedSequenceGameTime < 0) return;
+    setDayNightCycleProgress(hhSavedSequenceGameTime / FULL_CYCLE);
+    hhSavedSequenceGameTime = -1;
+}
+
 // ── updateHauntedHouseSequence (called per-frame) ────────────────────────────
 function updateHauntedHouseSequence(delta) {
     updateCemeteryRoomLamp(delta);
@@ -1940,7 +1966,10 @@ function updateHauntedHouseSequence(delta) {
         const inside = (Math.abs(localPos.x) < HH_HALF_W + 1 &&
                         Math.abs(localPos.z) < HH_HALF_D + 1 &&
                         localY < HH_F2_SURFACE_Y + HH_F2_H + 2);
-        if (inside) hhSeqPhase = 'active';
+        if (inside) {
+            _saveHHSequenceTime();
+            hhSeqPhase = 'active';
+        }
         return;
     }
 
@@ -1978,44 +2007,62 @@ function updateHauntedHouseSequence(delta) {
             hhSeqPhase = 'timer';
             hhSeqTimer = 0;
             hhTorchExtinguished = false;
-            hhSMSpawned = false;
-            hhSMApproaching = false;
+            hhFirstAngelSpawned = false;
+            hhFirstAngelApproaching = false;
+            hhAngelWaveStage = 0;
+            hhAngelWaveTimer = 0;
+            hhAngelStageSpawnCount = 0;
+            _clearHHAngels();
         }
         return;
     }
 
     // ── Phase: timer — countdown sequence ────────────────────────────────────
     const T_EXTINGUISH_TORCH = 10;
-    const T_SPAWN_SM = T_EXTINGUISH_TORCH + 7.5;
-    const T_SM_APPROACH = T_SPAWN_SM + 7.5;
+    const T_SPAWN_FIRST_ANGEL = T_EXTINGUISH_TORCH + 7.5;
+    const T_FIRST_ANGEL_APPROACH = T_SPAWN_FIRST_ANGEL + 7.5;
     if (hhSeqPhase === 'timer') {
         hhSeqTimer += delta;
 
-        // t=15: extinguish torch
+        // t=10: extinguish torch
         if (!hhTorchExtinguished && hhSeqTimer >= T_EXTINGUISH_TORCH) {
             hhTorchExtinguished = true;
+            _setHHSequenceNight();
             if (hasTorch) {
+                const previousHandItem = currentHandItem;
                 hasTorch = false;
                 hasStick = true;
                 addHandSlot('stick', 'torch');
+                if (previousHandItem !== 'torch') currentHandItem = previousHandItem;
                 syncHandItemVisuals();
             }
         }
 
-        // t=25: spawn white SM in farthest corner
-        if (!hhSMSpawned && hhSeqTimer >= T_SPAWN_SM) {
-            hhSMSpawned = true;
-            hhSMApproachCount = 0;
-            _spawnHHWhiteSM(true);  // true = use farthest corner
+        // t=17.5: spawn the first HH angel in the farthest corner
+        if (!hhFirstAngelSpawned && hhSeqTimer >= T_SPAWN_FIRST_ANGEL) {
+            hhFirstAngelSpawned = true;
+            _spawnHHAngel({
+                specialFirst: true,
+                replaceExisting: true,
+                useFarthest: true,
+                speed: HH_FIRST_ANGEL_SPEED,
+            });
+            if (hasTalisman) _triggerPlayerTalismanPulse();
         }
 
-        // t=35: SM starts approaching
-        if (hhSMSpawned && !hhSMApproaching && hhSeqTimer >= T_SM_APPROACH) {
-            hhSMApproaching = true;
+        // t=25: the first HH angel starts approaching
+        if (hhFirstAngelSpawned && !hhFirstAngelApproaching && hhSeqTimer >= T_FIRST_ANGEL_APPROACH) {
+            hhFirstAngelApproaching = true;
         }
 
-        // Update SM behavior
-        if (hhSMSpawned) _updateHHWhiteSM(delta);
+        if (hhFirstAngelSpawned) _updateHHAngels(delta);
+
+        return;
+    }
+
+    if (hhSeqPhase === 'angel_waves') {
+        _updateHHAngelWaves(delta);
+        _updateHHAngels(delta);
 
         return;
     }
@@ -2030,16 +2077,8 @@ function updateHauntedHouseSequence(delta) {
     }
 }
 
-// ── Spawn white SM ───────────────────────────────────────────────────────────
-function _spawnHHWhiteSM(useFarthest) {
-    // Never spawn while a touch-reset is already pending — avoids a ghost SM appearing
-    // in a corner during the 400 ms delay before the world restarts.
-    if (hhWhiteSMData && hhWhiteSMData.touchTriggered) return;
-
-    if (hhWhiteSMData && hhWhiteSMData.mesh) {
-        scene.remove(hhWhiteSMData.mesh);
-    }
-
+// ── HH angel helpers ─────────────────────────────────────────────────────────
+function _pickHHCornerIndex(useFarthest) {
     const hd = hauntedHouseData;
     const localPos = worldToLocalXZ(player.position.x, player.position.z,
                                     hd.worldX, hd.worldZ, hd.rotation);
@@ -2064,107 +2103,221 @@ function _spawnHHWhiteSM(useFarthest) {
             : Math.floor(Math.random() * HH_CORNERS.length);
     }
 
+    return cornerIdx;
+}
+
+function _clearHHAngels() {
+    for (const angel of hhAngels) {
+        if (angel.mesh) scene.remove(angel.mesh);
+    }
+    hhAngels = [];
+}
+
+// ── Spawn HH weeping angel ───────────────────────────────────────────────────
+function _spawnHHAngel(options = {}) {
+    if (hhAngels.some(a => a.touchTriggered)) return null;
+    if (options.replaceExisting) _clearHHAngels();
+
+    const hd = hauntedHouseData;
+    const cornerIdx = options.useFarthest
+        ? _pickHHCornerIndex(true)
+        : Math.floor(Math.random() * HH_CORNERS.length);
     const corner = HH_CORNERS[cornerIdx];
     const wPos = localToWorldXZ(hd.worldX, hd.worldZ, corner.x, corner.z, hd.rotation);
 
-    // Use canonical shadow man build; switch all parts to the white night material
-    const smGrp = createShadowManMesh();
-    const nightMat = smGrp.userData.nightMaterial;
-    smGrp.userData.partMeshes.forEach(m => { m.material = nightMat; });
-    smGrp.userData.usingNightMaterial = true;
+    const angelMesh = _buildWeepingAngelMesh();
+    angelMesh.userData.ignoreCameraOcclusion = true;
+    angelMesh.position.set(wPos.x, hd.worldGroundY, wPos.z);
+    scene.add(angelMesh);
 
-    smGrp.position.set(wPos.x, hd.worldGroundY, wPos.z);
-    scene.add(smGrp);
+    const partMeshes = [];
+    angelMesh.traverse(obj => {
+        if (obj.isMesh) partMeshes.push(obj);
+    });
 
-    const partMeshes = smGrp.userData.partMeshes;
-    const partBaseX  = partMeshes ? partMeshes.map(m => m.position.x) : [];
+    const angel = {
+        mesh: angelMesh,
+        specialFirst: !!options.specialFirst,
+        freezeLockDist: options.freezeLockDist ?? HH_ANGEL_FREEZE_LOCK_DIST,
+        speed: options.speed ?? HH_ANGEL_SPEED,
+        oscillate: !!options.oscillate,
+        hitCooldown: 0,
+        touchTriggered: false,
+        partMeshes,
+        partBaseX: partMeshes.map(m => m.position.x),
+    };
 
-    hhWhiteSMData = { mesh: smGrp, approachCount: hhSMApproachCount, partMeshes, partBaseX };
-    hhSMApproaching = (hhSeqTimer >= 50) && !hhWhiteSMData.justSpawned;
-    hhWhiteSMData.justSpawned = true;
-    if (hasTalisman && hhSMApproachCount === 0) _triggerPlayerTalismanPulse();
+    hhAngels.push(angel);
+    return angel;
+}
 
-    if (hhSMApproachCount > 0) {
-        // Respawn: approach immediately (no freeze)
-        hhSMApproaching = true;
-        hhWhiteSMData.justSpawned = false;
+function _isHHAngelFrozenByLook(angel, dist) {
+    if (angel.specialFirst) return false;
+    if (dist <= angel.freezeLockDist) return false;
+
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    camDir.y = 0;
+    if (camDir.lengthSq() > 0.001) camDir.normalize();
+
+    const toAngel = new THREE.Vector3(
+        angel.mesh.position.x - camera.position.x,
+        0,
+        angel.mesh.position.z - camera.position.z
+    );
+    if (toAngel.lengthSq() > 0.001) toAngel.normalize();
+
+    const halfHFov = Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);
+    const freezeCos = Math.cos(halfHFov + WEEPING_ANGEL_BODY_MARGIN);
+    return camDir.dot(toAngel) >= freezeCos;
+}
+
+function _damagePlayerFromHHAngel(angel) {
+    if (angel.specialFirst) {
+        if (!angel.touchTriggered) {
+            angel.touchTriggered = true;
+            setTimeout(() => hardReset(), 400);
+        }
+        return;
+    }
+
+    if (angel.hitCooldown > 0 || playerDead) return;
+    angel.hitCooldown = CREATURE_HIT_COOLDOWN;
+    playerHealth = Math.max(0, playerHealth - CREATURE_HIT_DAMAGE);
+    _damageFlashEl.classList.remove('active');
+    void _damageFlashEl.offsetWidth;
+    _damageFlashEl.classList.add('active');
+    if (playerHealth <= 0) hardReset();
+}
+
+// ── Update HH weeping angels each frame ──────────────────────────────────────
+function _updateHHAngels(delta) {
+    for (const angel of hhAngels) {
+        if (!angel.mesh) continue;
+        const mesh = angel.mesh;
+
+        const dx = player.position.x - mesh.position.x;
+        const dz = player.position.z - mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist > 0.01) mesh.rotation.y = Math.atan2(dx, dz);
+
+        if (angel.oscillate && angel.partMeshes && angel.partBaseX.length) {
+            const osc = Math.sin(performance.now() * 0.09) * 0.25;
+            angel.partMeshes.forEach((part, i) => {
+                part.position.x = angel.partBaseX[i] + osc;
+            });
+        }
+
+        if (angel.specialFirst && !hhFirstAngelApproaching) continue;
+        if (_isHHAngelFrozenByLook(angel, dist)) continue;
+
+        if (dist > 0.5) {
+            if (typeof _moveCreatureWithWallCollisions === 'function') {
+                _moveCreatureWithWallCollisions(angel, dx, dz, dist, delta);
+            } else {
+                mesh.position.x += (dx / dist) * angel.speed * delta;
+                mesh.position.z += (dz / dist) * angel.speed * delta;
+            }
+
+            const targetY = hauntedHouseData.worldGroundY;
+            mesh.position.y = moveScalarToward(mesh.position.y, targetY, 20 * delta);
+        }
+
+        if (angel.hitCooldown > 0) angel.hitCooldown -= delta;
+        const dy = player.position.y - mesh.position.y;
+        const dist3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist3d < HH_ANGEL_CONTACT_DIST) _damagePlayerFromHHAngel(angel);
     }
 }
 
-// ── Update white SM each frame ────────────────────────────────────────────────
-function _updateHHWhiteSM(delta) {
-    if (!hhWhiteSMData || !hhWhiteSMData.mesh) return;
-    const sm = hhWhiteSMData.mesh;
-
-    // Face player
-    const dx = player.position.x - sm.position.x;
-    const dz = player.position.z - sm.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist > 0.01) sm.rotation.y = Math.atan2(dx, dz);
-
-    // Body oscillation for the last 5 approaches (approachCount 6-10 → approaches 7-11)
-    const OSCILLATE_THRESHOLD = HH_SM_MAX_APPROACHES - 5; // = 6
-    if (hhSMApproachCount >= OSCILLATE_THRESHOLD &&
-            hhWhiteSMData.partMeshes && hhWhiteSMData.partBaseX.length) {
-        const osc = Math.sin(performance.now() * 0.09) * 0.25;
-        hhWhiteSMData.partMeshes.forEach((part, i) => {
-            part.position.x = hhWhiteSMData.partBaseX[i] + osc;
-        });
-    }
-
-    if (!hhSMApproaching) return;  // frozen phase
-
-    const speed = HH_SM_V0 * Math.pow(HH_SM_ACCEL, hhSMApproachCount);
-    if (dist > 0.5) {
-        sm.position.x += (dx / dist) * speed * delta;
-        sm.position.z += (dz / dist) * speed * delta;
-    }
-
-    // Hover slightly above ground
-    sm.position.y = hauntedHouseData.worldGroundY + Math.sin(performance.now() / 400) * 0.15;
-
-    // Touch detection — SM touched player; trigger world reset.
-    // Do NOT remove the SM so it keeps following until the reset fires.
-    if (dist < 2.0 && !hhWhiteSMData.touchTriggered) {
-        hhWhiteSMData.touchTriggered = true;
-        setTimeout(() => hardReset(), 400);
-    }
+function _startHHAngelWaves() {
+    hhSeqPhase = 'angel_waves';
+    hhAngelWaveStage = 0;
+    hhAngelStageSpawnCount = 0;
+    hhAngelWaveTimer = HH_ANGEL_WAVE_SCHEDULE[0].interval;
 }
 
-// ── Sword hit against HH white SM ────────────────────────────────────────────
-function tryHitHHWhiteSM(aimDir, punchRange) {
-    if (!hhWhiteSMData || !hhWhiteSMData.mesh) return false;
-    if (!hhSMApproaching) return false;             // can't hit during frozen phase
-    if (!hasTalisman) return false;                 // talisman required — without it hits do nothing
-    if (hhWhiteSMData.touchTriggered) return false; // reset already triggered; ignore input
+function _updateHHAngelWaves(delta) {
+    if (hhAngelWaveStage >= HH_ANGEL_WAVE_SCHEDULE.length) {
+        if (hhAngels.length === 0) _doFlashbang();
+        return;
+    }
 
-    // Vector from camera to SM center (offset up to torso/head height)
-    const smPos = hhWhiteSMData.mesh.position.clone();
-    smPos.y += 4;
-    const toSM = new THREE.Vector3().subVectors(smPos, camera.position);
-    const dist = toSM.length();
-    if (dist > punchRange) return false;
+    const stage = HH_ANGEL_WAVE_SCHEDULE[hhAngelWaveStage];
+    hhAngelWaveTimer -= delta;
+    if (hhAngelWaveTimer > 0) return;
 
-    // Horizontal angle check only — flatten both vectors to XZ so that looking up at the
-    // SM's head or down at its feet doesn't widen the effective angle and cause a miss.
-    const cosThreshold = Math.cos(HH_SWORD_HIT_MAX_ANGLE * Math.PI / 180);
-    const toSMFlat = new THREE.Vector3(toSM.x, 0, toSM.z).normalize();
-    const aimFlat  = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
-    if (toSMFlat.dot(aimFlat) < cosThreshold) return false;
+    _spawnHHAngel({
+        freezeLockDist: HH_ANGEL_FREEZE_LOCK_DIST,
+        speed: HH_ANGEL_SPEED,
+        oscillate: stage.oscillate,
+    });
 
-    // Hit!
-    hhSMApproachCount++;
-    _triggerPlayerTalismanPulse();
-
-    if (hhSMApproachCount >= HH_SM_MAX_APPROACHES) {
-        // Final hit: sequence complete
-        scene.remove(hhWhiteSMData.mesh);
-        hhWhiteSMData = null;
-        _doFlashbang();
+    hhAngelStageSpawnCount++;
+    if (hhAngelStageSpawnCount >= stage.count) {
+        hhAngelWaveStage++;
+        hhAngelStageSpawnCount = 0;
+        if (hhAngelWaveStage < HH_ANGEL_WAVE_SCHEDULE.length) {
+            hhAngelWaveTimer = HH_ANGEL_WAVE_SCHEDULE[hhAngelWaveStage].interval;
+        }
     } else {
-        // Respawn at random corner
-        _spawnHHWhiteSM(false);
+        hhAngelWaveTimer = stage.interval;
     }
+}
+
+function _removeHHAngel(angel, animateDeath) {
+    const idx = hhAngels.indexOf(angel);
+    const wasTracked = idx !== -1;
+    if (wasTracked) hhAngels.splice(idx, 1);
+
+    if (animateDeath && wasTracked && !angel.killRecorded) {
+        angel.killRecorded = true;
+        recordKill('hh_angel');
+        updateStats();
+    }
+
+    if (animateDeath && typeof _fadeCemZombieOut === 'function') {
+        _fadeCemZombieOut(angel.mesh);
+    } else if (angel.mesh) {
+        scene.remove(angel.mesh);
+    }
+}
+
+// ── Sword hit against HH weeping angels ──────────────────────────────────────
+function tryHitHHWhiteSM(aimDir, punchRange) {
+    if (hhAngels.length === 0) return false;
+    if (!hasTalisman) return false; // talisman required — without it hits do nothing
+
+    const cosThreshold = Math.cos(HH_SWORD_HIT_MAX_ANGLE * Math.PI / 180);
+    const aimFlat  = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
+
+    const candidates = [];
+    for (const angel of hhAngels) {
+        if (!angel.mesh || angel.touchTriggered) continue;
+        if (angel.specialFirst && !hhFirstAngelApproaching) continue; // can't hit during frozen phase
+
+        const hitPos = angel.mesh.position.clone();
+        hitPos.y += HH_ANGEL_HIT_CENTER_Y;
+        const toAngel = new THREE.Vector3().subVectors(hitPos, camera.position);
+        const dist = toAngel.length();
+        if (dist > punchRange) continue;
+
+        const toAngelFlat = new THREE.Vector3(toAngel.x, 0, toAngel.z).normalize();
+        if (toAngelFlat.dot(aimFlat) < cosThreshold) continue;
+        candidates.push({ angel, dist });
+    }
+
+    if (candidates.length === 0) return false;
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    const hitAngel = candidates[0].angel;
+    _triggerPlayerTalismanPulse();
+    _removeHHAngel(hitAngel, true);
+
+    if (hitAngel.specialFirst) {
+        _startHHAngelWaves();
+    }
+
     return true;
 }
 
@@ -2407,8 +2560,20 @@ function updatePlayerTalismanPulse(delta) {
 
 // ── Flashbang effect ──────────────────────────────────────────────────────────
 function _doFlashbang() {
+    if (hhSeqPhase === 'flashbang' || hhSeqPhase === 'complete') return;
+    hhSeqPhase = 'flashbang';
+    _clearHHAngels();
+
     const fb = document.getElementById('hh-flashbang');
-    if (!fb) return;
+    if (!fb) {
+        restoreHHStairs();
+        restoreHHEntrance();
+        restoreHHHallDoor();
+        _upgradeSwordBlade();
+        _restoreHHSequenceTime();
+        hhSeqPhase = 'complete';
+        return;
+    }
     fb.style.opacity = '1';
     fb.style.transition = 'opacity 0s';
 
@@ -2418,6 +2583,7 @@ function _doFlashbang() {
         restoreHHEntrance();
         restoreHHHallDoor();
         _upgradeSwordBlade();
+        _restoreHHSequenceTime();
         hhSeqPhase = 'complete';
         fb.style.transition = 'opacity 3s';
         fb.style.opacity = '0';
@@ -2506,6 +2672,7 @@ function updateSwordSwipe(delta) {
 function _despawnHauntedHouse() {
     if (!hauntedHouseData) return;
     const hd = hauntedHouseData;
+    _clearHHAngels();
 
     // Get skeleton world position before removing group
     const skullWorld = new THREE.Vector3();

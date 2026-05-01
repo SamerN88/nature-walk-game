@@ -624,9 +624,13 @@ function tryHitAltarCorpseWithLightning(aimDir, range) {
 }
 
 function _triggerAltarCorpseStrike() {
+    if (!altarData || altarCorpseStruck || altarState !== 'torches_lit') return;
+
     altarCorpseStruck = true;
     altarState = 'struck';
     _altarPulseTimer = 0;
+    recordKill('altar_corpse');
+    updateStats();
 
     // Turn the pre-created eyes white and ensure they're visible.
     if (altarData.eyeL) { altarData.eyeL.material.color.setHex(0xFFFFFF); altarData.eyeL.visible = true; }

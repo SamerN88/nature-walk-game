@@ -357,6 +357,9 @@ function _banishSpecialPortalHangingBody() {
     const data = specialPortalFrameData;
     if (!data || !data.body || data.fading) return;
 
+    recordKill('portal_noose');
+    updateStats();
+
     data.bodyGone = true;
     data.fading = true;
     data.fadeElapsed = 0;
