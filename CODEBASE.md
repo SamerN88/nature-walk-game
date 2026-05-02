@@ -33,7 +33,7 @@ nature-walk-game/
 │   ├── hud.js          HUD/UI update functions, menu panels, god-mode controls
 │   ├── input.js        Keyboard and mouse event handlers
 │   ├── inventory.js    Notes and inventory overlay system (press I), paper/image rendering
-│   ├── hauntedhouse.js Haunted house and cemetery: buildings, dark forests, shadow man combat
+│   ├── hauntedhouse.js Haunted house and cemetery: buildings, dark forests, HH angel sequence
 │   ├── creatures.js    Night creature system: zombie, crawler, weeping angel, cemetery zombies
 │   ├── noose.js        Special noose portal landmark, rope/body construction, debug spawn
 │   ├── altar.js        Sacrificial altar: ritual mechanics, pillar symbols, corpse ascent, holy gem
@@ -57,7 +57,7 @@ All HTML markup and CSS. Contains:
 
 ### `js/constants.js`
 All `const` declarations that never change at runtime:
-- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_SWORD_THUNDER`, etc.
+- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_HH_INVINCIBLE`, `DEBUG_SWORD_THUNDER`, etc.
 - `WALK_SPEED = 20`, `RUN_SPEED = WALK_SPEED * 2` — base movement speeds (moved here from `main.js` so `creatures.js` can reference them at parse time)
 - `DAY_DURATION`, `NIGHT_DURATION`, `FULL_CYCLE`
 - `FALL_TO_CUTSCENE` — controls cutscene transition behavior
@@ -292,7 +292,7 @@ All player weapons and interactive items:
 - `updateKeyHUD()` — shows/hides golden key icon in HUD
 
 **Punch:**
-- `punch()` — melee attack; hits NPCs and demons within range; also handles AK chest interaction, shrine activation
+- `punch()` — melee attack; hits NPCs, demons, creatures, and special melee targets within range; also handles AK chest interaction, shrine activation, pickups, and door/gate toggles
 - `flashEquipHint(label)` — shows "EQUIPPED: ..." flash message at bottom of screen
 
 **Chest:**
@@ -422,8 +422,14 @@ The haunted house and cemetery, plus their surrounding dark forests:
 - Randomly placed in a ring region (radius 1650–2200) at least 800 units from the volcano
 - Two-floor Victorian-style house (48×50 footprint, raised 5 units on a foundation, gable roof)
 - Full collision geometry: walls, stairs, floor-2, doorways, interior partition with L-shaped corridor
+- Ground-floor hall door uses a smaller regular-house-height panel plus matching lintel/collider above the opening
 - Skeletons placed inside as props (using `createSkeletonMesh`)
-- Shadow man combat system inside the house: SM spawns in corners, charges the player, sword hit detection, health tracking, multi-approach cycle (`HH_SM_*` constants)
+- `HH_REMOVE_STAIRS_DURING_SEQUENCE` gates whether the stairs disappear during the haunted-house sequence; currently disabled for easy re-enable
+- Haunted-house sequence uses weeping angels instead of the old shadow-man encounter: first angel spawns frozen in a corner, then waves spawn from random corners with a tighter house-scale freeze distance and late-stage oscillation
+- First HH angel has special combat state: multi-hit kill when the player has the talisman, and a no-talisman anti-stall enrage after repeated futile sword hits
+- HH angels use the same creature stop/contact distances as normal creatures, die with the cemetery-zombie-style white fade, and honor `DEBUG_HH_INVINCIBLE`
+- If the player enters the HH with talisman and torch already collected, a black eyeless crawler waits at the end of the ground-floor hallway and releases only when the player is inside the hallway and close enough
+- During the HH sequence, open-world night creatures are despawned and blocked from spawning so they cannot attack through the house walls
 
 **Cemetery** (`createCemetery()`):
 - Randomly placed at least 500 units from the haunted house
@@ -436,9 +442,11 @@ The haunted house and cemetery, plus their surrounding dark forests:
 - `createHHForest(hhX, hhZ)` — 270 dark trees in 4 density rings (inner-60 to outer-285) + 200 rocks around the haunted house
 - `createCemeteryForest(cemX, cemZ)` — 80 dark trees in a ring (inner-60 to outer-165) around the cemetery
 
-**Key constants** (at top of file): `HH_W/D`, `HH_F1_H/F2_H`, `HH_ELEV`, `HH_SM_*`, `CEM_*`
+**Key constants** (at top of file): `HH_W/D`, `HH_F1_H/F2_H`, `HH_ELEV`, `HH_HALL_DOOR_*`, `HH_ANGEL_*`, `HH_FIRST_ANGEL_*`, `HH_REMOVE_STAIRS_DURING_SEQUENCE`, `CEM_*`
 
 **To change the haunted house layout:** edit the wall/floor box builders in `createHauntedHouse`.
+**To change the HH angel sequence:** edit `HH_ANGEL_WAVE_SCHEDULE`, `_spawnHHAngel`, `_updateHHAngels`, and `tryHitHHWhiteSM`.
+**To change the special HH hallway crawler:** edit `_spawnHHHallCrawler`, `_updateHHHallCrawlerEncounter`, and the crawler constants near the top of the file.
 **To change the dark forest density:** edit `TOTAL_TREES` / ring counts in `createHHForest` or `createCemeteryForest`.
 
 ---
@@ -512,17 +520,20 @@ Night creature system — three enemy types that spawn during the night outside 
 - `angel` (weeping angel) — only moves when fully off-screen; freezes when in player's FOV; stone-grey
 
 **Key constants** (at top of file):
-- `CREATURE_SPEED = 0.9 * WALK_SPEED`, `CEMETERY_ZOMBIE_SPEED = 0.3 * WALK_SPEED`
+- `CREATURE_SPEED = 1.15 * WALK_SPEED`, `CEMETERY_ZOMBIE_SPEED = 0.3 * WALK_SPEED`
+- `CREATURE_STOP_DIST` / `CRAWLER_STOP_DIST` — how close creatures move before stopping near the player
+- `CREATURE_HIT_DIST` / `CRAWLER_HIT_DIST` — contact damage distance; crawlers use larger values because of their long horizontal body
 - `CREATURE_MAX_HP = 5`, `CREATURE_HIT_DAMAGE`, `CREATURE_SPAWN_INTERVAL = 10` (seconds)
 - `SPOTLIGHT` — if true, attaches a dim white PointLight above each creature
 
 **Spawn logic** (in `updateCreatures`): every 10s during night, not during demon apocalypse/hell-run rounds:
-- Regular night spawns unlock only after the cemetery zombie sequence is cleared (`_ncSpawnUnlocked`); `DEBUG_CREATURES` bypasses this
+- Regular night spawns unlock after the cemetery zombie sequence is cleared (`_ncSpawnUnlocked`), or if the talisman is picked up and the player moves more than `CEMETERY_ESCAPE_CREATURE_UNLOCK_DIST` units from the cemetery center; `DEBUG_CREATURES` bypasses this
+- Active haunted-house sequence phases despawn and block open-world night creatures, while preserving cemetery zombies and the special HH crawler
 - Outer band (beyond mountains): 60% chance, 2 creatures
 - Torch equipped: 40% chance, 1–2 creatures
 - Default: 20% chance, 1 creature
 - First two open-world spawns are forced crawlers; later types are random from `['zombie', 'crawler', 'angel']`
-- `DEBUG_CREATURES_2` spawns 10 creatures 500 units from the player at startup and prevents daytime despawn
+- `DEBUG_CREATURES_2` spawns 10 creatures 150 units from the player at startup and prevents daytime despawn
 
 **Cemetery zombie sequence** (separate from regular spawns):
 - Triggered by `startCemeteryZombieSequence()` 30s after talisman pickup
@@ -539,12 +550,13 @@ Night creature system — three enemy types that spawn during the night outside 
 - `startCemeteryZombieSequence()` — begins the 30s countdown to cemetery zombie emergence
 - `killAllNightCreatures()` — kills all current night creatures when demon apocalypse or hell-run rounds begin
 
-**Player damage/death:** creature hits deal `CREATURE_HIT_DAMAGE`; if player health reaches 0, `hardReset()` reloads the page.
+**Player damage/death:** creature hits deal `CREATURE_HIT_DAMAGE`; if player health reaches 0, `hardReset()` reloads the page. `DEBUG_HH_INVINCIBLE` suppresses damage from the special HH crawler, while HH angels handle the same flag in `hauntedhouse.js`.
 
-**Enclosure collision:** regular creatures use region-based rules for houses, caves, and the cemetery fence/gate, with boundary sliding. They can enter only through legal openings (open house doors, cave open side, open cemetery gate). Cemetery zombies are exempt from the cemetery-region rule and are clamped to the cemetery sequence area.
+**Collision and terrain following:** regular creatures use region-based rules for houses, caves, and the cemetery fence/gate, with boundary sliding. They can enter only through legal openings (open house doors, cave open side, open cemetery gate). Cemetery zombies are exempt from the cemetery-region rule and are clamped to the cemetery sequence area. All creatures sync their Y position to `getMoverSurfaceHeight`, so they climb primitive structures/mountains the same way demons and NPC-like movers do.
 
 **To change spawn rate/chance:** edit the spawn timer block in `updateCreatures`.
 **To change creature speed:** edit `CREATURE_SPEED` / `CEMETERY_ZOMBIE_SPEED` constants.
+**To change creature stop/contact distances:** edit `CREATURE_STOP_DIST`, `CRAWLER_STOP_DIST`, `CREATURE_HIT_DIST`, and `CRAWLER_HIT_DIST`.
 **To add a new creature type:** add a `_buildFooMesh()`, handle in `_spawnNightCreature`, add to `types[]` array.
 
 ---
@@ -636,9 +648,10 @@ main.js:update(delta) calls per-frame:
     └─ updateCreatures()     [creatures.js]
 
 Progression flow: There are multiple ways the game could play out, but here is one standard order:
-    Explore world (night creatures spawn each night)  [creatures.js]
+    Explore world during the initial peace period  [shadowman.js, creatures.js]
     → find cemetery, collect talisman → cemetery zombies emerge  [hauntedhouse.js, creatures.js]
-    → find haunted house, get sword, survive haunted house sequence [hauntedhouse.js]
+    → kill cemetery zombies, or leave the cemetery with talisman to unlock regular night creatures [creatures.js]
+    → find haunted house, get sword, survive haunted-house angel sequence [hauntedhouse.js]
     → find sacrificial altar → light 3 torches + strike corpse with sword lightning → holy gem  [altar.js]
     → collect dragonGem at volcano  [gems.js → dragon.js]
     → dragon descends, bond with dragon via 150 beam kills (unlocks tether)  [dragon.js]
@@ -669,7 +682,12 @@ Progression flow: There are multiple ways the game could play out, but here is o
 | Round scaling | `hellrun.js` | `getRoundDemonCount` |
 | Creature spawn rate/chance | `creatures.js` | spawn timer block in `updateCreatures` |
 | Creature speed | `creatures.js` | `CREATURE_SPEED`, `CEMETERY_ZOMBIE_SPEED` |
+| Creature stop/contact distance | `creatures.js` | `CREATURE_STOP_DIST`, `CRAWLER_STOP_DIST`, `CREATURE_HIT_DIST`, `CRAWLER_HIT_DIST` |
 | Creature HP / hit damage | `creatures.js` | `CREATURE_MAX_HP`, `CREATURE_HIT_DAMAGE` |
+| HH angel sequence | `hauntedhouse.js` | `HH_ANGEL_WAVE_SCHEDULE`, `_updateHHAngels`, `tryHitHHWhiteSM` |
+| HH hallway crawler | `hauntedhouse.js` | `_spawnHHHallCrawler`, `_updateHHHallCrawlerEncounter` |
+| HH stairs disappearance | `hauntedhouse.js` | `HH_REMOVE_STAIRS_DURING_SEQUENCE` |
+| HH interior hall door size/opening | `hauntedhouse.js` | `HH_HALL_DOOR_*`, `createHauntedHouse()` |
 | Holy gem effect | `altar.js` | `collectHolyGem()` |
 | New structure | `structures.js` | `createEnterableStructures` or `createClimbableStructures` |
 | New NPC type | `npcs.js` | add `createFoo()`, call in `createNPCs` |
