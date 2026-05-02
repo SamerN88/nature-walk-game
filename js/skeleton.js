@@ -36,7 +36,7 @@ function createSkullMesh(scale = 1) {
     // Teeth (4 small boxes)
     for (let t = 0; t < 4; t++) {
         const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.1 * scale, 0.14 * scale, 0.08 * scale), boneMat);
-        tooth.position.set((-1.5 + t) * 0.16 * scale, -0.1 * scale, 0.5 * scale);
+        tooth.position.set((-1.5 + t) * 0.16 * scale, -0.1 * scale, 0.4 * scale);
         grp.add(tooth);
     }
 

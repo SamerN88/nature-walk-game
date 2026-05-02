@@ -21,6 +21,7 @@ const DEBUG_VOLCANO_HINT = false;  // spawns a hovering green beacon above the c
 const DEBUG_FARMER = false;        // spawns the farmer 5 units in front of the player (which drops key-hint note)
 const DEBUG_CUTSCENE = false;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
 const DEBUG_HAUNTED_HOUSE = false; // spawn player 75 units from HH entrance at start
+const DEBUG_HH_INVINCIBLE = false; // prevents HH weeping angels and special HH crawler from damaging the player
 const DEBUG_DESPAWN_HH = false;   // skip straight to post-despawn state: skeleton + boulder on world floor, HH gone
 const DEBUG_CEMETERY = false;      // spawn player 75 units from cemetery entrance at start
 const DEBUG_NOOSE = false;         // spawn player 20 units from the special noose portal
@@ -33,7 +34,7 @@ const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge 
 const DEBUG_ALTAR = false; // spawn player 40 units from the sacrificial altar at start
 const DEBUG_ALTAR_PRELOCATION = false; // spawn player near the flattened altar site before the altar is built
 const DEBUG_CREATURES = false; // makes creatures start spawning right away, and deal zero damage
-const DEBUG_CREATURES_2 = false; // spawn 10 creatures 500 units from player at start; they do not despawn during daytime
+const DEBUG_CREATURES_2 = false; // spawn 10 creatures 150 units from player at start; they do not despawn during daytime
 const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a row at start; they stay frozen (no movement/attack/night-end despawn) but are killable
 
 

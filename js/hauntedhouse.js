@@ -17,8 +17,10 @@ const HH_ENT_H = 5.5;          // entrance opening height (~2.75× player height
 const HH_HALL_X = 17;          // east corridor at x=17 (HH_HALF_W − 7, keeps corridor width = 7)
 // L-shaped partition: horizontal arm at z=HH_HALL_Z, vertical arm at x=HH_HALL_X
 const HH_HALL_Z = -19;         // partition z — keeps north corridor width = 6 (HH_HALF_D − |HH_HALL_Z|)
-const HH_HALL_DOOR_W = 4.5;    // width of the doorway opening in the horizontal partition
+const HH_HALL_DOOR_W = 3.5;    // width of the doorway opening in the horizontal partition
+const HH_HALL_DOOR_H = 5.9;    // matches the regular small-house door height
 const HH_HALL_DOOR_CX = -10;   // x-center of the doorway (≈ 1/3 from west wall, forces right-turn)
+const HH_HALL_CRAWLER_TRIGGER_DIST = 15;
 const HH_STAIR_S_Z = 8;        // south boundary of staircase zone (4 × 2)
 // Staircase: x=[17..24], z=[HH_HALL_Z..HH_STAIR_S_Z], ascending southward
 const HH_STAIR_STEPS = 9;
@@ -29,11 +31,15 @@ const HH_N_ENT_STEPS = 5;     // entry stairs outside south face
 const HH_ENT_STEP_H = HH_ELEV / HH_N_ENT_STEPS;   // 1.0
 const HH_ENT_STEP_D = 1.6;    // tread depth per step
 const HH_ENT_STAIR_W = 7.0;   // width of entry stair (wider than entrance)
+const HH_REMOVE_STAIRS_DURING_SEQUENCE = false;
 
 // HH angel combat constants
-const HH_FIRST_ANGEL_SPEED = 10;
 const HH_ANGEL_SPEED = 0.9 * WALK_SPEED;
 const HH_ANGEL_FREEZE_LOCK_DIST = 10;
+const HH_FIRST_ANGEL_FREEZE_LOCK_DIST = HH_ANGEL_FREEZE_LOCK_DIST;//5;
+const HH_FIRST_ANGEL_KILL_HITS = 3;
+const HH_FIRST_ANGEL_NO_TALISMAN_ENRAGE_HITS = 5;
+const HH_FIRST_ANGEL_ENRAGED_SPEED = 1.1 * RUN_SPEED;
 const HH_ANGEL_HIT_CENTER_Y = 1.8;
 const HH_ANGEL_CONTACT_DIST = 2.0;
 const HH_ANGEL_WAVE_SCHEDULE = [
@@ -243,6 +249,14 @@ function createHauntedHouse() {
         halfW: hPartRW / 2, halfD: HH_WALL_T / 2, height: stairwellWallTopY, extra: { isEnclosed: true }
     }));
 
+    // Lintel above the hall doorway so the opening matches the smaller door.
+    const hDoorLintelH = HH_F1_H - HH_HALL_DOOR_H;
+    B(HH_HALL_DOOR_W, hDoorLintelH, HH_WALL_T, HH_HALL_DOOR_CX, HH_HALL_DOOR_H, HH_HALL_Z - HH_WALL_T / 2, wallMat);
+    collMarkers.push(createColliderMarker(hhGrp, 'solidWall', {
+        localX: HH_HALL_DOOR_CX, localY: HH_HALL_DOOR_H + hDoorLintelH / 2, localZ: HH_HALL_Z - HH_WALL_T / 2,
+        halfW: HH_HALL_DOOR_W / 2, halfD: HH_WALL_T / 2, height: hDoorLintelH, extra: { isEnclosed: true }
+    }));
+
     // NW fill: solid block filling the inaccessible northwest corner
     B(nwFillW, HH_F1_H, nwFillD, nwFillCX, 0, nwFillCZ, wallMat);
     // Close-off solidWall on the east face of the NW fill — blocks left turn inside the corridor
@@ -261,24 +275,24 @@ function createHauntedHouse() {
     hhHallDoorPivot.position.set(hallDoorL, 0, HH_HALL_Z - HH_WALL_T / 2);
     const doorWoodMat = new THREE.MeshLambertMaterial({ color: 0x1e1208 });
     const hallDoorPanel = new THREE.Mesh(
-        new THREE.BoxGeometry(HH_HALL_DOOR_W, HH_F1_H, 0.3), doorWoodMat
+        new THREE.BoxGeometry(HH_HALL_DOOR_W, HH_HALL_DOOR_H, 0.3), doorWoodMat
     );
-    hallDoorPanel.position.set(HH_HALL_DOOR_W / 2, HH_F1_H / 2, 0);
+    hallDoorPanel.position.set(HH_HALL_DOOR_W / 2, HH_HALL_DOOR_H / 2, 0);
     hallDoorPanel.castShadow = true;
     hallDoorPanel.receiveShadow = true;
     hhHallDoorPivot.add(hallDoorPanel);
     // Raised panels for visual depth
     const dpMat = new THREE.MeshLambertMaterial({ color: 0x130c04 });
-    const dpUpper = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_F1_H * 0.40, 0.08), dpMat);
-    dpUpper.position.set(HH_HALL_DOOR_W / 2, HH_F1_H * 0.68, 0.14);
+    const dpUpper = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_HALL_DOOR_H * 0.40, 0.08), dpMat);
+    dpUpper.position.set(HH_HALL_DOOR_W / 2, HH_HALL_DOOR_H * 0.68, 0.14);
     hhHallDoorPivot.add(dpUpper);
-    const dpLower = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_F1_H * 0.32, 0.08), dpMat);
-    dpLower.position.set(HH_HALL_DOOR_W / 2, HH_F1_H * 0.22, 0.14);
+    const dpLower = new THREE.Mesh(new THREE.BoxGeometry(HH_HALL_DOOR_W - 0.8, HH_HALL_DOOR_H * 0.32, 0.08), dpMat);
+    dpLower.position.set(HH_HALL_DOOR_W / 2, HH_HALL_DOOR_H * 0.22, 0.14);
     hhHallDoorPivot.add(dpLower);
     // Door hardware (iron ring handle)
     const handleMat = new THREE.MeshLambertMaterial({ color: 0x666666 });
     const handleRing = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.05, 6, 10), handleMat);
-    handleRing.position.set(HH_HALL_DOOR_W - 0.55, HH_F1_H * 0.45, 0.22);
+    handleRing.position.set(HH_HALL_DOOR_W - 0.55, HH_HALL_DOOR_H * 0.45, 0.22);
     handleRing.rotation.x = Math.PI / 2;
     handleRing.castShadow = true;
     handleRing.receiveShadow = true;
@@ -790,7 +804,7 @@ function createHauntedHouse() {
     const hallDoorBlockWall = addSolidWallRect(
         hallDoorWorld.x, hallDoorWorld.z,
         HH_HALL_DOOR_W / 2, HH_WALL_T / 2,
-        baseY, baseY + HH_F1_H,
+        baseY, baseY + HH_HALL_DOOR_H,
         rot, { isEnclosed: true, active: false }
     );
 
@@ -818,6 +832,9 @@ function createHauntedHouse() {
         worldSkeleton,
         writingMesh: null,          // set async in writingImg.onload
         insigniaDrawingMesh: null,  // set async in drawingImg.onload
+        hhHallCrawlerEligible: false,
+        hhHallCrawlerEncounterStarted: false,
+        hhHallCrawler: null,
         allColliderRefs: hhColliderRefs,
     };
 
@@ -1128,6 +1145,125 @@ function updateHHHallDoor(delta) {
     if (hd.hhHallDoorAngle === hd.hhHallDoorTargetAngle) return;
     hd.hhHallDoorAngle = moveScalarToward(hd.hhHallDoorAngle, hd.hhHallDoorTargetAngle, delta * 3.5);
     hd.hhHallDoorPivot.rotation.y = hd.hhHallDoorAngle;
+}
+
+function _isInsideHHFloor1(localPos, localY) {
+    return (
+        Math.abs(localPos.x) < HH_HALF_W + 1 &&
+        Math.abs(localPos.z) < HH_HALF_D + 1 &&
+        localY > -0.5 &&
+        localY < HH_F1_H - 1
+    );
+}
+
+function _isInsideHHGroundHallway(localPos, localY) {
+    const hallDoorL = HH_HALL_DOOR_CX - HH_HALL_DOOR_W / 2;
+    return (
+        localY > -0.5 &&
+        localY < HH_F1_H - 1 &&
+        localPos.x > hallDoorL + 0.35 &&
+        localPos.x < HH_HALL_X - 0.75 &&
+        localPos.z > -HH_HALF_D + 0.75 &&
+        localPos.z < HH_HALL_Z - 0.35
+    );
+}
+
+function _makeHHHallCrawlerBlack(mesh) {
+    const eyeMeshes = [];
+    mesh.traverse(obj => {
+        if (!obj.isMesh || !obj.material) return;
+        obj.castShadow = true;
+        if (obj.material.color && obj.material.color.getHex() === 0xcc3300) {
+            eyeMeshes.push(obj);
+            return;
+        }
+        if (obj.material.color) obj.material.color.setHex(0x000000);
+        if (obj.material.emissive) obj.material.emissive.setHex(0x000000);
+    });
+    for (const eye of eyeMeshes) {
+        if (eye.parent) eye.parent.remove(eye);
+    }
+}
+
+function _spawnHHHallCrawler() {
+    const hd = hauntedHouseData;
+    if (!hd || hd.hhHallCrawlerEncounterStarted || typeof _buildCrawlerMesh !== 'function') return null;
+
+    const crawlerLocalX = HH_HALL_X - 2.2;
+    const crawlerLocalZ = (-HH_HALF_D + HH_HALL_Z) / 2;
+    const worldPos = localToWorldXZ(hd.worldX, hd.worldZ, crawlerLocalX, crawlerLocalZ, hd.rotation);
+    const mesh = _buildCrawlerMesh();
+    _makeHHHallCrawlerBlack(mesh);
+    mesh.userData.ignoreCameraOcclusion = true;
+    mesh.userData.hhHallCrawler = true;
+    mesh.position.set(worldPos.x, hd.worldGroundY, worldPos.z);
+    mesh.rotation.y = hd.rotation - Math.PI / 2;
+    scene.add(mesh);
+
+    hd.hhHallCrawlerEncounterStarted = true;
+    hd.hhHallCrawler = {
+        mesh,
+        released: false,
+    };
+    return hd.hhHallCrawler;
+}
+
+function _releaseHHHallCrawler(crawler) {
+    if (!crawler || crawler.released || !crawler.mesh ||
+        typeof nightCreatures === 'undefined' || !Array.isArray(nightCreatures)) return;
+    crawler.released = true;
+    nightCreatures.push({
+        type: 'crawler',
+        mesh: crawler.mesh,
+        hp: typeof CREATURE_MAX_HP === 'number' ? CREATURE_MAX_HP : 5,
+        hitCooldown: 0,
+        gunHitCenterY: 0.30,
+        gunHitRadius: 0.75,
+        isCemZombie: false,
+        isHHSpecialCrawler: true,
+        speed: 0.75 * (typeof CREATURE_SPEED === 'number' ? CREATURE_SPEED : WALK_SPEED * 0.9),
+        emergeTimer: 0,
+        emergeStartY: crawler.mesh.position.y,
+        emergeTargetY: crawler.mesh.position.y,
+    });
+}
+
+function _updateHHHallCrawlerEncounter(localPos, localY) {
+    const hd = hauntedHouseData;
+    if (!hd) return;
+
+    if (!hd.hhHallCrawlerEligible && hasTalisman && hasTorch && _isInsideHHFloor1(localPos, localY)) {
+        hd.hhHallCrawlerEligible = true;
+    }
+
+    const inHallway = _isInsideHHGroundHallway(localPos, localY);
+    if (hd.hhHallCrawlerEligible && !hd.hhHallCrawlerEncounterStarted && inHallway) {
+        _spawnHHHallCrawler();
+    }
+
+    const crawler = hd.hhHallCrawler;
+    if (!crawler || crawler.released || !crawler.mesh || !inHallway) return;
+
+    const dist = Math.hypot(
+        player.position.x - crawler.mesh.position.x,
+        player.position.z - crawler.mesh.position.z
+    );
+    if (dist <= HH_HALL_CRAWLER_TRIGGER_DIST) {
+        _releaseHHHallCrawler(crawler);
+    }
+}
+
+function _clearHHHallCrawler() {
+    if (!hauntedHouseData || !hauntedHouseData.hhHallCrawler) return;
+    const crawler = hauntedHouseData.hhHallCrawler;
+    if (crawler.mesh) {
+        const idx = (typeof nightCreatures !== 'undefined' && Array.isArray(nightCreatures))
+            ? nightCreatures.findIndex(c => c.mesh === crawler.mesh)
+            : -1;
+        if (idx !== -1) nightCreatures.splice(idx, 1);
+        scene.remove(crawler.mesh);
+    }
+    hauntedHouseData.hhHallCrawler = null;
 }
 
 // ── createCemetery ───────────────────────────────────────────────────────────
@@ -1959,6 +2095,7 @@ function updateHauntedHouseSequence(delta) {
     const py = player.position.y;
     const localPos = worldToLocalXZ(px, pz, hd.worldX, hd.worldZ, hd.rotation);
     const localY = py - hd.worldGroundY;
+    _updateHHHallCrawlerEncounter(localPos, localY);
 
     // ── Phase: none — check if player enters with torch ──────────────────────
     if (hhSeqPhase === 'none') {
@@ -1984,7 +2121,7 @@ function updateHauntedHouseSequence(delta) {
         const inNorthCorridor = (localPos.z < HH_HALL_Z && localY < HH_F1_H - 1);
         const committedToHallway = (localPos.x < HH_HALL_X - 9);
         if (inNorthCorridor && committedToHallway) {
-            removeHHStairs();
+            if (HH_REMOVE_STAIRS_DURING_SEQUENCE) removeHHStairs();
             hhSeqPhase = 'hallway_exit';
         }
         return;
@@ -2045,7 +2182,7 @@ function updateHauntedHouseSequence(delta) {
                 specialFirst: true,
                 replaceExisting: true,
                 useFarthest: true,
-                speed: HH_FIRST_ANGEL_SPEED,
+                freezeLockDist: HH_FIRST_ANGEL_FREEZE_LOCK_DIST,
             });
             if (hasTalisman) _triggerPlayerTalismanPulse();
         }
@@ -2141,6 +2278,9 @@ function _spawnHHAngel(options = {}) {
         freezeLockDist: options.freezeLockDist ?? HH_ANGEL_FREEZE_LOCK_DIST,
         speed: options.speed ?? HH_ANGEL_SPEED,
         oscillate: !!options.oscillate,
+        ignoreLookFreeze: !!options.ignoreLookFreeze,
+        hitsTaken: 0,
+        noTalismanHits: 0,
         hitCooldown: 0,
         touchTriggered: false,
         partMeshes,
@@ -2152,7 +2292,7 @@ function _spawnHHAngel(options = {}) {
 }
 
 function _isHHAngelFrozenByLook(angel, dist) {
-    if (angel.specialFirst) return false;
+    if (angel.ignoreLookFreeze) return false;
     if (dist <= angel.freezeLockDist) return false;
 
     const camDir = new THREE.Vector3();
@@ -2173,13 +2313,7 @@ function _isHHAngelFrozenByLook(angel, dist) {
 }
 
 function _damagePlayerFromHHAngel(angel) {
-    if (angel.specialFirst) {
-        if (!angel.touchTriggered) {
-            angel.touchTriggered = true;
-            setTimeout(() => hardReset(), 400);
-        }
-        return;
-    }
+    if (DEBUG_HH_INVINCIBLE) return;
 
     if (angel.hitCooldown > 0 || playerDead) return;
     angel.hitCooldown = CREATURE_HIT_COOLDOWN;
@@ -2188,6 +2322,14 @@ function _damagePlayerFromHHAngel(angel) {
     void _damageFlashEl.offsetWidth;
     _damageFlashEl.classList.add('active');
     if (playerHealth <= 0) hardReset();
+}
+
+function _getHHAngelStopDist() {
+    return typeof CREATURE_STOP_DIST === 'number' ? CREATURE_STOP_DIST : 1.5;
+}
+
+function _getHHAngelContactDist() {
+    return typeof CREATURE_HIT_DIST === 'number' ? CREATURE_HIT_DIST : HH_ANGEL_CONTACT_DIST;
 }
 
 // ── Update HH weeping angels each frame ──────────────────────────────────────
@@ -2211,7 +2353,7 @@ function _updateHHAngels(delta) {
         if (angel.specialFirst && !hhFirstAngelApproaching) continue;
         if (_isHHAngelFrozenByLook(angel, dist)) continue;
 
-        if (dist > 0.5) {
+        if (dist > _getHHAngelStopDist()) {
             if (typeof _moveCreatureWithWallCollisions === 'function') {
                 _moveCreatureWithWallCollisions(angel, dx, dz, dist, delta);
             } else {
@@ -2226,7 +2368,7 @@ function _updateHHAngels(delta) {
         if (angel.hitCooldown > 0) angel.hitCooldown -= delta;
         const dy = player.position.y - mesh.position.y;
         const dist3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist3d < HH_ANGEL_CONTACT_DIST) _damagePlayerFromHHAngel(angel);
+        if (dist3d < _getHHAngelContactDist()) _damagePlayerFromHHAngel(angel);
     }
 }
 
@@ -2286,7 +2428,6 @@ function _removeHHAngel(angel, animateDeath) {
 // ── Sword hit against HH weeping angels ──────────────────────────────────────
 function tryHitHHWhiteSM(aimDir, punchRange) {
     if (hhAngels.length === 0) return false;
-    if (!hasTalisman) return false; // talisman required — without it hits do nothing
 
     const cosThreshold = Math.cos(HH_SWORD_HIT_MAX_ANGLE * Math.PI / 180);
     const aimFlat  = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
@@ -2311,7 +2452,26 @@ function tryHitHHWhiteSM(aimDir, punchRange) {
 
     candidates.sort((a, b) => a.dist - b.dist);
     const hitAngel = candidates[0].angel;
+
+    if (!hasTalisman) {
+        if (hitAngel.specialFirst) {
+            hitAngel.noTalismanHits = (hitAngel.noTalismanHits || 0) + 1;
+            if (hitAngel.noTalismanHits >= HH_FIRST_ANGEL_NO_TALISMAN_ENRAGE_HITS) {
+                hitAngel.oscillate = true;
+                hitAngel.ignoreLookFreeze = true;
+                hitAngel.speed = HH_FIRST_ANGEL_ENRAGED_SPEED;
+            }
+        }
+        return true; // hit connected, but talisman is required to damage angels
+    }
+
     _triggerPlayerTalismanPulse();
+
+    if (hitAngel.specialFirst) {
+        hitAngel.hitsTaken = (hitAngel.hitsTaken || 0) + 1;
+        if (hitAngel.hitsTaken < HH_FIRST_ANGEL_KILL_HITS) return true;
+    }
+
     _removeHHAngel(hitAngel, true);
 
     if (hitAngel.specialFirst) {
@@ -2673,6 +2833,7 @@ function _despawnHauntedHouse() {
     if (!hauntedHouseData) return;
     const hd = hauntedHouseData;
     _clearHHAngels();
+    _clearHHHallCrawler();
 
     // Get skeleton world position before removing group
     const skullWorld = new THREE.Vector3();

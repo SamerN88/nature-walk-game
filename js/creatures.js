@@ -1,12 +1,16 @@
 // ── Night Creature & Cemetery Zombie System ──────────────────────────────────
 
-const CREATURE_SPEED          = 0.9 * WALK_SPEED;//0.3 * RUN_SPEED;//0.6 * RUN_SPEED;
+const CREATURE_SPEED          = 1.15 * WALK_SPEED;//0.9 * WALK_SPEED;//0.3 * RUN_SPEED;//0.6 * RUN_SPEED;
 const CEMETERY_ZOMBIE_SPEED   = 0.3 * WALK_SPEED;  // each zombie gets ±20% noise on top
 const OUTER_BAND_MIN_RADIUS   = 2100;  // beyond outer mountain ring
 const WEEPING_ANGEL_LOCK_DIST = 30;    // within this dist, angel never freezes
 const WEEPING_ANGEL_BODY_MARGIN = 0.08; // radians (~4.6°) added beyond screen edge to account for angel wing span
 const CREATURE_SPAWN_INTERVAL  = 10;   // seconds
 const CREATURE_SPAWN_DIST      = 500; // units from player
+const CREATURE_STOP_DIST       = 1.5;
+const CRAWLER_STOP_DIST        = 3.0;
+const CREATURE_HIT_DIST        = 2.0;
+const CRAWLER_HIT_DIST         = 3.5;
 const CREATURE_HIT_DAMAGE      = DEBUG_CREATURES || DEBUG_CREATURES_2 || DEBUG_CREATURES_FREEZE ? 0 : 30;
 const CREATURE_HIT_COOLDOWN    = 0.9;
 const CREATURE_MAX_HP          = 5;    // AK47 shots to kill
@@ -15,11 +19,12 @@ const CEMETERY_ZOMBIE_DELAY    = 30;   // sec after talisman pickup
 const CEMETERY_ZOMBIE_COUNT    = 10;
 const CEMETERY_ZOMBIE_EMERGE_SEC = 3.0;
 const CEMETERY_ZOMBIE_HEIGHT   = 5.0;  // how far below ground they start
+const CEMETERY_ESCAPE_CREATURE_UNLOCK_DIST = 100;
 
 const SPOTLIGHT              = false;  // attach a dim white point light above each creature
 
 const CREATURE_BODY_COLOR    = 0x802f26;
-const CRAWLER_COLOR          = 0x290d0d;//0x331111; //0x080808;
+const CRAWLER_COLOR          = 0x1c0909;//0x290d0d;//0x331111; //0x080808;
 const WEEPING_ANGEL_COLOR    = 0x6c918e; //0x89b0ac;
 
 let nightCreatures        = [];
@@ -39,6 +44,38 @@ let _ncOpenWorldSpawned   = 0;    // total open-world creatures spawned; first t
 
 function isPlayerInOuterBand() {
     return Math.hypot(player.position.x, player.position.z) >= OUTER_BAND_MIN_RADIUS;
+}
+
+function _isOpenWorldNightCreature(c) {
+    return !c.isCemZombie && !c.isHHSpecialCrawler;
+}
+
+function _isHHSequenceBlockingOpenWorldCreatures() {
+    return typeof hhSeqPhase === 'string' &&
+        hhSeqPhase !== 'none' &&
+        hhSeqPhase !== 'complete';
+}
+
+function _despawnOpenWorldNightCreatures() {
+    for (let i = nightCreatures.length - 1; i >= 0; i--) {
+        const c = nightCreatures[i];
+        if (_isOpenWorldNightCreature(c)) {
+            scene.remove(c.mesh);
+            nightCreatures.splice(i, 1);
+        }
+    }
+}
+
+function _maybeUnlockOpenWorldCreaturesFromCemeteryEscape() {
+    if (_ncSpawnUnlocked || !hasTalisman || !cemeteryData || !player) return;
+    const cx = cemeteryData.worldX;
+    const cz = cemeteryData.worldZ;
+    if (typeof cx !== 'number' || typeof cz !== 'number') return;
+
+    const distFromCemetery = Math.hypot(player.position.x - cx, player.position.z - cz);
+    if (distFromCemetery > CEMETERY_ESCAPE_CREATURE_UNLOCK_DIST) {
+        _ncSpawnUnlocked = true;
+    }
 }
 
 // ── Mesh builders ─────────────────────────────────────────────────────────────
@@ -1017,6 +1054,10 @@ function _moveCreatureWithWallCollisions(c, dx, dz, dist, delta) {
     }
 }
 
+function _syncCreatureSurfaceHeight(c) {
+    c.mesh.position.y = getMoverSurfaceHeight(c.mesh.position.x, c.mesh.position.z, false);
+}
+
 // ── Per-creature update ───────────────────────────────────────────────────────
 
 function _updateCreature(c, delta) {
@@ -1089,15 +1130,17 @@ function _updateCreature(c, delta) {
         c.mesh.userData.angelFrozen = false;
     }
 
-    if (c.mesh.userData.angelFrozen) return;
+    if (c.mesh.userData.angelFrozen) {
+        _syncCreatureSurfaceHeight(c);
+        return;
+    }
 
     // Move toward player
-    if (dist > 0.5) {
+    const stopDist = c.type === 'crawler' ? CRAWLER_STOP_DIST : CREATURE_STOP_DIST;
+    if (dist > stopDist) {
         _moveCreatureWithWallCollisions(c, dx, dz, dist, delta);
-
-        const targetY = getMoverSurfaceHeight(c.mesh.position.x, c.mesh.position.z, false);
-        c.mesh.position.y = moveScalarToward(c.mesh.position.y, targetY, 20 * delta);
     }
+    _syncCreatureSurfaceHeight(c);
 
     // Hit cooldown
     if (c.hitCooldown > 0) c.hitCooldown -= delta;
@@ -1105,7 +1148,9 @@ function _updateCreature(c, delta) {
     // Damage player on contact
     const dy   = player.position.y - c.mesh.position.y;
     const dist3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (dist3d < 2.0 && c.hitCooldown <= 0 && !playerDead) {
+    const hitDist = c.type === 'crawler' ? CRAWLER_HIT_DIST : CREATURE_HIT_DIST;
+    const hhInvincible = DEBUG_HH_INVINCIBLE && c.isHHSpecialCrawler;
+    if (dist3d < hitDist && c.hitCooldown <= 0 && !playerDead && !hhInvincible) {
         c.hitCooldown = CREATURE_HIT_COOLDOWN;
         playerHealth  = Math.max(0, playerHealth - CREATURE_HIT_DAMAGE);
         _damageFlashEl.classList.remove('active');
@@ -1135,12 +1180,17 @@ function updateCreatures(delta) {
     }
 
     const nowIsNight = (gameTime / FULL_CYCLE) >= NIGHT_START;
+    _maybeUnlockOpenWorldCreaturesFromCemeteryEscape();
+    const hhBlocksOpenWorldCreatures = _isHHSequenceBlockingOpenWorldCreatures();
+    if (hhBlocksOpenWorldCreatures) {
+        _despawnOpenWorldNightCreatures();
+    }
 
     // Night → day: destroy all non-cemetery night creatures
     if (_ncWasNight && !nowIsNight && !DEBUG_CREATURES_FREEZE && !DEBUG_CREATURES_2) {
         for (let i = nightCreatures.length - 1; i >= 0; i--) {
             const c = nightCreatures[i];
-            if (!c.isCemZombie) {
+            if (_isOpenWorldNightCreature(c)) {
                 _explodeCreature(c);
                 nightCreatures.splice(i, 1);
             }
@@ -1157,7 +1207,7 @@ function updateCreatures(delta) {
     if (!_ncSpawnUnlocked && !DEBUG_CREATURES && !DEBUG_CREATURES_2 && !DEBUG_CREATURES_FREEZE && nowIsNight) {
         for (let i = nightCreatures.length - 1; i >= 0; i--) {
             const c = nightCreatures[i];
-            if (!c.isCemZombie) {
+            if (_isOpenWorldNightCreature(c)) {
                 scene.remove(c.mesh);
                 nightCreatures.splice(i, 1);
             }
@@ -1189,7 +1239,7 @@ function updateCreatures(delta) {
     }
 
     // Night spawn timer
-    if (!demonApocalypse && nowIsNight) {
+    if (!demonApocalypse && nowIsNight && !hhBlocksOpenWorldCreatures) {
         const inOuterBand = isPlayerInOuterBand();
         const canSpawn    = _ncSpawnUnlocked || DEBUG_CREATURES;
 
