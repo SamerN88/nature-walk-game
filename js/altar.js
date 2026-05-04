@@ -342,7 +342,7 @@ function prepareAltarPlacement() {
 
     if (DEBUG_ALTAR_PRELOCATION) {
         player.position.set(placement.x, groundY + 2, placement.z + 40);
-    } else if (DEBUG_ALTAR) {
+    } else if (DEBUG_ALTAR || DEBUG_HOLY_GEM) {
         createSacrificialAltar();
     }
 }
@@ -494,23 +494,24 @@ function createSacrificialAltar() {
     };
     altarData.torchHitRoots = altarData.torchWorldTips.map((tip, i) => {
         return makeWorldHitProfileRoot(tip, {
-            shape: 'sphere',
-            center: { x: 0, y: -0.5, z: 0 },
-            radius: 0.9
+            shape: 'cylinder',
+            start: { x: 0, y: -3.0, z: 0 },
+            end:   { x: 0, y:  -0.3, z: 0 },
+            radius: 0.8
         }, {
             debugKey: `altarTorchHitboxDebug-${i}`
         });
     });
     if (DEBUG_ALTAR) {
         player.position.set(ox, groundY + 2, oz + 40);
-        if (dragon) {
-            applyAscendedDragonMaterials(dragon);
-            dragonAscended = true;
-            dragonGemCollected = true;
-            dragonDescending = true;
-            dragon.visible = true;
-            dragon.position.set(ox, groundY + 20, oz + 40);
-        }
+        // Dragon setup is deferred to main.js:init() after createDragon() so that
+        // altarData.worldX/Z can be read with dragon already in existence.
+    }
+
+    if (DEBUG_HOLY_GEM) {
+        _createHolyGemPlatform();
+        altarState = 'complete';
+        // player.position.set(ox, 703, oz);
     }
 
     return altarData;
@@ -852,7 +853,7 @@ function _doAltarComplete() {
 // ── Holy Gem Platform (spawns at Y=500 above the altar) ───────────────────────
 
 function _createHolyGemPlatform() {
-    const PLATFORM_Y = 700;
+    const PLATFORM_Y = 525;
     const px = altarData.worldX;
     const pz = altarData.worldZ;
 
@@ -875,6 +876,10 @@ function _createHolyGemPlatform() {
     const BASE_TOP_WORLD  = PLATFORM_Y + BASE_H / 2;    // 501.0
     const BASE_BOT_WORLD  = PLATFORM_Y - BASE_H / 2;    // 499.0
     platGrp.add(_makePlatDisc(BASE_R, BASE_H, 0, mat()));
+
+    const undersideLight = new THREE.PointLight(0xffffff, 55, 0, 1.5);
+    undersideLight.position.y = -BASE_H / 2 - 1;
+    platGrp.add(undersideLight);
 
     // bottomY = BASE_BOT_WORLD makes the base disc solid (ceiling effect from below)
     // without blocking flight from ground because the ceiling check only fires when
@@ -911,7 +916,7 @@ function _createHolyGemPlatform() {
     scene.add(platGrp);
 
     // Store for getHolyGemPlatformHeight (dragon landing support)
-    altarData.holyGemPlatform = { x: px, z: pz, discs: discData };
+    altarData.holyGemPlatform = { x: px, z: pz, discs: discData, undersideLight };
 
     _createHolyGem(px, PLATFORM_Y + prevTop + 1.8, pz);
 }
@@ -1009,6 +1014,10 @@ function updateHolyGem(delta, time) {
 
 function collectHolyGem() {
     holyGemCollected = true;
+
+    if (altarData && altarData.holyGemPlatform && altarData.holyGemPlatform.undersideLight) {
+        altarData.holyGemPlatform.undersideLight.intensity = 0;
+    }
 
     const gemWorldPos = holyGem.mesh.position.clone();
     scene.remove(holyGem.mesh);

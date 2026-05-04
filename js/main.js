@@ -241,6 +241,16 @@ function init() {
     createDragonGem();
     createDragon();
 
+    if (DEBUG_ALTAR && altarData && dragon) {
+        applyAscendedDragonMaterials(dragon);
+        dragonAscended = true;
+        dragonGemCollected = true;
+        dragonBondFormed = true;
+        dragonDescending = true;
+        dragon.visible = true;
+        dragon.position.set(altarData.worldX, altarData.worldGroundY + 20, altarData.worldZ + 40);
+    }
+
     if (DEBUG_SWORD_THUNDER || DEBUG_SWORD_THUNDER_INF) {
         // Sword + aurafied blade in inventory
         hasSwordShield = true;

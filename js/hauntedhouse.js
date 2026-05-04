@@ -1617,7 +1617,7 @@ function createCemetery() {
     setObjectHitProfile(talismanGraveHitRoot, {
         shape: 'box',
         center: { x: 0, y: 0, z: 0 },
-        halfSize: { x: 1.65, y: 0.35, z: 0.75 }
+        halfSize: { x: 0.75, y: 0.35, z: 1.65 }
     }, { debugKey: 'talismanGraveDigHitboxDebug' });
     cemGrp.add(talismanGraveHitRoot);
 
@@ -1908,6 +1908,7 @@ function tryDigTalismanGrave(aimDir = null, punchRange = 7.5, punchRayRange = nu
     if (talismanGraveDigCount >= CEM_GRAVE_DIGS) {
         // Spawn talisman item
         talismanItemMesh = createTalismanMesh(0.8);
+        talismanItemMesh.userData.ignoreCameraOcclusion = true;
         const talismanSpawn = new THREE.Vector3(
             cemeteryData.talismanGraveLocalX,
             1.05,

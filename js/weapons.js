@@ -1068,6 +1068,7 @@ function fireAK47() {
     triggerAk47ShotFX(aimDir, hits, beamEndPoint);
 
     let penetratedDemons = 0;
+    let penetratedCreatures = 0;
     for (const hit of hits) {
         if (hit.kind === 'nooseBody') {
             damageSpecialPortalHangingBody();
@@ -1075,6 +1076,8 @@ function fireAK47() {
         }
 
         if (hit.kind === 'creature') {
+            if (penetratedCreatures >= 3) break;
+            penetratedCreatures++;
             damageCreatureFromGun(hit.target);
             continue;
         }
@@ -1423,6 +1426,7 @@ function spawnGoldenKey(x, y, z) {
     goldenKeyBaseY = y;
     goldenKeyMesh.position.set(x, y, z);
     goldenKeyMesh.userData.isGoldenKey = true;
+    goldenKeyMesh.userData.ignoreCameraOcclusion = true;
     setObjectHitProfile(goldenKeyMesh, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1.2 }, { debugKey: 'goldenKeyHitboxDebug' });
     const keyLight = new THREE.PointLight(0xFFCC44, 0, 12);
     keyLight.userData.isGoldenKeyLight = true;

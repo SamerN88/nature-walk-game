@@ -34,6 +34,7 @@ const DEBUG_SWORD_THUNDER_INF = false; // like DEBUG_SWORD_THUNDER, but every sw
 const DEBUG_SWORD_THUNDER_TRANSITION = false; // makes sword lightning recharge after 1 kill instead of 100
 const DEBUG_ALTAR = false; // spawn player 40 units from the sacrificial altar at start
 const DEBUG_ALTAR_PRELOCATION = false; // spawn player near the flattened altar site before the altar is built
+const DEBUG_HOLY_GEM = false; // immediately spawn the holy gem platform; teleports player up to platform level
 const DEBUG_CREATURES = false; // makes creatures start spawning right away, and deal zero damage
 const DEBUG_CREATURES_2 = false; // spawn 10 creatures 150 units from player at start; they do not despawn during daytime
 const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a row at start; they stay frozen (no movement/attack/night-end despawn) but are killable

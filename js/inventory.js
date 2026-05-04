@@ -192,6 +192,7 @@ function drawNotePaper(ctx, W, H, applyTornPath, wrinkles, img) {
 function buildNoteMesh3D(imgSrc, noteWidth, noteHeight, isFloating) {
     const noteGroup = new THREE.Group();
     noteGroup.userData.isNote = true;
+    noteGroup.userData.ignoreCameraOcclusion = true;
 
     const PW = 512, PH = 384;
     const canvas = document.createElement('canvas');
