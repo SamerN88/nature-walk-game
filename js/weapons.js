@@ -50,6 +50,8 @@ function createAK47Mesh(scale = 1) {
     enableMeshShadows(rifle);
 
     const muzzle = new THREE.Object3D();
+    muzzle.userData.ignoreCameraOcclusion = true;
+    muzzle.userData.isBeam = true;
     muzzle.position.set(0, 0.02, 1.22);
     rifle.add(muzzle);
 
@@ -497,6 +499,7 @@ function getAk47MuzzleWorldPosition(aimDir) {
 
 function getAk47CrosshairHitPoint(maxRange = AK47_BEAM_MAX_VISUAL_RANGE) {
     const raycaster = new THREE.Raycaster();
+    raycaster.near = getCameraPlayerHitMinDistance();
     raycaster.far = maxRange;
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
@@ -504,7 +507,11 @@ function getAk47CrosshairHitPoint(maxRange = AK47_BEAM_MAX_VISUAL_RANGE) {
     if (player) player.traverse(obj => excludeUUIDs.add(obj.uuid));
 
     const hits = raycaster.intersectObjects(scene.children, true)
-        .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam);
+        .filter(h =>
+            !excludeUUIDs.has(h.object.uuid) &&
+            !h.object.userData.isBeam &&
+            !h.object.userData.isHitboxDebug
+        );
 
     if (hits.length > 0) return hits[0].point.clone();
     return camera.position.clone().addScaledVector(raycaster.ray.direction, maxRange);
@@ -559,6 +566,8 @@ function triggerAk47ShotFX(aimDir, hits, beamEndPoint = null) {
     });
 
     const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    beam.userData.ignoreCameraOcclusion = true;
+    beam.userData.isBeam = true;
 
     // position beam between start and end
     const midPoint = beamStart.clone().add(beamEnd).multiplyScalar(0.5);
@@ -603,6 +612,16 @@ function triggerAk47ShotFX(aimDir, hits, beamEndPoint = null) {
 function updateAK47Effects(delta) {
     syncHandItemVisuals();
 
+    if (akChest && akChest.lidPivot) {
+        const targetAngle = akChest.lidTargetAngle || 0;
+        const speed = akChest.lidSpeed || Math.PI * 2.4;
+        akChest.lidPivot.rotation.x = moveScalarToward(
+            akChest.lidPivot.rotation.x,
+            targetAngle,
+            speed * delta
+        );
+    }
+
     if (ak47MuzzleFlashTimer > 0) {
         ak47MuzzleFlashTimer = Math.max(0, ak47MuzzleFlashTimer - delta);
         if (ak47MuzzleFlash) {
@@ -637,26 +656,29 @@ function updateAK47Effects(delta) {
     }
 }
 
+const AK_CHEST_INTERACT_DIST = 5;
+const _punchPlayerMid = new THREE.Vector3();
+
+function isPlayerCloseEnoughToAkChest() {
+    if (!akChest || !player) return false;
+    const dx = player.position.x - akChest.worldX;
+    const dy = player.position.y - akChest.worldY;
+    const dz = player.position.z - akChest.worldZ;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) <= AK_CHEST_INTERACT_DIST;
+}
+
 function tryInteractWithAkChest(aimDir, range) {
     if (!akChest || akChest.collected) return false;
 
-    const chestPos = new THREE.Vector3(akChest.worldX, akChest.worldY, akChest.worldZ);
-    const toChest = chestPos.sub(camera.position);
-    const projected = toChest.dot(aimDir);
-    if (projected <= 0 || projected > range) return false;
+    const rayRange = getMeleeRayRange(range);
+    if (!rayHitObjectProfileFromCamera(aimDir, akChest.mesh, rayRange, range)) return false;
 
-    const perp = toChest.sub(aimDir.clone().multiplyScalar(projected)).length();
-    if (perp > 2.2) return false;
-
-    // Require player to be within a certain small distance of the chest to interact with it
-    const dx = player.position.x - akChest.worldX;
-    const dz = player.position.z - akChest.worldZ;
-    if (Math.sqrt(dx * dx + dz * dz) > 4) return false;
+    if (!isPlayerCloseEnoughToAkChest()) return false;
 
     if (!akChest.opened) {
         if (DEBUG_CHEST || hasGoldenKey) {
             akChest.opened = true;
-            akChest.lidPivot.rotation.x = -Math.PI * 0.65;
+            akChest.lidTargetAngle = akChest.lidOpenAngle ?? -Math.PI * 0.65;
             syncHandItemVisuals();
         }
     } else if (!akChest.collected) {
@@ -670,10 +692,345 @@ function tryInteractWithAkChest(aimDir, range) {
     return true;
 }
 
-function getDemonGunHitPoint(demon, out = new THREE.Vector3()) {
-    out.copy(demon.mesh.position);
-    out.y += (demon.gunHitCenterY ?? 4.8);
-    return out;
+function getMeleeRayRange(punchRange) {
+    return punchRange + camera.position.distanceTo(player.position);
+}
+
+function rayHitObjectProfileFromCamera(aimDir, root, maxDistance, playerReach = null, options = {}) {
+    if (!root) return null;
+    const profile = options.profile || root.userData[options.profileKey || 'hitProfile'];
+    if (!profile) return null;
+    const hit = _meleeRayHit(camera.position, aimDir, root, profile, maxDistance, Infinity, options.radiusExtra || 0);
+    if (!hit) return null;
+    if (playerReach !== null && !isHitWithinPlayerReach(hit, playerReach)) return null;
+    return hit;
+}
+
+// Respects USE_GAP_CHECK. Used by all melee/punch hit detection; AK47 and dragon
+// beam have their own paths and are not affected.
+function _meleeRayHit(rayOrigin, rayDir, root, profile, maxDist, playerReach = Infinity, radiusExtra = 0) {
+    return USE_GAP_CHECK
+        ? rayHitProfileBeyondCameraPlayerGap(rayOrigin, rayDir, root, profile, maxDist, playerReach, radiusExtra)
+        : rayHitProfile(rayOrigin, rayDir, root, profile, maxDist, radiusExtra);
+}
+
+function getDragonMountHit(aimDir, punchRange, punchRayRange) {
+    if (!dragon || !dragon.visible || mountedOnDragon || demonApocalypse) return null;
+    const profile = dragon.userData.mountHitProfile;
+    if (!profile) return null;
+    // Use rayHitProfile (no gap filter) so that hovering directly overhead doesn't
+    // get falsely rejected: the gap filter's hit-point lands behind the player when
+    // the camera ray hits the near face of the horizontal body capsule, and the
+    // capsule-vs-player-capsule overlap test then barely misses. Reach gating via
+    // isHitWithinPlayerReach is sufficient to validate the interaction.
+    const hit = rayHitProfile(camera.position, aimDir, dragon, profile, punchRayRange);
+    if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return null;
+    return hit;
+}
+
+function getNPCCombatProfile(npc) {
+    return npc.hitProfile || {
+        shape: 'sphere',
+        center: { x: 0, y: 0, z: 0 },
+        fixedWorldRadius: getNPCHitRadius(npc)
+    };
+}
+
+function getDemonCombatProfile(demon) {
+    return demon.hitProfile || {
+        shape: 'sphere',
+        center: { x: 0, y: demon.gunHitCenterY ?? 4.8, z: 0 },
+        fixedWorldRadius: demon.gunHitRadius ?? 4.6
+    };
+}
+
+function getMeleeKillableCandidates(aimDir, punchRange, punchRayRange) {
+    const candidates = [];
+
+    for (let i = 0; i < npcs.length; i++) {
+        const npc = npcs[i];
+        const hit = _meleeRayHit(camera.position, aimDir, npc.mesh, getNPCCombatProfile(npc), punchRayRange, punchRange);
+        if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
+        candidates.push({ kind: 'npc', npc, dist: hit.point.distanceTo(_punchPlayerMid) });
+    }
+
+    const demonPunchRange = 9;
+    const demonPunchRayRange = getMeleeRayRange(demonPunchRange);
+    for (let i = 0; i < demons.length; i++) {
+        const demon = demons[i];
+        const hit = _meleeRayHit(camera.position, aimDir, demon.mesh, getDemonCombatProfile(demon), demonPunchRayRange, demonPunchRange);
+        if (!hit || !isHitWithinPlayerReach(hit, demonPunchRange)) continue;
+        candidates.push({ kind: 'demon', demon, dist: hit.point.distanceTo(_punchPlayerMid) });
+    }
+
+    const creatureCandidates = getMeleeCreatureCandidates(aimDir, punchRange, _punchPlayerMid);
+    for (const candidate of creatureCandidates) {
+        candidates.push({ kind: 'creature', creature: candidate.creature, dist: candidate.dist });
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates;
+}
+
+function resolveMeleeKillableCandidate(candidate) {
+    if (!candidate) return { hit: false, killed: false };
+
+    if (candidate.kind === 'npc') {
+        const curIdx = npcs.indexOf(candidate.npc);
+        if (curIdx === -1) return { hit: false, killed: false };
+        explodeNPC(candidate.npc, curIdx);
+        return { hit: true, killed: true };
+    }
+
+    if (candidate.kind === 'demon') {
+        const curIdx = demons.indexOf(candidate.demon);
+        if (curIdx === -1) return { hit: false, killed: false };
+        explodeDemon(candidate.demon, curIdx);
+        return { hit: true, killed: true };
+    }
+
+    if (candidate.kind === 'creature') {
+        const wasAlive = typeof nightCreatures !== 'undefined' && nightCreatures.includes(candidate.creature);
+        meleeHitCreature(candidate.creature);
+        const killed = wasAlive && !nightCreatures.includes(candidate.creature);
+        return { hit: true, killed };
+    }
+
+    return { hit: false, killed: false };
+}
+
+function getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange) {
+    if (!altarData || altarCorpseStruck || altarState !== 'torches_lit') return null;
+
+    const hit = _meleeRayHit(
+        camera.position,
+        aimDir,
+        altarData.corpse,
+        altarData.corpse.userData.hitProfile,
+        punchRayRange,
+        punchRange
+    );
+    if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return null;
+    return hit;
+}
+
+function getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange) {
+    if (typeof _altarIsNight === 'function' && !_altarIsNight()) return null;
+
+    const hit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange);
+    if (!hit) return null;
+    return { kind: 'altar', dist: hit.point.distanceTo(_punchPlayerMid) };
+}
+
+function getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange) {
+    if (typeof hhAngels === 'undefined' || hhAngels.length === 0) return null;
+
+    const candidates = [];
+    for (const angel of hhAngels) {
+        if (!angel.mesh || angel.touchTriggered) continue;
+        if (angel.specialFirst && !hhFirstAngelApproaching) continue;
+
+        const profile = angel.hitProfile || {
+            shape: 'capsule',
+            start: { x: 0, y: 0.35, z: -0.08 },
+            end: { x: 0, y: 3.25, z: -0.05 },
+            radius: 0.62
+        };
+        const hit = _meleeRayHit(camera.position, aimDir, angel.mesh, profile, punchRayRange, punchRange);
+        if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
+        candidates.push({ dist: hit.point.distanceTo(_punchPlayerMid) });
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates[0] || null;
+}
+
+function addMeleeObjectInteractionCandidate(candidates, kind, aimDir, root, punchRayRange, punchRange, resolve, options = {}) {
+    const hit = rayHitObjectProfileFromCamera(aimDir, root, punchRayRange, punchRange, options);
+    if (!hit) return;
+    candidates.push({ intent: 'interaction', kind, dist: hit.point.distanceTo(_punchPlayerMid), resolve });
+}
+
+function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack) {
+    const candidates = [];
+
+    if (!hasShovel && tentShovelMesh) {
+        addMeleeObjectInteractionCandidate(candidates, 'shovelPickup', aimDir, tentShovelMesh, punchRayRange, punchRange, () => {
+            hasShovel = true;
+            tentShovelMesh.parent.remove(tentShovelMesh);
+            tentShovelMesh = null;
+            addHandSlot('shovel');
+            syncHandItemVisuals();
+            flashEquipHint('Shovel');
+            return true;
+        });
+    }
+
+    if (goldenKeyMesh && goldenKeyLockTimer <= 0) {
+        addMeleeObjectInteractionCandidate(candidates, 'goldenKeyPickup', aimDir, goldenKeyMesh, punchRayRange, punchRange, () => {
+            hasGoldenKey = true;
+            scene.remove(goldenKeyMesh);
+            goldenKeyMesh = null;
+            addInventoryItem('golden-key', 'Golden Key', null, { type: 'object', itemKey: 'golden-key' });
+            flashEquipHint('KEY FOUND');
+            return true;
+        });
+    }
+
+    if (akChest && !akChest.collected) {
+        const chestHit = rayHitObjectProfileFromCamera(aimDir, akChest.mesh, punchRayRange, punchRange);
+        if (chestHit && isPlayerCloseEnoughToAkChest()) {
+            candidates.push({
+                intent: 'interaction',
+                kind: 'akChest',
+                dist: chestHit.point.distanceTo(_punchPlayerMid),
+                resolve: () => tryInteractWithAkChest(aimDir, punchRange)
+            });
+        }
+    }
+
+    for (const door of houseDoors) {
+        const hit = rayHitObjectProfileFromCamera(aimDir, door.mesh, punchRayRange, punchRange);
+        if (!hit) continue;
+        candidates.push({
+            intent: 'interaction',
+            kind: 'door',
+            dist: hit.point.distanceTo(_punchPlayerMid),
+            resolve: () => {
+                toggleHouseDoor(door);
+                return true;
+            }
+        });
+    }
+
+    const noteCandidates = [];
+    if (typeof volcanoHintNoteMesh !== 'undefined' && volcanoHintNoteMesh && !volcanoHintNotePickedUp) {
+        noteCandidates.push(volcanoHintNoteMesh);
+    }
+    if (typeof keyHintNoteMesh !== 'undefined' && keyHintNoteMesh && !keyHintNotePickedUp && keyHintNoteLockTimer <= 0) {
+        noteCandidates.push(keyHintNoteMesh);
+    }
+    for (const noteMesh of noteCandidates) {
+        addMeleeObjectInteractionCandidate(candidates, 'notePickup', aimDir, noteMesh, punchRayRange, punchRange, () => {
+            return tryPickupNote(aimDir, punchRange);
+        });
+    }
+
+    if (typeof hauntedHouseData !== 'undefined' && hauntedHouseData && hhSeqPhase === 'active' && hauntedHouseData.ssItemGrp) {
+        const ssTargets = [hauntedHouseData.worldSword, hauntedHouseData.worldShield].filter(Boolean);
+        for (const target of ssTargets) {
+            addMeleeObjectInteractionCandidate(candidates, 'swordShieldPickup', aimDir, target, punchRayRange, punchRange, () => {
+                return tryPickupSSItem(aimDir, punchRange);
+            });
+        }
+    }
+
+    if (typeof cemeteryData !== 'undefined' && cemeteryData && cemeteryData.gatePivotL && !cemeteryData.gatesLocked) {
+        for (const gateTarget of [cemeteryData.gatePivotL, cemeteryData.gatePivotR]) {
+            const hit = rayHitObjectProfileFromCamera(aimDir, gateTarget, punchRayRange, punchRange);
+            if (!hit) continue;
+            candidates.push({
+                intent: 'interaction',
+                kind: 'cemeteryGate',
+                dist: hit.point.distanceTo(_punchPlayerMid),
+                resolve: () => tryToggleCemeteryGate(aimDir, punchRange)
+            });
+        }
+    }
+
+    if (typeof talismanItemMesh !== 'undefined' && talismanItemMesh && talismanLockTimer <= 0) {
+        addMeleeObjectInteractionCandidate(candidates, 'talismanPickup', aimDir, talismanItemMesh, punchRayRange, punchRange, () => {
+            return tryPickupTalisman(aimDir, punchRange);
+        });
+    }
+
+    if (isSwordAttack && typeof tryHitHHWhiteSM === 'function') {
+        const angelHit = getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange);
+        if (angelHit) {
+            candidates.push({
+                intent: 'interaction',
+                kind: 'hhAngel',
+                dist: angelHit.dist,
+                resolve: () => tryHitHHWhiteSM(aimDir, punchRange)
+            });
+        }
+    }
+
+    if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF) && typeof _altarIsNight === 'function' && !_altarIsNight()) {
+        const altarCorpseHit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange);
+        if (altarCorpseHit) {
+            candidates.push({
+                intent: 'interaction',
+                kind: 'altarCorpseDayFeedback',
+                dist: altarCorpseHit.point.distanceTo(_punchPlayerMid),
+                resolve: () => tryHitAltarCorpseWithLightning(aimDir, punchRange)
+            });
+        }
+    }
+
+    if (typeof _isSpecialPortalBodyVulnerable === 'function' && _isSpecialPortalBodyVulnerable()) {
+        specialPortalFrameData.group.updateMatrixWorld(true);
+        const hit = _meleeRayHit(
+            camera.position,
+            aimDir,
+            specialPortalFrameData.body,
+            _getSpecialPortalBodyHitProfile(),
+            punchRayRange,
+            punchRange
+        );
+        if (hit && isHitWithinPlayerReach(hit, punchRange)) {
+            candidates.push({
+                intent: 'interaction',
+                kind: 'nooseBody',
+                dist: hit.point.distanceTo(_punchPlayerMid),
+                resolve: () => damageSpecialPortalHangingBody()
+            });
+        }
+    }
+
+    if (currentHandItem === 'stick' && hasStick) {
+        for (const cpPos of campfirePositions) {
+            const hit = _meleeRayHit(
+                camera.position,
+                aimDir,
+                cpPos.userData?.hitRoot,
+                cpPos.userData?.hitProfile,
+                punchRayRange,
+                punchRange
+            );
+            if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
+            candidates.push({
+                intent: 'interaction',
+                kind: 'campfire',
+                dist: hit.point.distanceTo(_punchPlayerMid),
+                resolve: () => {
+                    hasStick = false;
+                    hasTorch = true;
+                    addHandSlot('torch', 'stick');
+                    syncHandItemVisuals();
+                    flashEquipHint('Torch');
+                    return true;
+                }
+            });
+        }
+    }
+
+    if (currentHandItem === 'torch' && hasTorch && typeof altarData !== 'undefined' && altarData && altarTorchesLit < 3) {
+        for (let i = 0; i < altarData.torches.length; i++) {
+            if (altarData.torches[i].lit) continue;
+            const hit = rayHitObjectProfileFromCamera(aimDir, altarData.torchHitRoots[i], punchRayRange, punchRange);
+            if (!hit) continue;
+            candidates.push({
+                intent: 'interaction',
+                kind: 'altarTorch',
+                dist: hit.point.distanceTo(_punchPlayerMid),
+                resolve: () => tryLightAltarTorch(aimDir, punchRange)
+            });
+        }
+    }
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    return candidates;
 }
 
 
@@ -694,30 +1051,16 @@ function fireAK47() {
     const hits = [];
 
     npcs.forEach(npc => {
-        const toNPC = new THREE.Vector3().subVectors(npc.mesh.position, camera.position);
-        const projected = toNPC.dot(aimDir);
-        if (projected <= 0) return;
-        const perp = toNPC.sub(aimDir.clone().multiplyScalar(projected)).length();
-        if (perp <= getNPCHitRadius(npc)) {
-            hits.push({ kind: 'npc', target: npc, projected });
-        }
+        const hit = rayHitProfileBeyondCameraPlayerGap(camera.position, aimDir, npc.mesh, getNPCCombatProfile(npc), AK47_BEAM_MAX_VISUAL_RANGE, Infinity, AK47_BEAM_HIT_MARGIN);
+        if (hit) hits.push({ kind: 'npc', target: npc, projected: hit.distance });
     });
 
-    const demonHitPoint = new THREE.Vector3();
     demons.forEach(demon => {
-        const toDemon = new THREE.Vector3().subVectors(
-            getDemonGunHitPoint(demon, demonHitPoint),
-            camera.position
-        );
-        const projected = toDemon.dot(aimDir);
-        if (projected <= 0) return;
-        const perp = toDemon.sub(aimDir.clone().multiplyScalar(projected)).length();
-        if (perp <= (demon.gunHitRadius ?? 4.6)) {
-            hits.push({ kind: 'demon', target: demon, projected });
-        }
+        const hit = rayHitProfileBeyondCameraPlayerGap(camera.position, aimDir, demon.mesh, getDemonCombatProfile(demon), AK47_BEAM_MAX_VISUAL_RANGE, Infinity, AK47_BEAM_HIT_MARGIN);
+        if (hit) hits.push({ kind: 'demon', target: demon, projected: hit.distance });
     });
 
-    hits.push(...getCreatureGunHits(aimDir));
+    hits.push(...getCreatureGunHits(aimDir, AK47_BEAM_MAX_VISUAL_RANGE, AK47_BEAM_HIT_MARGIN));
     if (typeof getSpecialPortalBodyGunHits === 'function') {
         hits.push(...getSpecialPortalBodyGunHits(aimDir));
     }
@@ -728,12 +1071,12 @@ function fireAK47() {
     for (const hit of hits) {
         if (hit.kind === 'nooseBody') {
             damageSpecialPortalHangingBody();
-            break; // the hanging body stops AK47 penetration
+            continue;
         }
 
         if (hit.kind === 'creature') {
             damageCreatureFromGun(hit.target);
-            break; // creatures stop AK47 penetration
+            continue;
         }
 
         if (hit.kind === 'npc') {
@@ -757,22 +1100,12 @@ function fireAK47() {
 function punch() {
     if (playerDead) return;
 
-    // If mounted on dragon, fire beam instead
     if (mountedOnDragon) {
         dragonBeamAttack();
         return;
     }
 
-    // Shrine interaction — start hell run (demon rounds)
-    if (shrineActive && shrine) {
-        const sd = player.position.distanceTo(shrine.position);
-        if (sd < SHRINE_INTERACT_DIST) {
-            startDemonRound(1);
-            return;
-        }
-    }
-
-    // Trigger punch animation — sword shows swipe arc instead of the radial ring
+    // Punch animation always fires first — sword shows swipe arc, fist/tool shows radial ring
     if (currentHandItem === 'sword-shield') {
         triggerSwordSwipe();
     } else {
@@ -782,267 +1115,141 @@ function punch() {
         ring.classList.add('punch-ring-active');
     }
 
-    // Check if we can mount the dragon
-    if (dragon && dragon.visible) {
-        const dx = player.position.x - dragon.position.x;
-        const dy = player.position.y - dragon.position.y;
-        const dz = player.position.z - dragon.position.z;
-        const distToDragon = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const punchRange = 7.5;
+    const aimDir = new THREE.Vector3();
+    camera.getWorldDirection(aimDir);
+    const punchRayRange = getMeleeRayRange(punchRange);
+    _punchPlayerMid.set(player.position.x, player.position.y + PLAYER_COLLISION_HEIGHT * 0.5, player.position.z);
 
-        if (distToDragon < 15) {
-            mountDragon();
+    // Shrine interaction — no candidate needed, has its own distance gate
+    if (shrineActive && shrine && player.position.distanceTo(shrine.position) < SHRINE_INTERACT_DIST) {
+        const shrineHit = rayHitObjectProfileFromCamera(aimDir, shrine, punchRayRange, punchRange);
+        if (shrineHit) {
+            startDemonRound(1);
             return;
         }
     }
 
-    // Punch hits whatever the crosshair is aimed at — ray from camera = exact crosshair
-    const punchRange = 25;
-    const aimDir = new THREE.Vector3();
-    camera.getWorldDirection(aimDir);
+    // Extra candidates: dragon mount, debug box, dig zones, trees
+    const extraCandidates = [];
+
+    const dragonMountHit = getDragonMountHit(aimDir, punchRange, punchRayRange);
+    if (dragonMountHit) {
+        extraCandidates.push({
+            intent: 'interaction',
+            kind: 'dragonMount',
+            dist: dragonMountHit.point.distanceTo(_punchPlayerMid),
+            resolve: () => mountDragon()
+        });
+    }
 
     // DEBUG_GOLDEN_KEY: punchable box — 3 hits reveals the golden key
     if (debugKeyBox) {
-        const toBox = debugKeyBox.mesh.position.clone().sub(camera.position);
-        const proj = toBox.dot(aimDir);
-        if (proj > 0 && proj < punchRange) {
-            const perp = toBox.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 2) {
-                debugKeyBox.hitCount++;
-                if (debugKeyBox.hitCount >= 3) {
-                    const pos = debugKeyBox.mesh.position.clone();
-                    scene.remove(debugKeyBox.mesh);
-                    debugKeyBox = null;
-                    digCount = 31;
-                    spawnGoldenKey(pos.x, pos.y, pos.z);
-                } else {
-                    const origColor = debugKeyBox.mesh.material.color.getHex();
-                    debugKeyBox.mesh.material.color.setHex(0xffffff);
-                    setTimeout(() => { if (debugKeyBox) debugKeyBox.mesh.material.color.setHex(origColor); }, 80);
+        const boxHit = rayHitObjectProfileFromCamera(aimDir, debugKeyBox.mesh, punchRayRange, punchRange);
+        if (boxHit) {
+            extraCandidates.push({
+                intent: 'interaction',
+                kind: 'debugKeyBox',
+                dist: boxHit.point.distanceTo(_punchPlayerMid),
+                resolve: () => {
+                    debugKeyBox.hitCount++;
+                    if (debugKeyBox.hitCount >= 3) {
+                        const pos = debugKeyBox.mesh.position.clone();
+                        scene.remove(debugKeyBox.mesh);
+                        debugKeyBox = null;
+                        digCount = 31;
+                        spawnGoldenKey(pos.x, pos.y, pos.z);
+                    } else {
+                        const origColor = debugKeyBox.mesh.material.color.getHex();
+                        debugKeyBox.mesh.material.color.setHex(0xffffff);
+                        setTimeout(() => { if (debugKeyBox) debugKeyBox.mesh.material.color.setHex(origColor); }, 80);
+                    }
                 }
-                return;
-            }
+            });
         }
     }
 
-    // Shovel digging (only when shovel is equipped, in the dig zone, key not yet found)
     if (currentHandItem === 'shovel' && bigLake && !hasGoldenKey && digCount < 31 && !goldenKeyMesh) {
-        if (tryDig()) return;
+        const digHit = bigLake.digHitRoot
+            ? rayHitObjectProfileFromCamera(aimDir, bigLake.digHitRoot, punchRayRange, punchRange)
+            : null;
+        if (digHit) {
+            extraCandidates.push({
+                intent: 'interaction',
+                kind: 'shovelDig',
+                dist: digHit.point.distanceTo(_punchPlayerMid),
+                resolve: () => tryDig(aimDir, punchRange, punchRayRange)
+            });
+        }
     }
 
-    // Cemetery talisman grave digging
     if (currentHandItem === 'shovel') {
-        if (tryDigTalismanGrave()) return;
+        if (typeof cemeteryData !== 'undefined' && cemeteryData && !hasTalisman && !talismanItemMesh && cemeteryData.talismanGraveHitRoot) {
+            const graveHit = rayHitObjectProfileFromCamera(aimDir, cemeteryData.talismanGraveHitRoot, punchRayRange);
+            if (graveHit && isHitWithinPlayerReach(graveHit, punchRange)) {
+                extraCandidates.push({
+                    intent: 'interaction',
+                    kind: 'graveDig',
+                    dist: graveHit.point.distanceTo(_punchPlayerMid),
+                    resolve: () => tryDigTalismanGrave(aimDir, punchRange, punchRayRange)
+                });
+            }
+        }
     }
 
-    // Tree hit with shovel — both world trees and large dark forest trees can
-    // yield a stick after enough hits. Only show splinter effects before the
-    // stick has been obtained.
+    // Tree hit — both world trees and large dark forest trees can yield a stick after enough hits
     if ((currentHandItem === 'fist' || (hasShovel && currentHandItem === 'shovel')) && !hasStick && !hasTorch) {
-        const _treeRay = new THREE.Raycaster(camera.position, aimDir, 0, punchRange);
-        for (let i = 0; i < trees.length; i++) {
-            const tree = trees[i];
-            const treeScale = tree.userData.treeScale || 1;
-            const treeHitCenterY = tree.userData.treeHitCenterY ?? (4 * treeScale);
-            const treeHitRadius = tree.userData.treeHitRadius ?? (3.5 * treeScale);
-            const _trunkHits = tree.userData.trunkMesh
-                ? _treeRay.intersectObject(tree.userData.trunkMesh, true)
-                : [];
-            const trunkHit = _trunkHits.length > 0 ? _trunkHits[0] : null;
-            // Use each tree's visual center and hit radius so both small and large
-            // trees register reliably when the player hits trunk or foliage.
-            const treeCenterWorld = new THREE.Vector3(
-                tree.position.x,
-                tree.position.y + treeHitCenterY,
-                tree.position.z
-            );
-            const toCenter = treeCenterWorld.clone().sub(camera.position);
-            const proj = toCenter.dot(aimDir);
-            const perp = toCenter.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            const foliageBroadphaseHit = proj > 0 && proj <= punchRange && perp < treeHitRadius;
-            if (trunkHit || foliageBroadphaseHit) {
-                tree.userData.treeHitCount = (tree.userData.treeHitCount || 0) + 1;
-                // Prefer the trunk impact point for splinter FX on large trees; fall back
-                // to the overall tree hit if the swing ray only intersects foliage.
-                const _treeHits = trunkHit ? _trunkHits : _treeRay.intersectObject(tree, true);
-                const treeHit = _treeHits.length > 0
-                    ? _treeHits[0]
-                    : null;
-                const hitPoint = treeHit
-                    ? treeHit.point
-                    : camera.position.clone().addScaledVector(aimDir, proj);
-                const hitNormal = (treeHit && treeHit.face && treeHit.object)
-                    ? treeHit.face.normal.clone().transformDirection(treeHit.object.matrixWorld).normalize()
-                    : null;
-                spawnWoodSplinterEffect(hitPoint, hitNormal);
-                if (tree.userData.treeHitCount >= STICK_TREE_HITS_REQUIRED) {
-                    tree.userData.treeHitCount = 0;
-                    hasStick = true;
-                    addHandSlot('stick');
-                    syncHandItemVisuals();
-                    flashEquipHint('Stick');
+        for (const tree of trees) {
+            const hit = rayHitObjectProfileFromCamera(aimDir, tree, punchRayRange, punchRange);
+            if (!hit) continue;
+            const capturedTree = tree;
+            const capturedPoint = hit.point.clone();
+            extraCandidates.push({
+                intent: 'interaction',
+                kind: 'treeHit',
+                dist: hit.point.distanceTo(_punchPlayerMid),
+                resolve: () => {
+                    capturedTree.userData.treeHitCount = (capturedTree.userData.treeHitCount || 0) + 1;
+                    spawnWoodSplinterEffect(capturedPoint);
+                    if (capturedTree.userData.treeHitCount >= STICK_TREE_HITS_REQUIRED) {
+                        capturedTree.userData.treeHitCount = 0;
+                        hasStick = true;
+                        addHandSlot('stick');
+                        syncHandItemVisuals();
+                        flashEquipHint('Stick');
+                    }
                 }
-                return;
-            }
+            });
         }
-    }
-
-    // Shovel pickup (works without having the shovel)
-    if (!hasShovel && tentShovelMesh) {
-        const shovelWorldPos = new THREE.Vector3();
-        tentShovelMesh.getWorldPosition(shovelWorldPos);
-        const toShovel = shovelWorldPos.clone().sub(camera.position);
-        const proj = toShovel.dot(aimDir);
-        if (proj > 0 && proj < punchRange) {
-            const perp = toShovel.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 1.8) {
-                hasShovel = true;
-                tentShovelMesh.parent.remove(tentShovelMesh);
-                tentShovelMesh = null;
-                addHandSlot('shovel');
-                syncHandItemVisuals();
-                flashEquipHint('Shovel');
-                return;
-            }
-        }
-    }
-
-    // Golden key pickup (blocked for 3s after spawning)
-    if (goldenKeyMesh && goldenKeyLockTimer <= 0) {
-        const keyPos = goldenKeyMesh.position;
-        const toKey = keyPos.clone().sub(camera.position);
-        const proj = toKey.dot(aimDir);
-        if (proj > 0 && proj < punchRange) {
-            const perp = toKey.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 2.5) {
-                hasGoldenKey = true;
-                scene.remove(goldenKeyMesh);
-                goldenKeyMesh = null;
-                // Show the key in inventory rather than bottom-right HUD
-                addInventoryItem('golden-key', 'Golden Key', null, { type: 'object', itemKey: 'golden-key' });
-                flashEquipHint('KEY FOUND');
-                return;
-            }
-        }
-    }
-
-    if (tryInteractWithAkChest(aimDir, punchRange)) return;
-
-    // Door toggle — punch to open or close. Does NOT return early so other
-    // targets (demons, NPCs) in the same direction also receive the hit.
-    let doorHit = false;
-    for (const door of houseDoors) {
-        const centerPos = door.mesh.getWorldPosition(new THREE.Vector3());
-        const toDoor = centerPos.clone().sub(camera.position);
-        const proj = toDoor.dot(aimDir);
-        if (proj > 0 && proj < punchRange) {
-            const perp = toDoor.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 3.5) {
-                toggleHouseDoor(door);
-                doorHit = true;
-                break;
-            }
-        }
-    }
-
-    // Note pickup
-    tryPickupNote(aimDir, punchRange);
-
-    // Sword & Shield item pickup from HH floor-2 display
-    if (tryPickupSSItem(aimDir, punchRange)) return;
-
-    // Cemetery gate toggle
-    tryToggleCemeteryGate(aimDir, punchRange);
-
-    // Talisman pickup from cemetery grave
-    if (tryPickupTalisman(aimDir, punchRange)) return;
-
-    // Hit HH white shadow man (sword-shield only)
-    if (currentHandItem === 'sword-shield') {
-        if (tryHitHHWhiteSM(aimDir, punchRange)) return;
-    }
-
-    if (typeof tryHitSpecialPortalBodyMelee === 'function' && tryHitSpecialPortalBodyMelee(aimDir, punchRange)) {
-        return;
-    }
-
-    // Campfire punch with stick equipped — light it into a torch
-    if (currentHandItem === 'stick' && hasStick) {
-        for (const cpPos of campfirePositions) {
-            const toCampfire = cpPos.clone().sub(camera.position);
-            const proj = toCampfire.dot(aimDir);
-            if (proj <= 0 || proj > punchRange) continue;
-            const perp = toCampfire.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 4) {
-                hasStick = false;
-                hasTorch = true;
-                addHandSlot('torch', 'stick');
-                syncHandItemVisuals();
-                flashEquipHint('Torch');
-                break;
-            }
-        }
-    }
-
-    // Light altar torches with equipped player torch
-    if (currentHandItem === 'torch' && hasTorch) {
-        if (tryLightAltarTorch(aimDir, punchRange)) return;
     }
 
     // Sword swipe hits up to 3 targets; regular melee hits 1
     const isSwordAttack = currentHandItem === 'sword-shield';
     const maxMeleeHits = isSwordAttack ? 3 : 1;
+    const killableCandidates = getMeleeKillableCandidates(aimDir, punchRange, punchRayRange);
+    const interactionCandidates = getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack);
+    const altarLightningCandidate = isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)
+        ? getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange)
+        : null;
+    const intentCandidates = [
+        killableCandidates[0] ? { intent: 'killable', dist: killableCandidates[0].dist } : null,
+        altarLightningCandidate ? { intent: 'killable', kind: 'altar', dist: altarLightningCandidate.dist } : null,
+        ...interactionCandidates,
+        ...extraCandidates
+    ].filter(Boolean).sort((a, b) => a.dist - b.dist);
+    const bestIntent = intentCandidates[0] || null;
 
-    // Hit NPCs
-    const candidateNPCs = [];
-    for (let i = 0; i < npcs.length; i++) {
-        const npc = npcs[i];
-        const toNPC = new THREE.Vector3().subVectors(npc.mesh.position, camera.position);
-        const projected = toNPC.dot(aimDir);
-        if (projected > 0 && projected < punchRange) {
-            const perp = toNPC.clone().sub(aimDir.clone().multiplyScalar(projected)).length();
-            if (perp < 2.5) candidateNPCs.push({ npc, dist: projected });
-        }
+    if (!bestIntent) return;
+
+    if (bestIntent.intent === 'interaction') {
+        bestIntent.resolve();
+        return;
     }
-    candidateNPCs.sort((a, b) => a.dist - b.dist);
-
-    // Hit demons — always checked regardless of door/NPC hit
-    const candidateDemons = [];
-    const demonPunchPoint = new THREE.Vector3();
-    for (let i = 0; i < demons.length; i++) {
-        const z = demons[i];
-        const toZ = new THREE.Vector3().subVectors(
-            getDemonGunHitPoint(z, demonPunchPoint),
-            camera.position
-        );
-        const proj = toZ.dot(aimDir);
-        if (proj > 0 && proj < punchRange) {
-            const perp = toZ.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp <= (z.gunHitRadius ?? 4.6)) candidateDemons.push({ demon: z, dist: proj });
-        }
-    }
-    candidateDemons.sort((a, b) => a.dist - b.dist);
-
-    // Creature melee candidates
-    const candidateCreatures = getMeleeCreatureCandidates(aimDir, punchRange);
 
     if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)) {
-        // Also check altar corpse as a lightning target
-        let altarCorpseCandidate = null;
-        if (tryHitAltarCorpseWithLightning(aimDir, punchRange)) {
-            const toC = altarData.corpseHitPos.clone().sub(camera.position);
-            altarCorpseCandidate = { kind: 'altar', dist: toC.dot(aimDir) };
-        }
-
-        const nearestNPC     = candidateNPCs[0];
-        const nearestDemon   = candidateDemons[0];
-        const nearestCreature = candidateCreatures[0];
-
-        // Pick the closest of NPC, demon, creature, or altar corpse
         const allCandidates = [
-            nearestNPC      ? { kind: 'npc',     ref: nearestNPC,      dist: nearestNPC.dist }      : null,
-            nearestDemon    ? { kind: 'demon',   ref: nearestDemon,    dist: nearestDemon.dist }    : null,
-            nearestCreature ? { kind: 'creature', ref: nearestCreature, dist: nearestCreature.dist } : null,
-            altarCorpseCandidate,
+            ...killableCandidates.map(candidate => ({ kind: candidate.kind, ref: candidate, dist: candidate.dist })),
+            altarLightningCandidate,
         ].filter(Boolean).sort((a, b) => a.dist - b.dist);
 
         const firstTarget = allCandidates[0] || null;
@@ -1060,42 +1267,14 @@ function punch() {
             if (!DEBUG_SWORD_THUNDER_INF) _deactivateSwordAura();
             swordPostAuraKills = 0;
             // Lightning AoE kills everything — skip normal hit loop
-        } else {
-            // Swing missed — aura stays charged; standard (empty) hit path
-            candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
-                const curIdx = npcs.indexOf(h.npc);
-                if (curIdx !== -1) explodeNPC(h.npc, curIdx);
-            });
-            candidateDemons.slice(0, maxMeleeHits).forEach(h => {
-                const curIdx = demons.indexOf(h.demon);
-                if (curIdx !== -1) explodeDemon(h.demon, curIdx);
-            });
-            candidateCreatures.slice(0, maxMeleeHits).forEach(h => {
-                meleeHitCreature(h.creature);
-            });
         }
     } else {
         // Normal kill path; track sword kills toward 100-kill aura recharge
         let swordKillsThisSwing = 0;
 
-        candidateNPCs.slice(0, maxMeleeHits).forEach(h => {
-            const curIdx = npcs.indexOf(h.npc);
-            if (curIdx !== -1) {
-                explodeNPC(h.npc, curIdx);
-                if (isSwordAttack) swordKillsThisSwing++;
-            }
-        });
-        candidateDemons.slice(0, maxMeleeHits).forEach(h => {
-            const curIdx = demons.indexOf(h.demon);
-            if (curIdx !== -1) {
-                explodeDemon(h.demon, curIdx);
-                if (isSwordAttack) swordKillsThisSwing++;
-            }
-        });
-
-        candidateCreatures.slice(0, maxMeleeHits).forEach(h => {
-            meleeHitCreature(h.creature);
-            if (isSwordAttack) swordKillsThisSwing++;
+        killableCandidates.slice(0, maxMeleeHits).forEach(candidate => {
+            const result = resolveMeleeKillableCandidate(candidate);
+            if (isSwordAttack && result.killed) swordKillsThisSwing++;
         });
 
         if (isSwordAttack && hasSwordShield && swordKillsThisSwing > 0) {
@@ -1133,12 +1312,12 @@ function flashEquipHint(label) {
 }
 
 
-function tryDig() {
+function tryDig(aimDir = null, punchRange = 7.5, punchRayRange = null) {
     if (!bigLake) return false;
-    const dx = player.position.x - bigLake.x;
-    const dz = player.position.z - bigLake.z;
-    // Must be within the square area (DIG_ZONE_SIZE/2 units radius in each axis) at the lake center
-    if (Math.abs(dx) > DIG_ZONE_SIZE/2 || Math.abs(dz) > DIG_ZONE_SIZE/2) return false;
+    if (!aimDir || !bigLake.digHitRoot) return false;
+    const rayRange = punchRayRange ?? getMeleeRayRange(punchRange);
+    const hit = rayHitObjectProfileFromCamera(aimDir, bigLake.digHitRoot, rayRange, punchRange);
+    if (!hit) return false;
     // Must be near the lake floor
     if (player.position.y > bigLake.floorY + 10) return false;
 
@@ -1244,6 +1423,7 @@ function spawnGoldenKey(x, y, z) {
     goldenKeyBaseY = y;
     goldenKeyMesh.position.set(x, y, z);
     goldenKeyMesh.userData.isGoldenKey = true;
+    setObjectHitProfile(goldenKeyMesh, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1.2 }, { debugKey: 'goldenKeyHitboxDebug' });
     const keyLight = new THREE.PointLight(0xFFCC44, 0, 12);
     keyLight.userData.isGoldenKeyLight = true;
     goldenKeyMesh.add(keyLight);
@@ -1277,6 +1457,7 @@ function updateGoldenKey(delta) {
         const phase = (performance.now() - goldenKeySpawnTime) / 1000 * 2 * Math.PI;
         const pulse = 2 - 2 * Math.cos(phase);
         goldenKeyMesh.traverse(obj => {
+            if (obj.userData.isHitboxDebug) return;
             if (obj.isMesh && obj.material) {
                 obj.material.emissiveIntensity = 0.4 + pulse * 1.4;
             }
@@ -1287,6 +1468,7 @@ function updateGoldenKey(delta) {
     } else {
         // Settled glow once pickable
         goldenKeyMesh.traverse(obj => {
+            if (obj.userData.isHitboxDebug) return;
             if (obj.isMesh && obj.material) {
                 obj.material.emissiveIntensity = 0.4;
             }

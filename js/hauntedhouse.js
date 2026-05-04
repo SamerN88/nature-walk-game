@@ -51,9 +51,6 @@ const HH_ANGEL_WAVE_SCHEDULE = [
     // { interval: 0.5, count: 10, oscillate: true },
 ];
 const HH_DESPAWN_DIST = 900;
-// Maximum angle (degrees) between camera aim direction and the direction to the HH angel
-// for a sword hit to register. Tune this to make the hit window wider or narrower.
-const HH_SWORD_HIT_MAX_ANGLE = 10;
 
 // Cemetery constants
 const CEM_HALF = 25;
@@ -721,12 +718,23 @@ function createHauntedHouse() {
     worldSword.position.set(-2.9, HH_F2_SURFACE_Y + 3.0, -HH_HALF_D + 0.3);
     worldSword.rotation.set(-0.3, 0.45, Math.PI - 0.1); // leaning slightly
     worldSword.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    setObjectHitProfile(worldSword, {
+        shape: 'capsule',
+        start: { x: 0, y: -0.45, z: 0 },
+        end:   { x: 0, y:  4.30, z: 0 },
+        radius: 0.38
+    }, { debugKey: 'swordPickupHitboxDebug' });
     hhGrp.add(worldSword);
 
     const worldShield = createShieldMesh(0.95);
     worldShield.position.set(-0.2, HH_F2_SURFACE_Y + 0.8, -HH_HALF_D + 0.3);
     worldShield.rotation.set(-0.3, 0, 0);
     worldShield.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    setObjectHitProfile(worldShield, {
+        shape: 'sphere',
+        center: { x: 0, y: 0, z: 0 },
+        radius: 0.95
+    }, { debugKey: 'shieldPickupHitboxDebug' });
     hhGrp.add(worldShield);
 
     const worldSkeleton = createSkeletonMesh(1.2);
@@ -829,6 +837,7 @@ function createHauntedHouse() {
         hhHallDoorTargetAngle: -Math.PI / 2,
         ssItemGrp,
         worldSword,          // used as position reference for SS pickup detection
+        worldShield,
         worldSkeleton,
         writingMesh: null,          // set async in writingImg.onload
         insigniaDrawingMesh: null,  // set async in drawingImg.onload
@@ -872,6 +881,24 @@ function _createHHForestTree(x, z) {
     tree.userData.treeScale = scale;
     tree.userData.treeHitCenterY = 8.7 * scale;
     tree.userData.treeHitRadius = 4.2 * scale;
+    setObjectHitProfile(tree, {
+        shape: 'compound',
+        profiles: [
+            {
+                shape: 'cylinder',
+                start: { x: 0, y: 0.00 * scale, z: 0 },
+                end:   { x: 0, y: 5.00 * scale, z: 0 },
+                radius: 0.50 * scale
+            },
+            {
+                shape: 'cone',
+                start: { x: 0, y: 4.75 * scale, z: 0 },
+                end:   { x: 0, y: 12.65 * scale, z: 0 },
+                radiusStart: 2.80 * scale,
+                radiusEnd: 0.00
+            }
+        ]
+    }, { debugKey: 'treeHitboxDebug' });
 
     const trunkMat  = new THREE.MeshLambertMaterial({ color: 0x26170e });  // near-black dark wood (OG color: #160c06)
     const trunkH = 5 * scale;
@@ -1212,6 +1239,10 @@ function _releaseHHHallCrawler(crawler) {
     if (!crawler || crawler.released || !crawler.mesh ||
         typeof nightCreatures === 'undefined' || !Array.isArray(nightCreatures)) return;
     crawler.released = true;
+    const hitProfile = typeof makeCreatureHitProfile === 'function'
+        ? makeCreatureHitProfile('crawler')
+        : { shape: 'capsule', start: { x: 0, y: 0.58, z: -0.45 }, end: { x: 0, y: 0.72, z: 2.15 }, radius: 0.50 };
+    attachHitProfileDebugVisual(crawler.mesh, hitProfile);
     nightCreatures.push({
         type: 'crawler',
         mesh: crawler.mesh,
@@ -1219,6 +1250,7 @@ function _releaseHHHallCrawler(crawler) {
         hitCooldown: 0,
         gunHitCenterY: 0.30,
         gunHitRadius: 0.75,
+        hitProfile,
         isCemZombie: false,
         isHHSpecialCrawler: true,
         speed: 0.75 * (typeof CREATURE_SPEED === 'number' ? CREATURE_SPEED : WALK_SPEED * 0.9),
@@ -1579,6 +1611,16 @@ function createCemetery() {
         }
     }
 
+    const talismanGraveHitRoot = new THREE.Object3D();
+    talismanGraveHitRoot.position.set(tgX, 0.02, tgZ + 0.8);
+    talismanGraveHitRoot.userData.ignoreCameraOcclusion = true;
+    setObjectHitProfile(talismanGraveHitRoot, {
+        shape: 'box',
+        center: { x: 0, y: 0, z: 0 },
+        halfSize: { x: 1.65, y: 0.35, z: 0.75 }
+    }, { debugKey: 'talismanGraveDigHitboxDebug' });
+    cemGrp.add(talismanGraveHitRoot);
+
     // Walls with a south-facing doorway toward the cemetery interior
     CB(srS + srWallT, srH + srWallSink, srWallT, srX, -srWallSink, srZ - srS / 2, srMat);            // North wall
     CB(srSouthSideW, srH + srWallSink, srWallT, srSouthLeftX, -srWallSink, srSouthZ, srMat);     // South wall left
@@ -1762,12 +1804,22 @@ function createCemetery() {
     leftGatePivot.position.set(-CEM_ENT_HALF_W, 0, CEM_HALF);
     leftGatePivot.rotation.y = GATE_OPEN_L;
     _makeGatePanel(leftGatePivot, +1);
+    setObjectHitProfile(leftGatePivot, {
+        shape: 'box',
+        center: { x: CEM_ENT_HALF_W / 2, y: CEM_FENCE_H / 2, z: 0 },
+        halfSize: { x: CEM_ENT_HALF_W / 2, y: CEM_FENCE_H / 2, z: 0.28 }
+    }, { debugKey: 'leftGateHitboxDebug' });
     cemGrp.add(leftGatePivot);
 
     const rightGatePivot = new THREE.Group();
     rightGatePivot.position.set(CEM_ENT_HALF_W, 0, CEM_HALF);
     rightGatePivot.rotation.y = GATE_OPEN_R;
     _makeGatePanel(rightGatePivot, -1);
+    setObjectHitProfile(rightGatePivot, {
+        shape: 'box',
+        center: { x: -CEM_ENT_HALF_W / 2, y: CEM_FENCE_H / 2, z: 0 },
+        halfSize: { x: CEM_ENT_HALF_W / 2, y: CEM_FENCE_H / 2, z: 0.28 }
+    }, { debugKey: 'rightGateHitboxDebug' });
     cemGrp.add(rightGatePivot);
 
     // Invisible collision wall for the closed gates — disabled when gates are open
@@ -1789,6 +1841,7 @@ function createCemetery() {
         talismanGraveWorldZ: tgWorld.z,
         talismanGraveLocalX: tgX,
         talismanGraveLocalZ: tgZ,
+        talismanGraveHitRoot,
         graveCount: cemeteryGraveCount,
         gravePositions,
         roomLampLight: lampLight,
@@ -1835,13 +1888,14 @@ function createCemetery() {
 }
 
 // ── Talisman grave interaction ────────────────────────────────────────────────
-function tryDigTalismanGrave() {
+function tryDigTalismanGrave(aimDir = null, punchRange = 7.5, punchRayRange = null) {
     if (!cemeteryData || hasTalisman || talismanItemMesh) return false;
     if (currentHandItem !== 'shovel') return false;
 
-    const dx = player.position.x - cemeteryData.talismanGraveWorldX;
-    const dz = player.position.z - cemeteryData.talismanGraveWorldZ;
-    if (Math.sqrt(dx * dx + dz * dz) > 4) return false;
+    if (!aimDir || !cemeteryData.talismanGraveHitRoot) return false;
+    const rayRange = punchRayRange ?? getMeleeRayRange(punchRange);
+    const hit = rayHitObjectProfileFromCamera(aimDir, cemeteryData.talismanGraveHitRoot, rayRange);
+    if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return false;
 
     talismanGraveDigCount++;
     spawnDigParticles(
@@ -1862,6 +1916,7 @@ function tryDigTalismanGrave() {
         cemeteryData.group.localToWorld(talismanSpawn);
         talismanBaseY = talismanSpawn.y;
         talismanItemMesh.position.copy(talismanSpawn);
+        setObjectHitProfile(talismanItemMesh, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1.0 }, { debugKey: 'talismanPickupHitboxDebug' });
         scene.add(talismanItemMesh);
         talismanSpawnTime = performance.now();
         talismanLockTimer = 3;
@@ -1884,11 +1939,13 @@ function updateTalisman(delta) {
         const phase = elapsed * 2 * Math.PI;
         const pulse = 2 - 2 * Math.cos(phase);
         talismanItemMesh.traverse(obj => {
+            if (obj.userData.isHitboxDebug) return;
             if (obj.isMesh && obj.material) obj.material.emissiveIntensity = 0.6 + pulse * 0.8;
             if (obj.isLight && obj.userData.isTalismanGlow) obj.intensity = pulse * 2;
         });
     } else {
         talismanItemMesh.traverse(obj => {
+            if (obj.userData.isHitboxDebug) return;
             if (obj.isMesh && obj.material) obj.material.emissiveIntensity = 0.6;
             if (obj.isLight && obj.userData.isTalismanGlow) obj.intensity = 0;
         });
@@ -1927,11 +1984,9 @@ function updateCemeteryRoomLamp(delta) {
 // ── tryPickupTalisman (called from punch) ────────────────────────────────────
 function tryPickupTalisman(aimDir, punchRange) {
     if (!talismanItemMesh || talismanLockTimer > 0) return false;
-    const toItem = talismanItemMesh.position.clone().sub(camera.position);
-    const proj = toItem.dot(aimDir);
-    if (proj <= 0 || proj > punchRange) return false;
-    const perp = toItem.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-    if (perp > 2.5) return false;
+    const rayRange = getMeleeRayRange(punchRange);
+    const hit = rayHitObjectProfileFromCamera(aimDir, talismanItemMesh, rayRange);
+    if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return false;
 
     hasTalisman = true;
     scene.remove(talismanItemMesh);
@@ -1965,16 +2020,13 @@ function tryToggleCemeteryGate(aimDir, punchRange) {
     if (cemeteryData.gatesLocked) return false;
 
     // Check if player is aiming toward the entrance area
-    const entrancePos = new THREE.Vector3(
-        cemeteryData.entranceWorldX,
-        cemeteryData.worldGroundY + CEM_FENCE_H / 2,
-        cemeteryData.entranceWorldZ
-    );
-    const toEnt = entrancePos.clone().sub(camera.position);
-    const proj  = toEnt.dot(aimDir);
-    if (proj <= 0 || proj > punchRange) return false;
-    const perp = toEnt.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-    if (perp > 5) return false;
+    const rayRange = getMeleeRayRange(punchRange);
+    const leftHit = rayHitObjectProfileFromCamera(aimDir, cemeteryData.gatePivotL, rayRange);
+    const rightHit = rayHitObjectProfileFromCamera(aimDir, cemeteryData.gatePivotR, rayRange);
+    const hit = [leftHit, rightHit]
+        .filter(h => h && isHitWithinPlayerReach(h, punchRange))
+        .sort((a, b) => a.distance - b.distance)[0];
+    if (!hit) return false;
 
     const isOpen = Math.abs(cemeteryData.gatePivotL.rotation.y - cemeteryData.gateOpenL) < 0.1;
     if (isOpen) {
@@ -2004,17 +2056,15 @@ function updateCemeteryGates(delta) {
 // ── tryPickupSSItem (called from punch) ──────────────────────────────────────
 function tryPickupSSItem(aimDir, punchRange) {
     if (!hauntedHouseData || hhSeqPhase !== 'active') return false;
-    if (!hauntedHouseData.ssItemGrp || !hauntedHouseData.worldSword) return false;
+    if (!hauntedHouseData.ssItemGrp || !hauntedHouseData.worldSword || !hauntedHouseData.worldShield) return false;
 
-    // Use worldSword's actual world position — ssItemGrp sits at the group origin (0,0,0)
-    // so getWorldPosition on the group returns the building centre, not the item location.
-    const itemPos = new THREE.Vector3();
-    hauntedHouseData.worldSword.getWorldPosition(itemPos);
-    const toItem = itemPos.clone().sub(camera.position);
-    const proj = toItem.dot(aimDir);
-    if (proj <= 0 || proj > punchRange) return false;
-    const perp = toItem.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-    if (perp > 5) return false;
+    const rayRange = getMeleeRayRange(punchRange);
+    const swordHit = rayHitObjectProfileFromCamera(aimDir, hauntedHouseData.worldSword, rayRange);
+    const shieldHit = rayHitObjectProfileFromCamera(aimDir, hauntedHouseData.worldShield, rayRange);
+    const hit = [swordHit, shieldHit]
+        .filter(h => h && isHitWithinPlayerReach(h, punchRange))
+        .sort((a, b) => a.distance - b.distance)[0];
+    if (!hit) return false;
 
     // Collect SS
     hasSwordShield = true;
@@ -2035,6 +2085,7 @@ function _blacken(obj, darken) {
     if (!obj) return;
     obj.traverse(function(m) {
         if (!m.isMesh) return;
+        if (m.userData.isHitboxDebug) return;
         if (darken) {
             if (!m.userData._origMat) m.userData._origMat = m.material;
             m.material = _hhBlackMat;
@@ -2272,6 +2323,11 @@ function _spawnHHAngel(options = {}) {
         if (obj.isMesh) partMeshes.push(obj);
     });
 
+    const hitProfile = typeof makeCreatureHitProfile === 'function'
+        ? makeCreatureHitProfile('angel')
+        : { shape: 'capsule', start: { x: 0, y: 0.35, z: -0.08 }, end: { x: 0, y: 3.25, z: -0.05 }, radius: 0.62 };
+    attachHitProfileDebugVisual(angelMesh, hitProfile);
+
     const angel = {
         mesh: angelMesh,
         specialFirst: !!options.specialFirst,
@@ -2282,6 +2338,7 @@ function _spawnHHAngel(options = {}) {
         hitsTaken: 0,
         noTalismanHits: 0,
         hitCooldown: 0,
+        hitProfile,
         touchTriggered: false,
         partMeshes,
         partBaseX: partMeshes.map(m => m.position.x),
@@ -2313,7 +2370,7 @@ function _isHHAngelFrozenByLook(angel, dist) {
 }
 
 function _damagePlayerFromHHAngel(angel) {
-    if (DEBUG_HH_INVINCIBLE) return;
+    if (DEBUG_INVINCIBLE) return;
 
     if (angel.hitCooldown > 0 || playerDead) return;
     angel.hitCooldown = CREATURE_HIT_COOLDOWN;
@@ -2429,23 +2486,21 @@ function _removeHHAngel(angel, animateDeath) {
 function tryHitHHWhiteSM(aimDir, punchRange) {
     if (hhAngels.length === 0) return false;
 
-    const cosThreshold = Math.cos(HH_SWORD_HIT_MAX_ANGLE * Math.PI / 180);
-    const aimFlat  = new THREE.Vector3(aimDir.x, 0, aimDir.z).normalize();
-
     const candidates = [];
+    const rayRange = getMeleeRayRange(punchRange);
     for (const angel of hhAngels) {
         if (!angel.mesh || angel.touchTriggered) continue;
         if (angel.specialFirst && !hhFirstAngelApproaching) continue; // can't hit during frozen phase
 
-        const hitPos = angel.mesh.position.clone();
-        hitPos.y += HH_ANGEL_HIT_CENTER_Y;
-        const toAngel = new THREE.Vector3().subVectors(hitPos, camera.position);
-        const dist = toAngel.length();
-        if (dist > punchRange) continue;
-
-        const toAngelFlat = new THREE.Vector3(toAngel.x, 0, toAngel.z).normalize();
-        if (toAngelFlat.dot(aimFlat) < cosThreshold) continue;
-        candidates.push({ angel, dist });
+        const profile = angel.hitProfile || {
+            shape: 'capsule',
+            start: { x: 0, y: 0.35, z: -0.08 },
+            end: { x: 0, y: 3.25, z: -0.05 },
+            radius: 0.62
+        };
+        const hit = rayHitProfile(camera.position, aimDir, angel.mesh, profile, rayRange);
+        if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
+        candidates.push({ angel, dist: hit.distance });
     }
 
     if (candidates.length === 0) return false;

@@ -1,9 +1,62 @@
 const FARMER_MIN_SPAWN_DISTANCE = 200;
 const FARMER_MAX_SPAWN_DISTANCE = 400;
 const FARMER_DEBUG_DISTANCE = 5;
-const FARMER_SCALE = 1.20;
+const HUMAN_PLAYER_SCALE = 1.15;
+const FARMER_SCALE = 1.2*HUMAN_PLAYER_SCALE;
+
+function makeNPCHitProfile(type, options = {}) {
+    if (type === 'deer') {
+        return {
+            shape: 'capsule',
+            start: { x: -0.95, y: 1.12, z: 0 },
+            end:   { x:  1.18, y: 1.38, z: 0 },
+            radius: 0.8
+        };
+    }
+    if (type === 'rabbit') {
+        return {
+            shape: 'sphere',
+            center: { x: 0.03, y: 0.34, z: 0 },
+            radius: 0.7
+        };
+    }
+    if (type === 'bird') {
+        return {
+            shape: 'sphere',
+            center: { x: 0.05, y: 0.02, z: 0 },
+            radius: 0.55
+        };
+    }
+    if (type === 'human') {
+        return {
+            shape: 'capsule',
+            start: { x: 0, y: 0.35, z: 0 },
+            end:   { x: 0, y: 1.62, z: 0 },
+            radius: 0.55
+        };
+    }
+    return { // arbitrary default
+        shape: 'sphere',
+        center: { x: 0, y: 1, z: 0 },
+        fixedWorldRadius: 1
+    };
+}
 
 function createNPCs() {
+    if (DEBUG_NPC) {
+        const z = 20;
+        createDeer();
+        npcs[npcs.length - 1].mesh.position.set(-6, getGroundHeight(-6, z), z);
+        createRabbit();
+        npcs[npcs.length - 1].mesh.position.set(-2, getGroundHeight(-2, z), z);
+        createBird(1);
+        const smallBirdNPC = npcs[npcs.length - 1];
+        smallBirdNPC.mesh.position.set(2, getGroundHeight(2, z) + smallBirdNPC.flyHeight, z);
+        createBird(4);
+        const bigBirdNPC = npcs[npcs.length - 1];
+        bigBirdNPC.mesh.position.set(2, getGroundHeight(2, z) + bigBirdNPC.flyHeight, z);
+        createHuman({ spawnPosition: { x: 6, z } });
+    }
     // Create deer
     for (let i = 0; i < 125; i++) {
         createDeer();
@@ -103,12 +156,15 @@ function createDeer() {
     const x = spawn.x;
     const z = spawn.z;
     deer.position.set(x, getGroundHeight(x, z), z);
+    const hitProfile = makeNPCHitProfile('deer');
+    attachHitProfileDebugVisual(deer, hitProfile);
     enableMeshReceiveShadowOnly(deer);
     scene.add(deer);
 
     npcs.push({
         mesh: deer,
         type: 'deer',
+        hitProfile,
         waterHeight: 2.15,
         speed: 2 + Math.random() * 2,
         direction: Math.random() * Math.PI * 2,
@@ -170,12 +226,15 @@ function createRabbit() {
     const x = spawn.x;
     const z = spawn.z;
     rabbit.position.set(x, getGroundHeight(x, z), z);
+    const hitProfile = makeNPCHitProfile('rabbit');
+    attachHitProfileDebugVisual(rabbit, hitProfile);
     enableMeshReceiveShadowOnly(rabbit);
     scene.add(rabbit);
 
     npcs.push({
         mesh: rabbit,
         type: 'rabbit',
+        hitProfile,
         waterHeight: 0.72,
         speed: 3 + Math.random() * 3,
         direction: Math.random() * Math.PI * 2,
@@ -288,12 +347,15 @@ function createBird(birdScale = 1) {
         ? (30 + Math.random() * 50)   // big birds fly higher
         : (10 + Math.random() * 30);  // small birds fly lower
     bird.position.set(x, getGroundHeight(x, z) + flyHeight, z);
+    const hitProfile = makeNPCHitProfile('bird');
+    attachHitProfileDebugVisual(bird, hitProfile);
     enableMeshShadows(bird);
     scene.add(bird);
 
     npcs.push({
         mesh: bird,
         type: 'bird',
+        hitProfile,
         waterHeight: 0.35 * birdScale,
         speed: birdScale > 1 ? (20 + Math.random() * 30) : (8 + Math.random() * 6),
         direction: Math.random() * Math.PI * 2,
@@ -466,11 +528,11 @@ function createHuman(options = {}) {
     });
     const x = spawn.x;
     const z = spawn.z;
-    if (isFarmer) {
-        human.scale.setScalar(FARMER_SCALE);
-        human.scale.y = 1.1 * FARMER_SCALE;
-    }
+    const humanScale = isFarmer ? FARMER_SCALE : HUMAN_PLAYER_SCALE;
+    human.scale.setScalar(humanScale);
     human.position.set(x, getGroundHeight(x, z), z);
+    const hitProfile = makeNPCHitProfile('human', { isFarmer });
+    attachHitProfileDebugVisual(human, hitProfile);
     enableMeshReceiveShadowOnly(human);
     scene.add(human);
 
@@ -478,7 +540,8 @@ function createHuman(options = {}) {
         mesh: human,
         type: 'human',
         isFarmer,
-        waterHeight: 1.96 * (isFarmer ? FARMER_SCALE : 1),
+        hitProfile,
+        waterHeight: 1.96 * humanScale,
         speed: 1.5 + Math.random() * 1.5,
         direction: Math.random() * Math.PI * 2,
         changeTimer: 0,
@@ -582,10 +645,10 @@ function updateNPCs(delta) {
 }
 
 function getNPCHitRadius(npc) {
-    if (npc.type === 'bird') return (npc.mesh.scale.x > 1.5) ? 6.0 : 2.8;
+    if (npc.type === 'bird') return 2;
     if (npc.type === 'deer') return 3.2;
-    if (npc.type === 'human') return npc.isFarmer ? 3.3 : 2.8;
-    return 2.2;
+    if (npc.type === 'human') return 2.5;
+    return 2;
 }
 
 function explodeNPC(npcData, index) {
@@ -623,6 +686,7 @@ function explodeNPC(npcData, index) {
 
         particle.position.copy(position);
         particle.position.y += 1;
+        particle.userData.ignoreCameraOcclusion = true;
         particle.userData.velocity = new THREE.Vector3(
             (Math.random() - 0.5) * 15,
             Math.random() * 12 + 5,

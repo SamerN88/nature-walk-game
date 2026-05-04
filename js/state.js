@@ -118,7 +118,7 @@ const SHADOW_MAN_CUTSCENE_MIDNIGHT_PROGRESS = 19 / 24; // Midnight, with FULL_CY
 // true: player falls naturally to ground before cutscene starts; false: teleport to surface instantly
 const FALL_TO_CUTSCENE = true;
 const SHADOW_MAN_CAMERA_TRANSITION_SEC = 0.200; // seconds to smoothly rotate camera to face SM at cutscene start
-const DIG_ZONE_SIZE = 10;
+const DIG_ZONE_SIZE = 8;
 
 // NPCs
 let npcs = [];

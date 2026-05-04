@@ -83,10 +83,14 @@ function createPlayer() {
     ak47MuzzleFlash.visible = false;
     ak47MuzzleFlash.frustumCulled = false;
     ak47MuzzleFlash.renderOrder = 70;
+    ak47MuzzleFlash.userData.ignoreCameraOcclusion = true;
+    ak47MuzzleFlash.userData.isBeam = true;
     playerAk47Muzzle.add(ak47MuzzleFlash);
 
     ak47MuzzleLight = new THREE.PointLight(AK47_BEAM_COLOR, 0, 26);
     ak47MuzzleLight.position.set(0, 0, 0.08);
+    ak47MuzzleLight.userData.ignoreCameraOcclusion = true;
+    ak47MuzzleLight.userData.isBeam = true;
     playerAk47Muzzle.add(ak47MuzzleLight);
 
     // Sword (right hand side)
@@ -102,6 +106,19 @@ function createPlayer() {
     playerShieldMesh.rotation.set(0, Math.PI / 4.5, -Math.PI / 12);
     playerShieldMesh.visible = false;
     player.add(playerShieldMesh);
+
+    if (DEBUG_HITBOXES) {
+        const playerHitboxMesh = new THREE.Mesh(
+            new THREE.CapsuleGeometry(PLAYER_HIT_RADIUS, Math.max(0, PLAYER_COLLISION_HEIGHT - 2 * PLAYER_HIT_RADIUS), 8, 16),
+            new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide })
+        );
+        playerHitboxMesh.position.y = PLAYER_COLLISION_HEIGHT / 2;
+        playerHitboxMesh.userData.ignoreCameraOcclusion = true;
+        playerHitboxMesh.renderOrder = 50;
+        player.add(playerHitboxMesh);
+    }
+
+    if (DEBUG_HIT_FRUSTUM) createHitFrustumDebug();
 
     player.position.set(0, 0, 0);
     scene.add(player);

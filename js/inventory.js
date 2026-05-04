@@ -249,6 +249,7 @@ function spawnVolcanoNote(x, y, z, noteRotation, parent) {
     noteGroup.position.set(x, y, z);
     noteGroup.rotation.y = noteRotation;
     noteGroup.userData.noteId = NOTE_VOLCANO_HINT_ID;
+    setObjectHitProfile(noteGroup, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1.1 }, { debugKey: 'noteHitboxDebug' });
     (parent || scene).add(noteGroup);
     volcanoHintNoteMesh = noteGroup;
 }
@@ -262,6 +263,7 @@ function spawnKeyHintNote(deathPos) {
     noteGroup.userData.bobPhase = Math.random() * Math.PI * 2;
     noteGroup.userData.baseY    = baseY;
     noteGroup.userData.isFloating = true;
+    setObjectHitProfile(noteGroup, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 1.1 }, { debugKey: 'noteHitboxDebug' });
     scene.add(noteGroup);
     keyHintNoteMesh  = noteGroup;
     keyHintNoteDropped = true;
@@ -285,6 +287,7 @@ function updateNotes(delta) {
             const phase = elapsed * 2 * Math.PI;
             const pulse = 2 - 2 * Math.cos(phase);
             keyHintNoteMesh.traverse(obj => {
+                if (obj.userData.isHitboxDebug) return;
                 if (obj.isMesh && obj.material?.color) {
                     obj.material.color.setRGB(1, 0.88 + pulse * 0.06, 0.72 + pulse * 0.14);
                 }
@@ -294,6 +297,7 @@ function updateNotes(delta) {
             });
         } else {
             keyHintNoteMesh.traverse(obj => {
+                if (obj.userData.isHitboxDebug) return;
                 if (obj.isMesh && obj.material?.color) {
                     obj.material.color.setRGB(1, 1, 1);
                 }
@@ -330,14 +334,9 @@ function tryPickupNote(aimDir, punchRange) {
     for (const { mesh, id } of candidates) {
         if (id === NOTE_KEY_HINT_ID && keyHintNoteLockTimer > 0) continue;
 
-        // Use world position so notes parented to structures (e.g. cave group) work correctly
-        const notePos = new THREE.Vector3();
-        mesh.getWorldPosition(notePos);
-        const toNote  = notePos.clone().sub(camera.position);
-        const proj    = toNote.dot(aimDir);
-        if (proj <= 0 || proj > punchRange) continue;
-        const perp = toNote.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-        if (perp > 3.5) continue;
+        const rayRange = punchRange + camera.position.distanceTo(player.position);
+        const hit = rayHitObjectProfileFromCamera(aimDir, mesh, rayRange);
+        if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
 
         mesh.removeFromParent(); // works whether parented to scene or a group
         if (id === NOTE_VOLCANO_HINT_ID) {

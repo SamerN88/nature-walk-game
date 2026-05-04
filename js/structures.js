@@ -590,6 +590,9 @@ function createEnterableStructures() {
             lidPivot: lidPivot,
             gunMesh: akChestGun,
             opened: false,
+            lidTargetAngle: 0,
+            lidOpenAngle: -Math.PI * 0.65,
+            lidSpeed: Math.PI * 2.4,
             collected: false,
             worldX: chestWorld.x,
             worldY: groundY + chestBaseH,
@@ -597,6 +600,11 @@ function createEnterableStructures() {
             halfW: chestW / 2,
             halfD: chestD / 2
         };
+        setObjectHitProfile(chest, {
+            shape: 'box',
+            center: { x: 0, y: (chestBaseH + chestLidH) / 2, z: 0 },
+            halfSize: { x: chestW / 2, y: (chestBaseH + chestLidH) / 2, z: chestD / 2 }
+        }, { debugKey: 'akChestHitboxDebug' });
 
         addStructureBox(
             chestWorld.x,
@@ -761,6 +769,11 @@ function createEnterableStructures() {
             { isEnclosed: true }
         );
         const doorData = { pivot: doorPivot, mesh: doorPanel, wallEntry: doorWallEntry, isOpen: false, angle: 0, targetAngle: 0 };
+        setObjectHitProfile(doorPanel, {
+            shape: 'box',
+            center: { x: 0, y: 0, z: 0 },
+            halfSize: { x: 1.95, y: 2.95, z: 0.5 }
+        }, { debugKey: 'doorHitboxDebug' });
         houseDoors.push(doorData);
         creatureHouseRegions.push({
             x: placement.x,
@@ -1069,7 +1082,22 @@ function createEnterableStructures() {
         }
 
         const fireWorld = localToWorldXZ(placement.x, placement.z, 0, -cD / 2, placement.rotation);
-        campfirePositions.push(new THREE.Vector3(fireWorld.x, groundY + 0.2, fireWorld.z));
+        const campfirePos = new THREE.Vector3(fireWorld.x, groundY + 0.2, fireWorld.z);
+        const campfireHitProfile = {
+            shape: 'cone',
+            start: { x: 0, y: 0.05, z: 0 },
+            end:   { x: 0, y: 2, z: 0 },
+            radiusStart: 0.90,
+            radiusEnd: 0.35
+        };
+        const campfireHitRoot = makeWorldHitProfileRoot(campfirePos, campfireHitProfile, {
+            debugKey: `campfireHitboxDebug-${campfirePositions.length}`
+        });
+        campfirePos.userData = {
+            hitRoot: campfireHitRoot,
+            hitProfile: campfireHitProfile
+        };
+        campfirePositions.push(campfirePos);
     });
 
     if (volcanoNoteCandidates.length > 0) {
@@ -1222,6 +1250,7 @@ function createEnterableStructures() {
         shovelInTent.position.set(localX, localY, localZ);
         shovelInTent.rotation.set(0, Math.PI / 1.5, Math.PI / 2);
         shovelInTent.userData.isTentShovel = true;
+        setObjectHitProfile(shovelInTent, { shape: 'cylinder', start: { x: 0, y: -0.7, z: 0 }, end: { x: 0, y: 2.25, z: 0 }, radius: 0.5 }, { debugKey: 'shovelPickupHitboxDebug' });
         chosenTent.add(shovelInTent);
         chosenTent.updateMatrixWorld(true);
         tentShovelMesh = shovelInTent;

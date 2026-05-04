@@ -7,8 +7,6 @@ const SPECIAL_PORTAL_BODY_FADE_DURATION = 2.0;
 const SPECIAL_PORTAL_NOOSE_LOOP_REST_ROT_X = 0.4;
 const SPECIAL_PORTAL_NOOSE_LOOP_ALIVE_ROT_X = 0.68;
 
-const _specialPortalRaycaster = new THREE.Raycaster();
-
 function _lerpNooseValue(a, b, t) {
     return a + (b - a) * t;
 }
@@ -276,6 +274,7 @@ function spawnSpecialPortalHangingBody() {
     );
     body.rotation.y = Math.PI;
     tightenSpecialPortalNooseLoop();
+    attachHitProfileDebugVisual(body, _getSpecialPortalBodyHitProfile());
     specialPortalFrameData.nooseRoot.add(body);
     specialPortalFrameData.body = body;
 }
@@ -283,6 +282,15 @@ function spawnSpecialPortalHangingBody() {
 function _getSpecialPortalBodyFocusPoint() {
     if (!specialPortalFrameData || !specialPortalFrameData.body) return null;
     return specialPortalFrameData.body.localToWorld(new THREE.Vector3(0, 2.25, 0));
+}
+
+function _getSpecialPortalBodyHitProfile() {
+    return {
+        shape: 'capsule',
+        start: { x: 0, y: 0.30, z: 0 },
+        end:   { x: 0, y: 3.2, z: 0 },
+        radius: 0.75
+    };
 }
 
 function _isSpecialPortalBodyVulnerable() {
@@ -299,39 +307,19 @@ function getSpecialPortalBodyGunHits(aimDir, maxRange = AK47_BEAM_MAX_VISUAL_RAN
     if (!_isSpecialPortalBodyVulnerable()) return [];
 
     specialPortalFrameData.group.updateMatrixWorld(true);
-    _specialPortalRaycaster.set(camera.position, aimDir);
-    _specialPortalRaycaster.near = 0;
-    _specialPortalRaycaster.far = maxRange;
+    const hit = rayHitProfileBeyondCameraPlayerGap(camera.position, aimDir, specialPortalFrameData.body, _getSpecialPortalBodyHitProfile(), maxRange);
+    if (!hit) return [];
 
-    const hits = _specialPortalRaycaster.intersectObject(specialPortalFrameData.body, true)
-        .filter(hit => !hit.object.userData.isEye);
-    if (hits.length === 0) return [];
-
-    return [{ kind: 'nooseBody', target: specialPortalFrameData, projected: hits[0].distance }];
+    return [{ kind: 'nooseBody', target: specialPortalFrameData, projected: hit.distance }];
 }
 
 function tryHitSpecialPortalBodyMelee(aimDir, punchRange) {
     if (!_isSpecialPortalBodyVulnerable()) return false;
 
     specialPortalFrameData.group.updateMatrixWorld(true);
-    _specialPortalRaycaster.set(camera.position, aimDir);
-    _specialPortalRaycaster.near = 0;
-    _specialPortalRaycaster.far = punchRange;
-
-    const rayHits = _specialPortalRaycaster.intersectObject(specialPortalFrameData.body, true)
-        .filter(hit => !hit.object.userData.isEye);
-    if (rayHits.length > 0) {
-        damageSpecialPortalHangingBody();
-        return true;
-    }
-
-    const focus = _getSpecialPortalBodyFocusPoint();
-    if (!focus) return false;
-    const toBody = focus.clone().sub(camera.position);
-    const projected = toBody.dot(aimDir);
-    if (projected <= 0 || projected > punchRange) return false;
-    const perp = toBody.clone().sub(aimDir.clone().multiplyScalar(projected)).length();
-    if (perp > 1.7) return false;
+    const rayRange = punchRange + camera.position.distanceTo(player.position);
+    const hit = rayHitProfileBeyondCameraPlayerGap(camera.position, aimDir, specialPortalFrameData.body, _getSpecialPortalBodyHitProfile(), rayRange);
+    if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return false;
 
     damageSpecialPortalHangingBody();
     return true;
@@ -373,6 +361,7 @@ function _banishSpecialPortalHangingBody() {
     data.fadeMaterial = fadeMat;
     data.body.traverse(mesh => {
         if (!mesh.isMesh) return;
+        if (mesh.userData.isHitboxDebug) return;
         if (mesh.userData.isEye) {
             mesh.visible = false;
             return;

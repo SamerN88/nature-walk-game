@@ -1,5 +1,6 @@
 const DEMON_SPAWN_COUNT = 150; //DEBUG - originally 150, change it to examine demons more closely
 const DEMON_HIT_DAMAGE = 40; //DEBUG - originally 40, set to 0 for testing without dying
+const DEMON_HIT_RANGE = 3.5;
 // Circumference of the campfire-timer SVG arc (r=13): 2π×13
 const _CAMPFIRE_ARC_CIRC = 2 * Math.PI * 13;
 // Cached DOM element for the damage flash overlay (avoid getElementById in hot loop)
@@ -209,6 +210,13 @@ function createDemon(biasedSpeed = false) {
     });
     demon.userData.faceAnimatedParts = faceAnimatedParts;
     enableMeshReceiveShadowOnly(demon);
+    const hitProfile = {
+        shape: 'capsule',
+        start: { x: 0, y: 0.65, z: 0.10 },
+        end:   { x: 0, y: 5.90, z: 0.18 },
+        radius: 1.5
+    };
+    attachHitProfileDebugVisual(demon, hitProfile);
 
     return {
         mesh: demon,
@@ -219,6 +227,7 @@ function createDemon(biasedSpeed = false) {
         gunShotsToKill: 3 + DEMON_TYPE,
         gunHitCenterY: 4.8, // root is at feet; gun ray tests should target torso/head volume
         gunHitRadius: 4.6,
+        hitProfile,
         lungeProgress: 0,
         lunging: false,
         animPhase: Math.random() * Math.PI * 2,  // randomise animation start
@@ -606,7 +615,7 @@ function updateDemons(delta) {
         const hitDy = targetPos.y - zp.y;
         const dist3D = Math.sqrt(dx * dx + hitDy * hitDy + dz * dz);
         z.hitTimer -= delta;
-        if (dist3D < 5.5 && z.hitTimer <= 0) {
+        if (dist3D < DEMON_HIT_RANGE && z.hitTimer <= 0 && !DEBUG_INVINCIBLE) {
             z.hitTimer = z.hitCooldown;
             z.lunging  = true;
             z.lungeProgress = 0;

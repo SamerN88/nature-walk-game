@@ -14,6 +14,16 @@ const _csCamQuat = new THREE.Quaternion(); // scratch for SM cutscene camera tra
 
 function createDigZoneGroundPatch(lake) {
     if (!lake) return;
+    lake.digHitRoot = makeWorldHitProfileRoot(
+        new THREE.Vector3(lake.x, lake.floorY, lake.z),
+        {
+            shape: 'cylinder',
+            start: { x: 0, y: -0.35, z: 0 },
+            end: { x: 0, y: 0.35, z: 0 },
+            radius: DIG_ZONE_SIZE / 2
+        },
+        { debugKey: 'lakeKeyDigHitboxDebug' }
+    );
 
     function makeBlobTexture(halfSize, baseRadius, noise, feather) {
         const texSize = 256;
@@ -201,6 +211,7 @@ function init() {
             new THREE.MeshLambertMaterial({ color: 0x8B5E3C })
         );
         boxMesh.position.set(0, boxY + 1, 30);
+        setObjectHitProfile(boxMesh, { shape: 'sphere', center: { x: 0, y: 0, z: 0 }, radius: 2 }, { debugKey: 'debugKeyHitboxDebug' });
         scene.add(boxMesh);
         debugKeyBox = { mesh: boxMesh, hitCount: 0 };
     }
@@ -543,6 +554,7 @@ function animate() {
     updateTalisman(delta);
     updateSwordSwipe(delta);
     updateSunShadowFocus();
+    if (DEBUG_HIT_FRUSTUM) updateHitFrustumDebug();
     renderer.render(scene, camera);
 }
 

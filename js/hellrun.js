@@ -129,6 +129,13 @@ function createShrine() {
     group.userData.crystals = crystals;
     group.userData.embers   = embers;
     group.userData.runeRing = runeRing;
+    setObjectHitProfile(group, {
+        shape: 'frustum',
+        start: { x: 0, y: 0.1, z: 0 },
+        end: { x: 0, y: 8.6, z: 0 },
+        radiusStart: 4.9,
+        radiusEnd: 1.0
+    }, { debugKey: 'shrineStartHitboxDebug' });
 
     shrine = group;
     scene.add(shrine);

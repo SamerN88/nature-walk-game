@@ -15,6 +15,24 @@ function createTree(x, z, scale = 1) {
     tree.userData.treeScale = scale;
     tree.userData.treeHitCenterY = 5.15 * scale;
     tree.userData.treeHitRadius = 3.5 * scale;
+    setObjectHitProfile(tree, {
+        shape: 'compound',
+        profiles: [
+            {
+                shape: 'cylinder',
+                start: { x: 0, y: 0.00 * scale, z: 0 },
+                end:   { x: 0, y: 3.00 * scale, z: 0 },
+                radius: 0.45 * scale
+            },
+            {
+                shape: 'cone',
+                start: { x: 0, y: 2.50 * scale, z: 0 },
+                end:   { x: 0, y: 7.80 * scale, z: 0 },
+                radiusStart: 2.50 * scale,
+                radiusEnd: 0.00
+            }
+        ]
+    }, { debugKey: 'treeHitboxDebug' });
 
     // Foliage layers
     const foliageMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });

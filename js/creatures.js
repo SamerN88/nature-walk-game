@@ -366,6 +366,31 @@ function _buildWeepingAngelMesh() {
 
 // ── Spawn ─────────────────────────────────────────────────────────────────────
 
+function makeCreatureHitProfile(type) {
+    if (type === 'crawler') {
+        return {
+            shape: 'capsule',
+            start: { x: 0, y: 0.58, z: -1.00 },
+            end:   { x: 0, y: 0.72, z:  1.40 },
+            radius: 1.30
+        };
+    }
+    if (type === 'angel') {
+        return {
+            shape: 'capsule',
+            start: { x: 0, y: 0.50, z: -0.08 },
+            end:   { x: 0, y: 2.70, z: -0.05 },
+            radius: 1.0
+        };
+    }
+    return {
+        shape: 'capsule',
+        start: { x: 0, y: 0.60, z: 0 },
+        end:   { x: 0, y: 2.80, z: 0 },
+        radius: 0.9
+    };
+}
+
 function _spawnNightCreature(type, x, z) {
     const groundY = getMoverSurfaceHeight(x, z, false);
 
@@ -393,6 +418,8 @@ function _spawnNightCreature(type, x, z) {
     }
 
     mesh.position.set(x, groundY, z);
+    const hitProfile = makeCreatureHitProfile(type);
+    attachHitProfileDebugVisual(mesh, hitProfile);
     scene.add(mesh);
 
     nightCreatures.push({
@@ -402,6 +429,7 @@ function _spawnNightCreature(type, x, z) {
         hitCooldown:  0,
         gunHitCenterY,
         gunHitRadius,
+        hitProfile,
         isCemZombie:  false,
         speed:        CREATURE_SPEED,
         emergeTimer:  0,
@@ -502,6 +530,7 @@ function _fadeCemZombieOut(mesh) {
     });
     mesh.traverse(m => {
         if (m.isMesh) {
+            if (m.userData.isHitboxDebug) return;
             if (m.userData.isEye) { m.visible = false; return; }
             m.material = fadeMat;
         }
@@ -595,57 +624,14 @@ function killAllNightCreatures() {
 
 // ── Public API: weapon integration ───────────────────────────────────────────
 
-const _creatureGunRaycaster = new THREE.Raycaster();
-
-function getCreatureGunHits(aimDir, maxRange = AK47_BEAM_MAX_VISUAL_RANGE) {
+function getCreatureGunHits(aimDir, maxRange = AK47_BEAM_MAX_VISUAL_RANGE, radiusExtra = 0) {
     const activeCreatures = nightCreatures.filter(c => c.emergeTimer <= 0);
     if (activeCreatures.length === 0) return [];
 
-    const creatureByRoot = new Map();
-    const roots = [];
-    for (const c of activeCreatures) {
-        creatureByRoot.set(c.mesh.uuid, c);
-        roots.push(c.mesh);
-    }
-
-    _creatureGunRaycaster.set(camera.position, aimDir);
-    _creatureGunRaycaster.near = 0;
-    _creatureGunRaycaster.far = maxRange;
-
     const hits = [];
-    const seen = new Set();
-    const rayHits = _creatureGunRaycaster.intersectObjects(roots, true);
-    for (const hit of rayHits) {
-        let node = hit.object;
-        let creature = null;
-        while (node) {
-            creature = creatureByRoot.get(node.uuid);
-            if (creature) break;
-            node = node.parent;
-        }
-        if (!creature || seen.has(creature)) continue;
-        seen.add(creature);
-        hits.push({ kind: 'creature', target: creature, projected: hit.distance });
-    }
-
-    if (hits.length > 0) return hits;
-
-    // Fallback to the old hit-sphere approximation for near misses.
-    const hitPoint = new THREE.Vector3();
-    for (const c of nightCreatures) {
-        if (c.emergeTimer > 0 || seen.has(c)) continue;
-        hitPoint.set(
-            c.mesh.position.x,
-            c.mesh.position.y + c.gunHitCenterY,
-            c.mesh.position.z
-        );
-        const toC      = hitPoint.clone().sub(camera.position);
-        const proj     = toC.dot(aimDir);
-        if (proj <= 0 || proj > maxRange) continue;
-        const perp = toC.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-        if (perp <= c.gunHitRadius) {
-            hits.push({ kind: 'creature', target: c, projected: proj + 0.001 });
-        }
+    for (const c of activeCreatures) {
+        const hit = rayHitProfileBeyondCameraPlayerGap(camera.position, aimDir, c.mesh, c.hitProfile, maxRange, Infinity, radiusExtra);
+        if (hit) hits.push({ kind: 'creature', target: c, projected: hit.distance });
     }
     return hits;
 }
@@ -664,23 +650,14 @@ function damageCreatureFromGun(creature) {
     return true;
 }
 
-function getMeleeCreatureCandidates(aimDir, punchRange) {
+function getMeleeCreatureCandidates(aimDir, punchRange, playerMid) {
     const candidates = [];
-    const hitPoint = new THREE.Vector3();
+    const rayRange = punchRange + camera.position.distanceTo(player.position);
     for (const c of nightCreatures) {
         if (c.emergeTimer > 0) continue;
-        hitPoint.set(
-            c.mesh.position.x,
-            c.mesh.position.y + c.gunHitCenterY,
-            c.mesh.position.z
-        );
-        const toC  = hitPoint.clone().sub(camera.position);
-        const proj = toC.dot(aimDir);
-        if (proj <= 0 || proj > punchRange) continue;
-        const perp = toC.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-        if (perp <= c.gunHitRadius + 1.5) {
-            candidates.push({ creature: c, dist: proj });
-        }
+        const hit = _meleeRayHit(camera.position, aimDir, c.mesh, c.hitProfile, rayRange, punchRange);
+        if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
+        candidates.push({ creature: c, dist: hit.point.distanceTo(playerMid) });
     }
     candidates.sort((a, b) => a.dist - b.dist);
     return candidates;
@@ -733,6 +710,8 @@ function _spawnCemeteryZombies() {
         const mesh = _buildZombieMesh();
         mesh.userData.ignoreCameraOcclusion = true;
         mesh.position.set(worldPos.x, startY, worldPos.z);
+        const hitProfile = makeCreatureHitProfile('zombie');
+        attachHitProfileDebugVisual(mesh, hitProfile);
         scene.add(mesh);
 
         nightCreatures.push({
@@ -742,6 +721,7 @@ function _spawnCemeteryZombies() {
             hitCooldown:  0,
             gunHitCenterY: 1.4,
             gunHitRadius:  0.80,
+            hitProfile,
             isCemZombie:  true,
             speed:        CEMETERY_ZOMBIE_SPEED * (1 + (Math.random() * 0.4 - 0.2)), // ±20% noise
             emergeTimer:  CEMETERY_ZOMBIE_EMERGE_SEC,
@@ -1149,8 +1129,7 @@ function _updateCreature(c, delta) {
     const dy   = player.position.y - c.mesh.position.y;
     const dist3d = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const hitDist = c.type === 'crawler' ? CRAWLER_HIT_DIST : CREATURE_HIT_DIST;
-    const hhInvincible = DEBUG_HH_INVINCIBLE && c.isHHSpecialCrawler;
-    if (dist3d < hitDist && c.hitCooldown <= 0 && !playerDead && !hhInvincible) {
+    if (dist3d < hitDist && c.hitCooldown <= 0 && !playerDead && !DEBUG_INVINCIBLE) {
         c.hitCooldown = CREATURE_HIT_COOLDOWN;
         playerHealth  = Math.max(0, playerHealth - CREATURE_HIT_DAMAGE);
         _damageFlashEl.classList.remove('active');

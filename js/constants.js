@@ -1,6 +1,7 @@
 // Debug modes (for easy testing)
 const DEBUG_GEMS = false;  // makes gems spawn very close to origin
 const DEBUG_COLLISIONS = false;  // makes collision surfaces visible (translucent red)
+const DEBUG_HITBOXES = false; // makes interactable hit volumes visible (translucent red)
 const DEBUG_CHEST = false;  // for quick access to chest
 const DEBUG_APOCALYPSE = false;  // for quick access to demon apocalypse
 const DEBUG_AK47 = false;  // spawn with the AK47 already collected and equipped
@@ -21,7 +22,7 @@ const DEBUG_VOLCANO_HINT = false;  // spawns a hovering green beacon above the c
 const DEBUG_FARMER = false;        // spawns the farmer 5 units in front of the player (which drops key-hint note)
 const DEBUG_CUTSCENE = false;  // spawns a finalPhase shadow man 150 units ahead of origin — walk within 50 to trigger cutscene
 const DEBUG_HAUNTED_HOUSE = false; // spawn player 75 units from HH entrance at start
-const DEBUG_HH_INVINCIBLE = false; // prevents HH weeping angels and special HH crawler from damaging the player
+const DEBUG_INVINCIBLE = false; // prevents all player/dragon health damage and death from enemy attacks
 const DEBUG_DESPAWN_HH = false;   // skip straight to post-despawn state: skeleton + boulder on world floor, HH gone
 const DEBUG_CEMETERY = false;      // spawn player 75 units from cemetery entrance at start
 const DEBUG_NOOSE = false;         // spawn player 20 units from the special noose portal
@@ -36,6 +37,8 @@ const DEBUG_ALTAR_PRELOCATION = false; // spawn player near the flattened altar 
 const DEBUG_CREATURES = false; // makes creatures start spawning right away, and deal zero damage
 const DEBUG_CREATURES_2 = false; // spawn 10 creatures 150 units from player at start; they do not despawn during daytime
 const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a row at start; they stay frozen (no movement/attack/night-end despawn) but are killable
+const DEBUG_HIT_FRUSTUM = false;   // render the view cone used by rayHitProfileBeyondCameraPlayerGap as a translucent green cone (50 units long)
+const DEBUG_NPC = false;           // spawns one of each peaceful NPC (deer, rabbit, bird, human) 20 units from player spawn
 
 
 // Demon teleport ability
@@ -54,10 +57,18 @@ const DEMON_TELEPORT_CHANCE   = 0.10;       // chance to teleport each check
 const DEMON_TELEPORT_DISABLE_DIST = 40;     // teleport disabled when demon is closer than this to player
 const DEMON_TELEPORT_UNLOCK_DELAY_SEC = 10; // teleports stay disabled for the first 10s of each round/apocalypse
 
+
+// Beam hit margins (radial expansion on damage detection, visual beam is unaffected)
+const DRAGON_BEAM_HIT_MARGIN = 5;   // units of radial expansion on dragon beam targets
+const AK47_BEAM_HIT_MARGIN   = 0; // units of radial expansion on AK47 targets
+
+
 // Game constants
 const WALK_SPEED = 20;
 const RUN_SPEED  = WALK_SPEED * 2;
 const PLAYER_COLLISION_HEIGHT = 2.25;
+const PLAYER_HIT_RADIUS = 0.6;
+const USE_GAP_CHECK = false;       // makes it so melee uses the camera-player gap filter (rayHitProfileBeyondCameraPlayerGap); when false: simple crosshair-on-hitbox (rayHitProfile only)
 const GRAVITY = 40; // gravitational acceleration (units/s²)
 const DAY_DURATION = 6 * (60 * 1000); // 6 minutes in ms
 const NIGHT_DURATION = 6 * (60 * 1000); // 6 minutes in ms

@@ -57,10 +57,10 @@ All HTML markup and CSS. Contains:
 
 ### `js/constants.js`
 All `const` declarations that never change at runtime:
-- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_HH_INVINCIBLE`, `DEBUG_SWORD_THUNDER`, etc.
+- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_INVINCIBLE`, `DEBUG_SWORD_THUNDER`, `DEBUG_NPC`, etc.
+- `USE_GAP_CHECK` — when `true`, melee hit detection uses the camera-player gap filter (`rayHitProfileBeyondCameraPlayerGap`); when `false`, uses a simple crosshair-on-hitbox ray test (`rayHitProfile`) — more robust for close-range hits
 - `WALK_SPEED = 20`, `RUN_SPEED = WALK_SPEED * 2` — base movement speeds (moved here from `main.js` so `creatures.js` can reference them at parse time)
 - `DAY_DURATION`, `NIGHT_DURATION`, `FULL_CYCLE`
-- `FALL_TO_CUTSCENE` — controls cutscene transition behavior
 - Demon teleport constants: `DEMON_TELEPORT_INTERVAL_SEC`, `DEMON_TELEPORT_CHANCE`, `DEMON_TELEPORT_DISABLE_DIST`, `DEMON_TELEPORT_UNLOCK_DELAY_SEC`
 
 **To change a debug mode or timing constant:** edit here.
@@ -221,14 +221,16 @@ Peaceful NPCs that wander and react to the player:
 - `createRabbit()` — small fast rabbit that hops
 - `createBird(scale)` — flying bird that swoops; lands occasionally
 - `createHuman()` — humanoid NPC with walk cycle; flees or wanders
-- `createNPCs()` — spawns the initial population of all NPC types
+- `makeNPCHitProfile(type)` — returns a hit profile (capsule or sphere) for the given NPC type; covers `'deer'`, `'rabbit'`, `'bird'`, `'human'`; stored on each NPC object at creation time
+- `createNPCs()` — spawns the initial population of all NPC types; when `DEBUG_NPC` is true, skips bulk spawning and places one of each type 20 units from player spawn instead
 - `updateNPCs(delta)` — runs AI, movement, water interaction for all living NPCs
 - `explodeNPC(npcData, index)` — death animation (ragdoll explosion of body parts)
 - `spawnRandomNPC()` — spawns one random NPC type (used for respawn system)
 - `recordKill(type)` — increments kill counter and breakdown, triggers respawn if rate > 0
 - `getNPCHitRadius(npc)` — returns collision radius for punch/bullet detection
 
-**To add a new NPC type:** create a `createFoo()` function following the deer/rabbit pattern and add it to `createNPCs`.
+**To add a new NPC type:** create a `createFoo()` function following the deer/rabbit pattern, add a case to `makeNPCHitProfile`, and call it in `createNPCs`.
+**To change NPC hit profile geometry:** edit `makeNPCHitProfile`.
 
 ---
 
@@ -293,12 +295,17 @@ All player weapons and interactive items:
 
 **Punch:**
 - `punch()` — melee attack; hits NPCs, demons, creatures, and special melee targets within range; also handles AK chest interaction, shrine activation, pickups, and door/gate toggles
+- `_meleeRayHit(...)` — internal wrapper that routes all melee hit detection through either `rayHitProfileBeyondCameraPlayerGap` or plain `rayHitProfile` depending on `USE_GAP_CHECK`; AK47 and dragon beam always use the gap filter regardless
+- `getDragonMountHit` always uses plain `rayHitProfile` (gap filter permanently bypassed) to avoid false rejection when the dragon is directly overhead
+- Default melee `punchRange = 7.5` units; demons use a separate `demonPunchRange = 9` units inside `getMeleeKillableCandidates`
 - `flashEquipHint(label)` — shows "EQUIPPED: ..." flash message at bottom of screen
 
 **Chest:**
 - `tryInteractWithAkChest(aimDir, range)` — opens/collects AK47 from chest when looking at it and punching
 
-**To change punch range or damage:** edit the `punch()` function.
+**To change punch range or damage:** edit `punchRange` in `punch()`.
+**To change demon-specific punch range:** edit `demonPunchRange` in `getMeleeKillableCandidates`.
+**To toggle melee hit detection mode:** set `USE_GAP_CHECK` in `constants.js`.
 **To change AK47 fire rate:** edit `AK47_SHOT_INTERVAL_MS` in `state.js`.
 
 ---
@@ -550,7 +557,7 @@ Night creature system — three enemy types that spawn during the night outside 
 - `startCemeteryZombieSequence()` — begins the 30s countdown to cemetery zombie emergence
 - `killAllNightCreatures()` — kills all current night creatures when demon apocalypse or hell-run rounds begin
 
-**Player damage/death:** creature hits deal `CREATURE_HIT_DAMAGE`; if player health reaches 0, `hardReset()` reloads the page. `DEBUG_HH_INVINCIBLE` suppresses damage from the special HH crawler, while HH angels handle the same flag in `hauntedhouse.js`.
+**Player damage/death:** creature hits deal `CREATURE_HIT_DAMAGE`; if player health reaches 0, `hardReset()` reloads the page. `DEBUG_INVINCIBLE` suppresses all player damage including from the special HH crawler and HH angels.
 
 **Collision and terrain following:** regular creatures use region-based rules for houses, caves, and the cemetery fence/gate, with boundary sliding. They can enter only through legal openings (open house doors, cave open side, open cemetery gate). Cemetery zombies are exempt from the cemetery-region rule and are clamped to the cemetery sequence area. All creatures sync their Y position to `getMoverSurfaceHeight`, so they climb primitive structures/mountains the same way demons and NPC-like movers do.
 
@@ -690,7 +697,11 @@ Progression flow: There are multiple ways the game could play out, but here is o
 | HH interior hall door size/opening | `hauntedhouse.js` | `HH_HALL_DOOR_*`, `createHauntedHouse()` |
 | Holy gem effect | `altar.js` | `collectHolyGem()` |
 | New structure | `structures.js` | `createEnterableStructures` or `createClimbableStructures` |
-| New NPC type | `npcs.js` | add `createFoo()`, call in `createNPCs` |
+| New NPC type | `npcs.js` | add `createFoo()`, add case to `makeNPCHitProfile`, call in `createNPCs` |
+| NPC hit profiles | `npcs.js` | `makeNPCHitProfile` |
+| Punch range (general) | `weapons.js` | `punchRange` in `punch()` |
+| Punch range (demons) | `weapons.js` | `demonPunchRange` in `getMeleeKillableCandidates` |
+| Melee hit detection mode | `constants.js` | `USE_GAP_CHECK` |
 | Keybindings | `input.js` | `onKeyDown` / `onKeyUp` |
 | Menu controls list | `hud.js` | `updateMenuPanels` |
 | HTML/CSS | `index.html` | directly |

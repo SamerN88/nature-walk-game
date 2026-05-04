@@ -32,6 +32,15 @@ let _altarSkyFlashTimer = 0;
 const _ALTAR_SKY_FLASH_DUR = 0.65;
 const _altarNightSkyColor  = new THREE.Color(0x0a0a20);
 
+function makeAltarCorpseHitProfile() {
+    return {
+        shape: 'capsule',
+        start: { x: 0, y: ALTAR_BODY_Y, z: -1.1 },
+        end:   { x: 0, y: ALTAR_BODY_Y, z:  1.60 },
+        radius: 1.0
+    };
+}
+
 // Returns true when the current game time is in the night phase.
 function _altarIsNight() {
     return (gameTime / FULL_CYCLE) >= NIGHT_START;
@@ -398,6 +407,9 @@ function createSacrificialAltar() {
     const { bodyGrp, locksGrp, eyeL, eyeR } = _buildCorpseMesh();
     altarGrp.add(bodyGrp);   // levitates during the ritual
     altarGrp.add(locksGrp);  // stays on slab
+    setObjectHitProfile(bodyGrp, makeAltarCorpseHitProfile(), {
+        debugKey: 'altarCorpseHitboxDebug'
+    });
 
     // ── Three torches in equilateral triangle ─────────────────────────────────
     // Torches sit on top of the raised platform.
@@ -480,7 +492,15 @@ function createSacrificialAltar() {
         holyGemPlatform: null,   // populated in _createHolyGemPlatform
         corpseHitPos: new THREE.Vector3(ox, groundY + ALTAR_SLAB_H + 0.4, oz),
     };
-
+    altarData.torchHitRoots = altarData.torchWorldTips.map((tip, i) => {
+        return makeWorldHitProfileRoot(tip, {
+            shape: 'sphere',
+            center: { x: 0, y: -0.5, z: 0 },
+            radius: 0.9
+        }, {
+            debugKey: `altarTorchHitboxDebug-${i}`
+        });
+    });
     if (DEBUG_ALTAR) {
         player.position.set(ox, groundY + 2, oz + 40);
         if (dragon) {
@@ -586,18 +606,9 @@ function tryLightAltarTorch(aimDir, range) {
         const torch = altarData.torches[i];
         if (torch.lit) continue;
 
-        const torchTipPos = new THREE.Vector3(
-            altarData.worldX + torch.localX,
-            altarData.worldGroundY + ALTAR_PLATFORM_TOP + ALTAR_TORCH_FLAME_Y,
-            altarData.worldZ + torch.localZ
-        );
-
-        const toTorch = torchTipPos.clone().sub(camera.position);
-        const proj = toTorch.dot(aimDir);
-        if (proj <= 0 || proj > range) continue;
-
-        const perp = toTorch.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-        if (perp < 2.5) {
+        const rayRange = getMeleeRayRange(range);
+        const hit = rayHitObjectProfileFromCamera(aimDir, altarData.torchHitRoots[i], rayRange);
+        if (hit && isHitWithinPlayerReach(hit, range)) {
             _lightAltarTorch(i);
             return true;
         }
@@ -608,12 +619,15 @@ function tryLightAltarTorch(aimDir, range) {
 function tryHitAltarCorpseWithLightning(aimDir, range) {
     if (!altarData || altarCorpseStruck || altarState !== 'torches_lit') return false;
 
-    const toCorpse = altarData.corpseHitPos.clone().sub(camera.position);
-    const proj = toCorpse.dot(aimDir);
-    if (proj <= 0 || proj > range) return false;
-
-    const perp = toCorpse.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-    if (perp >= 4) return false;
+    const rayRange = getMeleeRayRange(range);
+    const hit = rayHitProfile(
+        camera.position,
+        aimDir,
+        altarData.corpse,
+        altarData.corpse.userData.hitProfile,
+        rayRange
+    );
+    if (!hit || !isHitWithinPlayerReach(hit, range)) return false;
 
     // Lightning only works at night; flash the night-sky color as feedback otherwise.
     if (!_altarIsNight()) {

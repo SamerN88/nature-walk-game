@@ -56,6 +56,24 @@ function createDragon() {
     snout.position.set(13.5, 4.5, 0);
     dragon.add(snout);
 
+    setObjectHitProfile(dragon, {
+        shape: 'compound',
+        profiles: [
+            {
+                shape: 'capsule',
+                start: { x: -5, y: 0, z: 0 },
+                end: { x: 5, y: 0, z: 0 },
+                radius: 3.1
+            },
+            {
+                shape: 'capsule',
+                start: { x: 5.5, y: 1.0, z: 0 },
+                end: { x: 11.5, y: 5.2, z: 0 },
+                radius: 1.9
+            }
+        ]
+    }, { profileKey: 'mountHitProfile', debugKey: 'dragonMountHitboxDebug' });
+
     // Eyes
     [-1, 1].forEach(side => {
         const eye = new THREE.Mesh(
@@ -408,19 +426,12 @@ function mountDragon() {
     if (!dragon || !dragon.visible || mountedOnDragon) return;
     if (demonApocalypse) return; // cannot mount during a hell run
 
-    const dx = player.position.x - dragon.position.x;
-    const dy = player.position.y - dragon.position.y;
-    const dz = player.position.z - dragon.position.z;
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    if (dist < 25) {
-        mountedOnDragon = true;
-        dragonDescending = false;
-        player.visible = true;
-        dragonVelocity.set(0, 0, 0);
-        updateMountedPlayerPose();
-        syncHandItemVisuals();
-    }
+    mountedOnDragon = true;
+    dragonDescending = false;
+    player.visible = true;
+    dragonVelocity.set(0, 0, 0);
+    updateMountedPlayerPose();
+    syncHandItemVisuals();
 }
 
 function unmountDragon() {
@@ -461,9 +472,11 @@ function dragonBeamAttack() {
     dragon.traverse(obj => excludeUUIDs.add(obj.uuid));
     player.traverse(obj => excludeUUIDs.add(obj.uuid));
     npcs.forEach(npc => npc.mesh.traverse(obj => excludeUUIDs.add(obj.uuid)));
+    demons.forEach(d => d.mesh.traverse(obj => excludeUUIDs.add(obj.uuid)));
+    nightCreatures.forEach(c => c.mesh.traverse(obj => excludeUUIDs.add(obj.uuid)));
 
     const solidHits = _dragonBeamRaycaster.intersectObjects(scene.children, true)
-        .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam && !h.object.userData.isWater);
+        .filter(h => !excludeUUIDs.has(h.object.uuid) && !h.object.userData.isBeam && !h.object.userData.isWater && !h.object.userData.isHitboxDebug);
 
     let beamEndPoint;
     if (solidHits.length > 0) {
@@ -495,14 +508,13 @@ function dragonBeamAttack() {
     // Kill NPCs in beam path — ray from camera, range capped at camera->endpoint dist
     const killList = [];
     npcs.forEach((npc, index) => {
-        const toNPC = npc.mesh.position.clone().sub(camera.position);
-        const projected = toNPC.dot(_dragonAimDir);
-        if (projected > 0 && projected < cameraRayLength) {
-            const perpDist = toNPC.clone().sub(_dragonAimDir.clone().multiplyScalar(projected)).length();
-            if (perpDist < 8) {
-                killList.push(index);
-            }
-        }
+        const profile = npc.hitProfile || {
+            shape: 'sphere',
+            center: { x: 0, y: 0, z: 0 },
+            fixedWorldRadius: typeof getNPCHitRadius === 'function' ? getNPCHitRadius(npc) : 2
+        };
+        const hit = rayHitProfile(camera.position, _dragonAimDir, npc.mesh, profile, cameraRayLength, DRAGON_BEAM_HIT_MARGIN);
+        if (hit) killList.push(index);
     });
 
     // Use explodeNPC for each killed NPC (handles kill count, animation, removal)
@@ -521,12 +533,13 @@ function dragonBeamAttack() {
     // Also kill demons in beam path
     const demonKillList = [];
     demons.forEach((z, index) => {
-        const toZ = z.mesh.position.clone().sub(camera.position);
-        const proj = toZ.dot(aimDir);
-        if (proj > 0 && proj < cameraRayLength) {
-            const perp = toZ.clone().sub(aimDir.clone().multiplyScalar(proj)).length();
-            if (perp < 8) demonKillList.push(index);
-        }
+        const profile = z.hitProfile || {
+            shape: 'sphere',
+            center: { x: 0, y: z.gunHitCenterY ?? 4.8, z: 0 },
+            fixedWorldRadius: z.gunHitRadius ?? 4.6
+        };
+        const hit = rayHitProfile(camera.position, _dragonAimDir, z.mesh, profile, cameraRayLength, DRAGON_BEAM_HIT_MARGIN);
+        if (hit) demonKillList.push(index);
     });
     demonKillList.sort((a, b) => b - a).forEach(index => {
         if (!dragonBondFormed) {
@@ -539,6 +552,21 @@ function dragonBeamAttack() {
         }
         explodeDemon(demons[index], index);
     });
+
+    // Kill creatures in beam path (one-shot)
+    const creatureHits = getCreatureGunHits(_dragonAimDir, cameraRayLength, DRAGON_BEAM_HIT_MARGIN);
+    for (const { target: creature } of creatureHits) {
+        if (!nightCreatures.includes(creature)) continue;
+        if (!dragonBondFormed) {
+            dragonBondKills++;
+            if (dragonBondKills >= DRAGON_BOND_KILLS_REQUIRED) {
+                dragonBondFormed = true;
+                updateMenuPanels();
+                playDragonBondFlash();
+            }
+        }
+        _killCreature(creature);
+    }
 
     setTimeout(() => { beam.material.opacity = 0.4; }, 100);
     setTimeout(() => { scene.remove(beam); beam.geometry.dispose(); beam.material.dispose(); }, 250);
