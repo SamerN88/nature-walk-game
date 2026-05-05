@@ -2484,7 +2484,7 @@ function _removeHHAngel(angel, animateDeath) {
 }
 
 // ── Sword hit against HH weeping angels ──────────────────────────────────────
-function tryHitHHWhiteSM(aimDir, punchRange) {
+function tryHitHHWhiteSM(aimDir, punchRange, radiusExtra = 0) {
     if (hhAngels.length === 0) return false;
 
     const candidates = [];
@@ -2499,7 +2499,7 @@ function tryHitHHWhiteSM(aimDir, punchRange) {
             end: { x: 0, y: 3.25, z: -0.05 },
             radius: 0.62
         };
-        const hit = rayHitProfile(camera.position, aimDir, angel.mesh, profile, rayRange);
+        const hit = rayHitProfile(camera.position, aimDir, angel.mesh, profile, rayRange, radiusExtra);
         if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
         candidates.push({ angel, dist: hit.distance });
     }

@@ -346,3 +346,8 @@ let altarBeamActive = false;
 // ── Holy Gem (altar reward) ───────────────────────────────────────────────────
 let holyGem = null;
 let holyGemCollected = false;
+
+// ── Hint system ───────────────────────────────────────────────────────────────
+let hintStage = 0;           // current hint index (0–9); 10 = all collected, button disabled
+let hintRevealed = false;    // true when the current hint text is showing (vs. the Hint button)
+let hintModalConfirmed = false; // true once the user confirmed the first-time warning modal

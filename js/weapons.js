@@ -700,7 +700,7 @@ function rayHitObjectProfileFromCamera(aimDir, root, maxDistance, playerReach = 
     if (!root) return null;
     const profile = options.profile || root.userData[options.profileKey || 'hitProfile'];
     if (!profile) return null;
-    const hit = _meleeRayHit(camera.position, aimDir, root, profile, maxDistance, Infinity, options.radiusExtra || 0);
+    const hit = _meleeRayHit(camera.position, aimDir, root, profile, maxDistance, Infinity, (options.radiusExtra || 0) + (options.perpExtra || 0));
     if (!hit) return null;
     if (playerReach !== null && !isHitWithinPlayerReach(hit, playerReach)) return null;
     return hit;
@@ -744,12 +744,82 @@ function getDemonCombatProfile(demon) {
     };
 }
 
-function getMeleeKillableCandidates(aimDir, punchRange, punchRayRange) {
+// Perpendicular distance from worldPt to the forward aim ray.
+// Returns Infinity if the point is behind the ray origin.
+function _aimRayPerpDist(rayOrigin, rayDir, worldPt) {
+    const toP = worldPt.clone().sub(rayOrigin);
+    const along = toP.dot(rayDir);
+    if (along < 0) return Infinity;
+    return Math.sqrt(Math.max(0, toP.lengthSq() - along * along));
+}
+
+// Minimum perpendicular distance from the aim ray to segment [segA, segB].
+// Returns { dist, closestPt } where closestPt is the point on the segment closest to the ray.
+function _aimRayPerpDistToSeg(rayOrigin, rayDir, segA, segB) {
+    const ab = segB.clone().sub(segA);
+    const toA = segA.clone().sub(rayOrigin);
+
+    // Perpendicular component of ab relative to the ray direction
+    const ab_along = ab.dot(rayDir);
+    const abPerp = ab.clone().addScaledVector(rayDir, -ab_along);
+    const abPerpLenSq = abPerp.dot(abPerp);
+
+    let t;
+    if (abPerpLenSq < 1e-10) {
+        t = 0; // segment nearly parallel to ray — all points equally close
+    } else {
+        const toA_along = toA.dot(rayDir);
+        const toAPerp = toA.clone().addScaledVector(rayDir, -toA_along);
+        t = Math.max(0, Math.min(1, -toAPerp.dot(abPerp) / abPerpLenSq));
+    }
+
+    const closestPt = segA.clone().addScaledVector(ab, t);
+    return { dist: _aimRayPerpDist(rayOrigin, rayDir, closestPt), closestPt };
+}
+
+// Perpendicular-distance fallback for sword hit detection.
+// If the aim ray passes within (shapeRadius + perpExtra) of the hit shape, returns a synthetic
+// hit whose .point is the shape center/axis point closest to the ray — so isHitWithinPlayerReach
+// gates on the actual target distance, not on the inflated surface.
+// Returns null if the perp check fails or the shape is not sphere/capsule.
+function _checkPerpFallback(rayOrigin, rayDir, root, profile, perpExtra) {
+    if (!root || !profile || perpExtra <= 0) return null;
+    root.updateMatrixWorld(true);
+
+    if (profile.shape === 'compound') {
+        for (const sub of (profile.profiles || [])) {
+            const hit = _checkPerpFallback(rayOrigin, rayDir, root, sub, perpExtra);
+            if (hit) return hit;
+        }
+        return null;
+    }
+
+    if (profile.shape === 'sphere') {
+        const center = localHitPointToWorld(root, profile.center || { x: 0, y: 0, z: 0 });
+        const radius = getHitProfileWorldRadius(root, profile.radius, profile.fixedWorldRadius, 0);
+        if (_aimRayPerpDist(rayOrigin, rayDir, center) > radius + perpExtra) return null;
+        return { distance: 0, point: center };
+    }
+
+    if (profile.shape === 'capsule') {
+        const a = localHitPointToWorld(root, profile.start || { x: 0, y: 0, z: 0 });
+        const b = localHitPointToWorld(root, profile.end || { x: 0, y: 0, z: 0 });
+        const radius = getHitProfileWorldRadius(root, profile.radius, profile.fixedWorldRadius, 0);
+        const { dist, closestPt } = _aimRayPerpDistToSeg(rayOrigin, rayDir, a, b);
+        if (dist > radius + perpExtra) return null;
+        return { distance: 0, point: closestPt };
+    }
+
+    return null;
+}
+
+function getMeleeKillableCandidates(aimDir, punchRange, punchRayRange, perpExtra = 0) {
     const candidates = [];
 
     for (let i = 0; i < npcs.length; i++) {
         const npc = npcs[i];
-        const hit = _meleeRayHit(camera.position, aimDir, npc.mesh, getNPCCombatProfile(npc), punchRayRange, punchRange);
+        const profile = getNPCCombatProfile(npc);
+        const hit = _meleeRayHit(camera.position, aimDir, npc.mesh, profile, punchRayRange, punchRange, perpExtra);
         if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
         candidates.push({ kind: 'npc', npc, dist: hit.point.distanceTo(_punchPlayerMid) });
     }
@@ -758,12 +828,13 @@ function getMeleeKillableCandidates(aimDir, punchRange, punchRayRange) {
     const demonPunchRayRange = getMeleeRayRange(demonPunchRange);
     for (let i = 0; i < demons.length; i++) {
         const demon = demons[i];
-        const hit = _meleeRayHit(camera.position, aimDir, demon.mesh, getDemonCombatProfile(demon), demonPunchRayRange, demonPunchRange);
+        const profile = getDemonCombatProfile(demon);
+        const hit = _meleeRayHit(camera.position, aimDir, demon.mesh, profile, demonPunchRayRange, demonPunchRange, perpExtra);
         if (!hit || !isHitWithinPlayerReach(hit, demonPunchRange)) continue;
         candidates.push({ kind: 'demon', demon, dist: hit.point.distanceTo(_punchPlayerMid) });
     }
 
-    const creatureCandidates = getMeleeCreatureCandidates(aimDir, punchRange, _punchPlayerMid);
+    const creatureCandidates = getMeleeCreatureCandidates(aimDir, punchRange, _punchPlayerMid, perpExtra);
     for (const candidate of creatureCandidates) {
         candidates.push({ kind: 'creature', creature: candidate.creature, dist: candidate.dist });
     }
@@ -799,30 +870,24 @@ function resolveMeleeKillableCandidate(candidate) {
     return { hit: false, killed: false };
 }
 
-function getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange) {
+function getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange, perpExtra = 0) {
     if (!altarData || altarCorpseStruck || altarState !== 'torches_lit') return null;
 
-    const hit = _meleeRayHit(
-        camera.position,
-        aimDir,
-        altarData.corpse,
-        altarData.corpse.userData.hitProfile,
-        punchRayRange,
-        punchRange
-    );
+    const profile = altarData.corpse.userData.hitProfile;
+    const hit = _meleeRayHit(camera.position, aimDir, altarData.corpse, profile, punchRayRange, punchRange, perpExtra);
     if (!hit || !isHitWithinPlayerReach(hit, punchRange)) return null;
     return hit;
 }
 
-function getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange) {
+function getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange, perpExtra = 0) {
     if (typeof _altarIsNight === 'function' && !_altarIsNight()) return null;
 
-    const hit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange);
+    const hit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange, perpExtra);
     if (!hit) return null;
     return { kind: 'altar', dist: hit.point.distanceTo(_punchPlayerMid) };
 }
 
-function getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange) {
+function getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange, perpExtra = 0) {
     if (typeof hhAngels === 'undefined' || hhAngels.length === 0) return null;
 
     const candidates = [];
@@ -836,7 +901,7 @@ function getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange) {
             end: { x: 0, y: 3.25, z: -0.05 },
             radius: 0.62
         };
-        const hit = _meleeRayHit(camera.position, aimDir, angel.mesh, profile, punchRayRange, punchRange);
+        const hit = _meleeRayHit(camera.position, aimDir, angel.mesh, profile, punchRayRange, punchRange, perpExtra);
         if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
         candidates.push({ dist: hit.point.distanceTo(_punchPlayerMid) });
     }
@@ -851,7 +916,7 @@ function addMeleeObjectInteractionCandidate(candidates, kind, aimDir, root, punc
     candidates.push({ intent: 'interaction', kind, dist: hit.point.distanceTo(_punchPlayerMid), resolve });
 }
 
-function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack) {
+function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack, perpExtra = 0) {
     const candidates = [];
 
     if (!hasShovel && tentShovelMesh) {
@@ -863,7 +928,7 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
             syncHandItemVisuals();
             flashEquipHint('Shovel');
             return true;
-        });
+        }, { perpExtra });
     }
 
     if (goldenKeyMesh && goldenKeyLockTimer <= 0) {
@@ -874,11 +939,11 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
             addInventoryItem('golden-key', 'Golden Key', null, { type: 'object', itemKey: 'golden-key' });
             flashEquipHint('KEY FOUND');
             return true;
-        });
+        }, { perpExtra });
     }
 
     if (akChest && !akChest.collected) {
-        const chestHit = rayHitObjectProfileFromCamera(aimDir, akChest.mesh, punchRayRange, punchRange);
+        const chestHit = rayHitObjectProfileFromCamera(aimDir, akChest.mesh, punchRayRange, punchRange, { perpExtra });
         if (chestHit && isPlayerCloseEnoughToAkChest()) {
             candidates.push({
                 intent: 'interaction',
@@ -890,7 +955,7 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
     }
 
     for (const door of houseDoors) {
-        const hit = rayHitObjectProfileFromCamera(aimDir, door.mesh, punchRayRange, punchRange);
+        const hit = rayHitObjectProfileFromCamera(aimDir, door.mesh, punchRayRange, punchRange, { perpExtra });
         if (!hit) continue;
         candidates.push({
             intent: 'interaction',
@@ -913,7 +978,7 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
     for (const noteMesh of noteCandidates) {
         addMeleeObjectInteractionCandidate(candidates, 'notePickup', aimDir, noteMesh, punchRayRange, punchRange, () => {
             return tryPickupNote(aimDir, punchRange);
-        });
+        }, { perpExtra });
     }
 
     if (typeof hauntedHouseData !== 'undefined' && hauntedHouseData && hhSeqPhase === 'active' && hauntedHouseData.ssItemGrp) {
@@ -921,13 +986,13 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
         for (const target of ssTargets) {
             addMeleeObjectInteractionCandidate(candidates, 'swordShieldPickup', aimDir, target, punchRayRange, punchRange, () => {
                 return tryPickupSSItem(aimDir, punchRange);
-            });
+            }, { perpExtra });
         }
     }
 
     if (typeof cemeteryData !== 'undefined' && cemeteryData && cemeteryData.gatePivotL && !cemeteryData.gatesLocked) {
         for (const gateTarget of [cemeteryData.gatePivotL, cemeteryData.gatePivotR]) {
-            const hit = rayHitObjectProfileFromCamera(aimDir, gateTarget, punchRayRange, punchRange);
+            const hit = rayHitObjectProfileFromCamera(aimDir, gateTarget, punchRayRange, punchRange, { perpExtra });
             if (!hit) continue;
             candidates.push({
                 intent: 'interaction',
@@ -941,23 +1006,23 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
     if (typeof talismanItemMesh !== 'undefined' && talismanItemMesh && talismanLockTimer <= 0) {
         addMeleeObjectInteractionCandidate(candidates, 'talismanPickup', aimDir, talismanItemMesh, punchRayRange, punchRange, () => {
             return tryPickupTalisman(aimDir, punchRange);
-        });
+        }, { perpExtra });
     }
 
     if (isSwordAttack && typeof tryHitHHWhiteSM === 'function') {
-        const angelHit = getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange);
+        const angelHit = getMeleeHHAngelCandidate(aimDir, punchRange, punchRayRange, perpExtra);
         if (angelHit) {
             candidates.push({
                 intent: 'interaction',
                 kind: 'hhAngel',
                 dist: angelHit.dist,
-                resolve: () => tryHitHHWhiteSM(aimDir, punchRange)
+                resolve: () => tryHitHHWhiteSM(aimDir, punchRange, perpExtra)
             });
         }
     }
 
     if (isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF) && typeof _altarIsNight === 'function' && !_altarIsNight()) {
-        const altarCorpseHit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange);
+        const altarCorpseHit = getMeleeAltarCorpseHit(aimDir, punchRange, punchRayRange, perpExtra);
         if (altarCorpseHit) {
             candidates.push({
                 intent: 'interaction',
@@ -970,14 +1035,8 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
 
     if (typeof _isSpecialPortalBodyVulnerable === 'function' && _isSpecialPortalBodyVulnerable()) {
         specialPortalFrameData.group.updateMatrixWorld(true);
-        const hit = _meleeRayHit(
-            camera.position,
-            aimDir,
-            specialPortalFrameData.body,
-            _getSpecialPortalBodyHitProfile(),
-            punchRayRange,
-            punchRange
-        );
+        const nooseProfile = _getSpecialPortalBodyHitProfile();
+        const hit = _meleeRayHit(camera.position, aimDir, specialPortalFrameData.body, nooseProfile, punchRayRange, punchRange, perpExtra);
         if (hit && isHitWithinPlayerReach(hit, punchRange)) {
             candidates.push({
                 intent: 'interaction',
@@ -990,14 +1049,9 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
 
     if (currentHandItem === 'stick' && hasStick) {
         for (const cpPos of campfirePositions) {
-            const hit = _meleeRayHit(
-                camera.position,
-                aimDir,
-                cpPos.userData?.hitRoot,
-                cpPos.userData?.hitProfile,
-                punchRayRange,
-                punchRange
-            );
+            const cpRoot = cpPos.userData?.hitRoot;
+            const cpProfile = cpPos.userData?.hitProfile;
+            const hit = _meleeRayHit(camera.position, aimDir, cpRoot, cpProfile, punchRayRange, punchRange, perpExtra);
             if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
             candidates.push({
                 intent: 'interaction',
@@ -1018,7 +1072,7 @@ function getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwor
     if (currentHandItem === 'torch' && hasTorch && typeof altarData !== 'undefined' && altarData && altarTorchesLit < 3) {
         for (let i = 0; i < altarData.torches.length; i++) {
             if (altarData.torches[i].lit) continue;
-            const hit = rayHitObjectProfileFromCamera(aimDir, altarData.torchHitRoots[i], punchRayRange, punchRange);
+            const hit = rayHitObjectProfileFromCamera(aimDir, altarData.torchHitRoots[i], punchRayRange, punchRange, { perpExtra });
             if (!hit) continue;
             candidates.push({
                 intent: 'interaction',
@@ -1229,10 +1283,11 @@ function punch() {
     // Sword swipe hits up to 3 targets; regular melee hits 1
     const isSwordAttack = currentHandItem === 'sword-shield';
     const maxMeleeHits = isSwordAttack ? 3 : 1;
-    const killableCandidates = getMeleeKillableCandidates(aimDir, punchRange, punchRayRange);
-    const interactionCandidates = getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack);
+    const meleePerpExtra = isSwordAttack ? 1.5 : 0;
+    const killableCandidates = getMeleeKillableCandidates(aimDir, punchRange, punchRayRange, meleePerpExtra);
+    const interactionCandidates = getMeleeInteractionCandidates(aimDir, punchRange, punchRayRange, isSwordAttack, meleePerpExtra);
     const altarLightningCandidate = isSwordAttack && (swordAuraActive || DEBUG_SWORD_THUNDER_INF)
-        ? getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange)
+        ? getMeleeAltarLightningCandidate(aimDir, punchRange, punchRayRange, meleePerpExtra)
         : null;
     const intentCandidates = [
         killableCandidates[0] ? { intent: 'killable', dist: killableCandidates[0].dist } : null,

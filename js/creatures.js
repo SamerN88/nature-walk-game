@@ -650,12 +650,12 @@ function damageCreatureFromGun(creature) {
     return true;
 }
 
-function getMeleeCreatureCandidates(aimDir, punchRange, playerMid) {
+function getMeleeCreatureCandidates(aimDir, punchRange, playerMid, perpExtra = 0) {
     const candidates = [];
     const rayRange = punchRange + camera.position.distanceTo(player.position);
     for (const c of nightCreatures) {
         if (c.emergeTimer > 0) continue;
-        const hit = _meleeRayHit(camera.position, aimDir, c.mesh, c.hitProfile, rayRange, punchRange);
+        const hit = _meleeRayHit(camera.position, aimDir, c.mesh, c.hitProfile, rayRange, punchRange, perpExtra);
         if (!hit || !isHitWithinPlayerReach(hit, punchRange)) continue;
         candidates.push({ creature: c, dist: hit.point.distanceTo(playerMid) });
     }

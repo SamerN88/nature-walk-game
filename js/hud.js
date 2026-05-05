@@ -76,6 +76,7 @@ function openTimeMenu() {
     updateTopCornerHudVisibility();
     document.getElementById('respawn-rate').value = respawnRate;
     updateMenuPanels();
+    updateHintArea();
     document.exitPointerLock();
 }
 

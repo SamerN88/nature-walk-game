@@ -723,6 +723,92 @@
             background: rgba(55,55,62,0.95);
             color: #cccccc;
         }
+
+        /* ── Hint system ── */
+        #hint-area {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin: 2px 0 4px;
+        }
+        .hint-btn {
+            padding: 9px 28px;
+            font-size: 14px;
+            background: rgba(255,255,255,0.10);
+            color: #ccc;
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 8px;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: background 0.15s;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .hint-btn:hover {
+            background: rgba(255,255,255,0.18);
+        }
+        .hint-btn-disabled {
+            opacity: 0.30;
+            cursor: not-allowed;
+        }
+        .hint-text {
+            display: inline-block;
+            font-size: 15px;
+            font-style: italic;
+            color: #e0c87a;
+            padding: 8px 18px;
+            background: rgba(255,220,100,0.07);
+            border: 1px solid rgba(255,220,100,0.18);
+            border-radius: 8px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        #hint-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        #hint-modal-box {
+            background: rgba(18,18,22,0.97);
+            border: 1px solid rgba(80,80,88,0.5);
+            border-radius: 12px;
+            padding: 30px 34px;
+            max-width: 380px;
+            width: 90vw;
+            text-align: center;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #bbb;
+        }
+        #hint-modal-box p {
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 22px;
+        }
+        .hint-modal-btns {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .hint-modal-btns button {
+            padding: 9px 24px;
+            font-size: 14px;
+            border: none;
+            border-radius: 7px;
+            cursor: pointer;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            transition: transform 0.1s;
+        }
+        .hint-modal-btns button:hover { transform: scale(1.05); }
+        .hint-confirm-btn {
+            background: #3d6b4a;
+            color: #dff0e0;
+        }
+        .hint-cancel-btn {
+            background: rgba(80,80,88,0.55);
+            color: #bbb;
+            border: 1px solid rgba(100,100,110,0.4) !important;
+        }
     </style>
 </head>
 <body>
@@ -892,7 +978,19 @@
 
         </div><!-- #god-controls -->
 
+        <div id="hint-area"></div>
         <p class="close-hint">Press M to toggle menu</p>
+        </div>
+    </div>
+
+    <!-- Hint confirmation modal -->
+    <div id="hint-modal">
+        <div id="hint-modal-box">
+            <p>Hints nudge your exploration. Are you sure you want a hint?</p>
+            <div class="hint-modal-btns">
+                <button class="hint-confirm-btn" onclick="confirmHint()">Yes</button>
+                <button class="hint-cancel-btn" onclick="closeHintModal()">No</button>
+            </div>
         </div>
     </div>
 
@@ -925,6 +1023,7 @@
     <script src="js/creatures.js"></script>
     <script src="js/noose.js"></script>
     <script src="js/altar.js"></script>
+    <script src="js/hints.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
