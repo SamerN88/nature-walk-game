@@ -25,6 +25,11 @@ function updateMenuPanels() {
         }).join('');
     }
 
+    const godSection = document.getElementById('god-controls');
+    if (godSection) {
+        godSection.style.display = (holyGemCollected || DEBUG_GOD_CONTROLS) ? 'contents' : 'none';
+    }
+
     const bestSection = document.getElementById('best-hell-run-section');
     if (bestSection) {
         bestSection.style.display = hasPlayedDemonRounds ? 'block' : 'none';

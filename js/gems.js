@@ -179,7 +179,7 @@ function updateDragonGem(delta, time) {
     const dy = player.position.y - dragonGem.mesh.position.y;
     const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-    if (dist < GEM_COLLECTION_RADIUS) {
+    if (dist < GEM_COLLECTION_RADIUS && !mountedOnDragon) {
         collectDragonGem();
     }
 }
@@ -264,7 +264,7 @@ function updateGem(delta, time) {
     const dy = player.position.y - secretGem.mesh.position.y;
     const dist = Math.sqrt(dx * dx + dz * dz + dy * dy);
 
-    if (dist < GEM_COLLECTION_RADIUS) {
+    if (dist < GEM_COLLECTION_RADIUS && !mountedOnDragon) {
         collectGem();
     }
 }

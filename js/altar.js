@@ -1007,7 +1007,7 @@ function updateHolyGem(delta, time) {
     const dx = player.position.x - holyGem.x;
     const dz = player.position.z - holyGem.z;
     const dy = player.position.y - holyGem.mesh.position.y;
-    if (Math.sqrt(dx * dx + dz * dz + dy * dy) < GEM_COLLECTION_RADIUS) {
+    if (Math.sqrt(dx * dx + dz * dz + dy * dy) < GEM_COLLECTION_RADIUS && !mountedOnDragon) {
         collectHolyGem();
     }
 }

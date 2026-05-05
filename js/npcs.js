@@ -10,21 +10,21 @@ function makeNPCHitProfile(type, options = {}) {
             shape: 'capsule',
             start: { x: -0.95, y: 1.12, z: 0 },
             end:   { x:  1.18, y: 1.38, z: 0 },
-            radius: 0.8
+            radius: 1.2
         };
     }
     if (type === 'rabbit') {
         return {
             shape: 'sphere',
             center: { x: 0.03, y: 0.34, z: 0 },
-            radius: 0.7
+            radius: 1.2
         };
     }
     if (type === 'bird') {
         return {
             shape: 'sphere',
             center: { x: 0.05, y: 0.02, z: 0 },
-            radius: 0.55
+            radius: 0.8
         };
     }
     if (type === 'human') {
@@ -32,7 +32,7 @@ function makeNPCHitProfile(type, options = {}) {
             shape: 'capsule',
             start: { x: 0, y: 0.35, z: 0 },
             end:   { x: 0, y: 1.62, z: 0 },
-            radius: 0.55
+            radius: 0.8
         };
     }
     return { // arbitrary default

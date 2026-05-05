@@ -40,6 +40,7 @@ const DEBUG_CREATURES_2 = false; // spawn 10 creatures 150 units from player at 
 const DEBUG_CREATURES_FREEZE = false; // spawn one of each creature type in a row at start; they stay frozen (no movement/attack/night-end despawn) but are killable
 const DEBUG_HIT_FRUSTUM = false;   // render the view cone used by rayHitProfileBeyondCameraPlayerGap as a translucent green cone (50 units long)
 const DEBUG_NPC = false;           // spawns one of each peaceful NPC (deer, rabbit, bird, human) 20 units from player spawn
+const DEBUG_GOD_CONTROLS = false;  // unlocks god-mode controls in the game menu immediately (normally gated behind holy gem)
 
 
 // Demon teleport ability
