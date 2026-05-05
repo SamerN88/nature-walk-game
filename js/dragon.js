@@ -264,7 +264,7 @@ function updateDragon(delta) {
     }
 
     if (mountedOnDragon) {
-        const flySpeed = 400 * (dragonAscended ? speedMultiplier : 1);
+        const flySpeed = 400 * (boostFromBeam && boostUnlocked && boostActive && !roundMode ? 3 : 1);
 
         // Dragon faces camera direction - dragon's +X is head
         dragon.rotation.set(0, Math.atan2(-Math.cos(cameraYaw), Math.sin(cameraYaw)), 0);
@@ -566,6 +566,14 @@ function dragonBeamAttack() {
             }
         }
         _killCreature(creature);
+    }
+
+    // Check if beam hit the secret gem
+    if (!gemCollected && secretGem && solidHits.length > 0) {
+        if (solidHits.some(h => h.object.userData.isSecretGem)) {
+            boostFromBeam = true;
+            collectGem();
+        }
     }
 
     setTimeout(() => { beam.material.opacity = 0.4; }, 100);

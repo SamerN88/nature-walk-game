@@ -52,8 +52,14 @@ function onKeyDown(event) {
                 if (waterState.isSwimming) break;
             }
             if (!mountedOnDragon && (isGrounded || infiniteJump)) {
-                velocity.y = 15 * jumpMultiplier;
+                velocity.y = 15 * (boostUnlocked && boostActive && !roundMode ? 3 : 1);
                 isGrounded = false;
+            }
+            break;
+        case 'KeyB':
+            if ((boostUnlocked || holyGemCollected) && !roundMode) {
+                boostActive = !boostActive;
+                flashEquipHint(boostActive ? 'BOOST: ON' : 'BOOST: OFF');
             }
             break;
         case 'KeyU':

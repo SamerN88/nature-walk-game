@@ -7,6 +7,7 @@ function updateMenuPanels() {
         lines.push('WASD - Move', 'SHIFT - Run', 'SPACE - Jump', 'Click - Punch/Interact');
         if (dragonGemCollected) lines.push('U - Unmount dragon');
         if (dragonBondFormed) lines.push('T - Tether dragon');
+        if (boostUnlocked || holyGemCollected) lines.push('B - Toggle boost');
         controls.innerHTML = lines.map(line => `<div>${line}</div>`).join('');
     }
 

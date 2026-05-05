@@ -44,11 +44,41 @@ function createSecretGem() {
     gemGroup.userData.outerGlow = outerGlow;
     gemGroup.userData.pointLight = gemLight;
 
-    // Place the gem at a random hidden location
-    const angle = Math.random() * Math.PI * 2;
-    const distance = DEBUG_GEMS ? (10 + Math.random() * 50) : (600 + Math.random() * 900);
-    const x = Math.cos(angle) * distance;
-    const z = Math.sin(angle) * distance;
+    // Find a spawn position: ring 800-1500 from origin, at least 500 from player.
+    // Surface-clamped so the gem sits on top of whatever is there (terrain, mountain, structure).
+    let x, z;
+    if (DEBUG_GEMS || DEBUG_BOOST) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 10 + Math.random() * 50;
+        x = Math.cos(a) * d;
+        z = Math.sin(a) * d;
+    } else {
+        const playerX = player ? player.position.x : 0;
+        const playerZ = player ? player.position.z : 0;
+        let found = false;
+        for (let attempt = 0; attempt < 80; attempt++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = 800 + Math.random() * 700;
+            const cx = Math.cos(a) * d, cz = Math.sin(a) * d;
+            if (isPointInWater(cx, cz)) continue;
+            const dx = cx - playerX, dz = cz - playerZ;
+            if (dx * dx + dz * dz >= 500 * 500) { x = cx; z = cz; found = true; break; }
+        }
+        if (!found) {
+            // Fallback: try angles opposite the player, skipping water
+            const baseAngle = Math.atan2(playerZ, playerX) + Math.PI;
+            for (let i = 0; i < 8; i++) {
+                const a = baseAngle + (i / 8) * Math.PI * 2;
+                const d = 800 + Math.random() * 400;
+                const cx = Math.cos(a) * d, cz = Math.sin(a) * d;
+                if (!isPointInWater(cx, cz)) { x = cx; z = cz; found = true; break; }
+            }
+            if (!found) {
+                x = Math.cos(baseAngle) * 1000;
+                z = Math.sin(baseAngle) * 1000;
+            }
+        }
+    }
     const terrainY = getGroundHeight(x, z);
     const structY = getStructureHeight(x, z);
     const groundY = Math.max(terrainY, structY);
@@ -271,8 +301,10 @@ function updateGem(delta, time) {
 
 function collectGem() {
     gemCollected = true;
-    speedMultiplier = 10;
-    jumpMultiplier = 3;
+    boostUnlocked = true;
+    boostActive = true;
+    updateMenuPanels();
+    flashEquipHint('BOOST: ON');
 
     // Visual feedback - gem explodes into particles
     const particles = new THREE.Group();

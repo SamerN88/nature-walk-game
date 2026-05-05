@@ -237,7 +237,7 @@ function init() {
     createDistanceDebugStick();
     createNPCs();
     // createSecretGem() is now called in demonVictory() as a post-apocalypse reward
-    if (DEBUG_GEMS) createSecretGem();
+    if (DEBUG_GEMS || DEBUG_BOOST) createSecretGem();
     createDragonGem();
     createDragon();
 
@@ -304,7 +304,9 @@ function update(delta) {
     }
 
     if (!mountedOnDragon) {
-        const moveSpeed = (isRunning ? RUN_SPEED : WALK_SPEED) * speedMultiplier;
+        const boostOn = (boostUnlocked || holyGemCollected) && boostActive && !roundMode;
+        const boostMult = boostOn ? (boostUnlocked && holyGemCollected ? 9 : 3) : 1;
+        const moveSpeed = (isRunning ? RUN_SPEED : WALK_SPEED) * boostMult;
 
         // Get forward direction based on camera yaw
         _forward.set(Math.sin(cameraYaw), 0, Math.cos(cameraYaw));

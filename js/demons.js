@@ -699,11 +699,6 @@ function demonVictory() {
     // Respawn peaceful NPCs now that the apocalypse is over
     respawnSavedNPCs();
 
-    // ── Grant gem powers to player (and white dragon, not original dragon) ──
-    speedMultiplier = 10;
-    jumpMultiplier  = 3;
-    infiniteJump    = true;
-
     // ── Transform existing dragon into white post-apocalypse dragon ──
     if (dragon) {
         applyAscendedDragonMaterials(dragon);

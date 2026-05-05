@@ -192,11 +192,6 @@ function startDemonRound(roundNumber) {
     }
     updateBestDemonRoundsRun();
 
-    // Strip gem powers for round mode
-    speedMultiplier = 1;
-    jumpMultiplier  = 1;
-    infiniteJump    = false;
-
     // Hide shrine + prompt
     if (shrine) { shrine.visible = false; shrineActive = false; }
     document.getElementById('shrine-prompt').style.display = 'none';
@@ -468,11 +463,6 @@ function exitRoundMode() {
 
     // Respawn peaceful NPCs now that the hell run is over
     respawnSavedNPCs();
-
-    // Restore gem powers earned from original victory
-    speedMultiplier = 10;
-    jumpMultiplier  = 3;
-    infiniteJump    = true;
 
     updateHealthBar();
 

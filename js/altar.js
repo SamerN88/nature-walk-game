@@ -342,7 +342,7 @@ function prepareAltarPlacement() {
 
     if (DEBUG_ALTAR_PRELOCATION) {
         player.position.set(placement.x, groundY + 2, placement.z + 40);
-    } else if (DEBUG_ALTAR || DEBUG_HOLY_GEM) {
+    } else if (DEBUG_ALTAR || DEBUG_HOLY_GEM || DEBUG_BOOST) {
         createSacrificialAltar();
     }
 }
@@ -512,6 +512,13 @@ function createSacrificialAltar() {
         _createHolyGemPlatform();
         altarState = 'complete';
         // player.position.set(ox, 703, oz);
+    }
+
+    if (DEBUG_BOOST) {
+        const bx = 25, bz = 0;
+        const by = getGroundHeight(bx, bz) + 1.5;
+        _createHolyGem(bx, by, bz);
+        altarState = 'complete';
     }
 
     return altarData;
@@ -1014,6 +1021,9 @@ function updateHolyGem(delta, time) {
 
 function collectHolyGem() {
     holyGemCollected = true;
+    infiniteJump = true;
+    boostActive = true;
+    flashEquipHint('BOOST: ON');
 
     if (altarData && altarData.holyGemPlatform && altarData.holyGemPlatform.undersideLight) {
         altarData.holyGemPlatform.undersideLight.intensity = 0;

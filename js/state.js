@@ -132,9 +132,12 @@ let farmerPermanentlyKilled = false;
 // centre regardless of where the player happens to be standing at game start.
 let farmerSpawnAnchor = { x: 0, z: 0 };
 
-// Secret gem
+// Secret gem / boost ability
 let secretGem;
 let gemCollected = false;
+let boostUnlocked = false; // true when player actually obtains the boost gem
+let boostActive = false;   // true when B key is toggled on
+let boostFromBeam = false; // true when gem was collected via dragon beam (dragon gets boost too)
 let speedMultiplier = 1;
 let jumpMultiplier = 1;
 
