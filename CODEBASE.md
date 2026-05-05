@@ -57,7 +57,7 @@ All HTML markup and CSS. Contains:
 
 ### `js/constants.js`
 All `const` declarations that never change at runtime:
-- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_INVINCIBLE`, `DEBUG_SWORD_THUNDER`, `DEBUG_NPC`, etc.
+- `DEBUG_*` flags (toggle to true to enable testing shortcuts); includes `DEBUG_CREATURES`, `DEBUG_CREATURES_2`, `DEBUG_CREATURES_FREEZE`, `DEBUG_TALISMAN`, `DEBUG_ALTAR`, `DEBUG_CEMETERY`, `DEBUG_INVINCIBLE`, `DEBUG_SWORD_THUNDER`, `DEBUG_NPC`, `DEBUG_GOD_CONTROLS` (unlocks god-mode menu controls immediately), `DEBUG_BOOST` (spawns boost gem + holy gem near origin at start), etc.
 - `USE_GAP_CHECK` — when `true`, melee hit detection uses the camera-player gap filter (`rayHitProfileBeyondCameraPlayerGap`); when `false`, uses a simple crosshair-on-hitbox ray test (`rayHitProfile`) — more robust for close-range hits
 - `WALK_SPEED = 20`, `RUN_SPEED = WALK_SPEED * 2` — base movement speeds (moved here from `main.js` so `creatures.js` can reference them at parse time)
 - `DAY_DURATION`, `NIGHT_DURATION`, `FULL_CYCLE`
@@ -237,17 +237,24 @@ Peaceful NPCs that wander and react to the player:
 ### `js/gems.js`
 Collectible gems that grant powers:
 
-**Secret gem** (speed/jump boost, unlocked post-apocalypse):
-- `createSecretGem()` — spawns the glowing gem; position is near origin in debug mode
-- `updateGem(delta, time)` — rotation/glow animation, proximity collection check
-- `collectGem()` — grants `speedMultiplier = 10`, `jumpMultiplier = 3`, `infiniteJump = true`
+**Boost gem** (magenta/cyan gem, unlocks the B-key boost ability):
+- `createSecretGem()` — spawns post-apocalypse in a ring 800–1500 units from origin, at least 500 from the player, never in water, surface-clamped; near origin in debug mode (`DEBUG_GEMS` or `DEBUG_BOOST`)
+- `updateGem(delta, time)` — rotation/glow animation, proximity collection check; cannot collect while mounted on dragon
+- `collectGem()` — sets `boostUnlocked = true`, `boostActive = true`; shows "BOOST: ON" hint; calls `updateMenuPanels()`
+- Can also be collected by shooting it with the dragon beam (`dragonBeamAttack` in `dragon.js`), which additionally sets `boostFromBeam = true` so the dragon itself gets the boost multiplier
+
+**Boost ability** (B key, state in `state.js`):
+- `boostUnlocked` — true once boost gem is collected (walking or beam)
+- `boostActive` — toggled by B; disabled during hell run (`roundMode`)
+- `boostFromBeam` — true if gem was collected via dragon beam; gates whether dragon flySpeed gets multiplied
+- Speed/jump multipliers when boost is on: ×3 normally, ×9 if both boost gem and holy gem collected; boost off always ×1
 
 **Dragon gem** (triggers dragon descent from volcano):
 - `createDragonGem()` — spawns gem at volcano summit
-- `updateDragonGem(delta, time)` — animated gem, proximity collection check
+- `updateDragonGem(delta, time)` — animated gem, proximity collection check; cannot collect while mounted on dragon
 - `collectDragonGem()` — triggers dragon descent sequence
 
-**To adjust gem power values:** edit the `collectGem()` function.
+**To change boost multiplier values:** edit the inline `boostMult` formula in `main.js:update()` and jump velocity in `input.js:onKeyDown`.
 
 ---
 
@@ -402,7 +409,7 @@ All UI update functions:
 - `updateBestDemonRoundsRun()` — updates best hell-run stats in menu
 - `updateTopCornerHudVisibility()` — shows/hides top-right stats based on game phase
 - `openTimeMenu()` / `toggleTimeMenu()` — show/hide the pause menu
-- `godSpawnNPCs()` / `godKillNPCs()` / `setRespawnRate()` — god-mode NPC controls from menu
+- `godSpawnNPCs()` / `godKillNPCs()` / `setRespawnRate()` — god-mode NPC controls from menu (hidden until holy gem is collected; `DEBUG_GOD_CONTROLS` bypasses the gate)
 - `resolveRoofCollision(previousY)` — resolves player Y against ceiling colliders (placed here for historical reasons; affects HUD updates via player position)
 
 **To change what's shown in the menu:** edit `updateMenuPanels`.
@@ -473,7 +480,7 @@ Loaded after `creatures.js` so its zombie mesh/color dependencies are explicit. 
 
 ### `js/input.js`
 Raw input event handlers:
-- `onKeyDown(event)` — WASD/arrow movement, Shift (run), Space (jump), E (interact), F (equip switch), T (tether toggle), M (menu), R (dragon dismount/mount), Q (dragon beam)
+- `onKeyDown(event)` — WASD/arrow movement, Shift (run), Space (jump), E (interact), F (equip switch), B (boost toggle), T (tether toggle), M (menu), R (dragon dismount/mount), Q (dragon beam)
 - `onKeyUp(event)` — clears movement flags
 - `onMouseDown(event)` — left click: punch or fire AK47; right click: unused
 - `onMouseUp(event)` — releases AK47 trigger
@@ -583,8 +590,10 @@ Placement is reserved and terrain is flattened during `main.js:init()` via `prep
 5. `_doAltarComplete()` — spawns the holy gem on its platform
 
 **Holy gem** (`_createHolyGem`, `updateHolyGem`, `collectHolyGem`):
-- Glowing animated gem that spawns after altar ritual completes
-- Collection triggers a power/unlock (edit `collectHolyGem` for effect)
+- Glowing animated gem that spawns after altar ritual completes on a floating platform at Y≈525
+- Collection grants: `infiniteJump = true`, `boostActive = true`, shows "BOOST: ON" hint
+- Also unlocks the B-key boost toggle (same as boost gem); if both gems collected, boost-on speed becomes ×9 instead of ×3 (jump is ×3 regardless)
+- Cannot collect while mounted on dragon
 - Platform height queryable via `getHolyGemPlatformHeight(x, z)`
 
 **Key state variables** (global, read by other files):
@@ -685,7 +694,9 @@ Progression flow: There are multiple ways the game could play out, but here is o
 | Shadow man spawn timing | `state.js` | `SHADOW_MAN_*` constants |
 | Dragon bond kill threshold | `state.js` | `DRAGON_BOND_KILLS_REQUIRED` |
 | AK47 fire rate | `state.js` | `AK47_SHOT_INTERVAL_MS` |
-| Gem power values | `gems.js` | `collectGem()` |
+| Boost gem spawn band | `gems.js` | `createSecretGem()` spawn loop |
+| Boost multiplier values | `main.js`, `input.js` | `boostMult` in `update()`, jump velocity in `onKeyDown` |
+| Holy gem effect | `altar.js` | `collectHolyGem()` |
 | Round scaling | `hellrun.js` | `getRoundDemonCount` |
 | Creature spawn rate/chance | `creatures.js` | spawn timer block in `updateCreatures` |
 | Creature speed | `creatures.js` | `CREATURE_SPEED`, `CEMETERY_ZOMBIE_SPEED` |
@@ -695,7 +706,6 @@ Progression flow: There are multiple ways the game could play out, but here is o
 | HH hallway crawler | `hauntedhouse.js` | `_spawnHHHallCrawler`, `_updateHHHallCrawlerEncounter` |
 | HH stairs disappearance | `hauntedhouse.js` | `HH_REMOVE_STAIRS_DURING_SEQUENCE` |
 | HH interior hall door size/opening | `hauntedhouse.js` | `HH_HALL_DOOR_*`, `createHauntedHouse()` |
-| Holy gem effect | `altar.js` | `collectHolyGem()` |
 | New structure | `structures.js` | `createEnterableStructures` or `createClimbableStructures` |
 | New NPC type | `npcs.js` | add `createFoo()`, add case to `makeNPCHitProfile`, call in `createNPCs` |
 | NPC hit profiles | `npcs.js` | `makeNPCHitProfile` |
