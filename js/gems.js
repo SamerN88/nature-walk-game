@@ -359,3 +359,68 @@ function collectGem() {
 }
 
 
+// ── Boost particles ──────────────────────────────────────────────────────────
+let _boostParticles = null; // array of {mesh, relY, riseSpeed, orbitAngle, orbitAngleSpeed, orbitRadius, maxY}
+
+const _BOOST_P_COUNT  = 80;
+const _BOOST_P_COLORS = [0xFF00FF, 0x00FFFF]; // pink, green (same as gem inner/outer glow)
+const _BOOST_P_MAX_Y  = 2.4; // height span along player body (feet to just above head)
+const _BOOST_P_OPAC   = 0.50
+
+function _createBoostParticles() {
+    _boostParticles = [];
+    for (let i = 0; i < _BOOST_P_COUNT; i++) {
+        const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.04 + Math.random() * 0.03, 4, 3),
+            new THREE.MeshBasicMaterial({ color: _BOOST_P_COLORS[i % 2], transparent: true, opacity: _BOOST_P_OPAC, depthWrite: false })
+        );
+        mesh.frustumCulled = false;
+        mesh.userData.ignoreCameraOcclusion = true;
+        scene.add(mesh);
+        _boostParticles.push({
+            mesh,
+            relY:           Math.random() * _BOOST_P_MAX_Y,
+            riseSpeed:      0.3 + Math.random() * 0.5,
+            orbitAngle:     Math.random() * Math.PI * 2,
+            orbitAngleSpeed:1.5 + Math.random() * 2.0,
+            orbitRadius:    0.25 + Math.random() * 0.3,
+        });
+    }
+}
+
+function _removeBoostParticles() {
+    if (!_boostParticles) return;
+    for (const p of _boostParticles) scene.remove(p.mesh);
+    _boostParticles = null;
+}
+
+function updateBoostParticles(delta) {
+    const shouldShow = (boostUnlocked || holyGemCollected) && boostActive && !roundMode;
+
+    if (shouldShow && !_boostParticles) {
+        _createBoostParticles();
+    } else if (!shouldShow && _boostParticles) {
+        _removeBoostParticles();
+        return;
+    }
+
+    if (!_boostParticles) return;
+
+    const px = player.position.x;
+    const py = player.position.y;
+    const pz = player.position.z;
+
+    for (const p of _boostParticles) {
+        p.relY        += p.riseSpeed * delta;
+        p.orbitAngle  += p.orbitAngleSpeed * delta;
+
+        p.mesh.position.x = px + Math.cos(p.orbitAngle) * p.orbitRadius;
+        p.mesh.position.z = pz + Math.sin(p.orbitAngle) * p.orbitRadius;
+        p.mesh.position.y = py + p.relY;
+
+        // Fade in from bottom, fade out at top — sine gives smooth 0→peak→0
+        const frac = Math.min(p.relY / _BOOST_P_MAX_Y, 1);
+        p.mesh.material.opacity = Math.sin(frac * Math.PI) * _BOOST_P_OPAC;
+        if (p.relY > _BOOST_P_MAX_Y) p.relY = 0;
+    }
+}

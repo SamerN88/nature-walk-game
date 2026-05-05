@@ -475,6 +475,7 @@ function update(delta) {
     updateNPCs(delta);
     updateGem(delta, performance.now() / 1000);
     updateDragonGem(delta, performance.now() / 1000);
+    updateBoostParticles(delta);
     updateDragon(delta);
 }
 
