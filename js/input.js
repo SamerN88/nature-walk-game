@@ -51,7 +51,7 @@ function onKeyDown(event) {
                 );
                 if (waterState.isSwimming) break;
             }
-            if (!mountedOnDragon && (isGrounded || infiniteJump)) {
+            if (!mountedOnDragon && (isGrounded || (infiniteJump && !roundMode && !demonApocalypse))) {
                 velocity.y = 15 * (boostUnlocked && boostActive && !roundMode ? 3 : 1);
                 isGrounded = false;
             }

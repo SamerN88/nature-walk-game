@@ -447,6 +447,7 @@ function exitRoundMode() {
     demons.length = 0;
 
     setTimeOfDay('day');
+    setWaterCombatColor(false);
 
     document.getElementById('demon-counter').style.display = 'none';
     document.getElementById('campfire-shield').style.display = 'none';
