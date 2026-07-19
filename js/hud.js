@@ -1,7 +1,7 @@
 function updateMenuPanels() {
     const controls = document.getElementById('menu-controls-list');
     if (controls) {
-        const lines = ['M - Menu'];
+        const lines = ['P - Pause menu'];
         // Only show inventory hint once the player has something to view
         if (inventoryItems.length > 0 || handSlots.length > 1) lines.push('E - Inventory');
         lines.push('WASD - Move', 'SHIFT - Run', 'SPACE - Jump', 'Click - Punch/Interact');
@@ -68,9 +68,30 @@ function updateStats() {
     updateMenuPanels();
 }
 
+// The menu is a true pause: animate() stops updating while timeMenuOpen. Game
+// state driven by delta freezes automatically; mechanics anchored to
+// performance.now() (shadow-man schedule, pickup lockout pulses) are shifted
+// forward by the paused duration on resume so no real time "passes" in-game.
+let _pauseStartedAtMs = -1;
+
+function _onGamePauseStart() {
+    if (_pauseStartedAtMs < 0) _pauseStartedAtMs = performance.now();
+}
+
+function _onGamePauseEnd() {
+    if (_pauseStartedAtMs < 0) return;
+    const pausedMs = performance.now() - _pauseStartedAtMs;
+    _pauseStartedAtMs = -1;
+    gameStartRealTimeMs += pausedMs;
+    talismanSpawnTime += pausedMs;
+    goldenKeySpawnTime += pausedMs;
+    keyHintNoteSpawnTime += pausedMs;
+}
+
 function openTimeMenu() {
     if (timeMenuOpen) return;
     timeMenuOpen = true;
+    _onGamePauseStart();
     const menu = document.getElementById('game-menu');
     menu.style.display = 'block';
     updateTopCornerHudVisibility();
@@ -83,6 +104,7 @@ function openTimeMenu() {
 function toggleTimeMenu() {
     if (timeMenuOpen) {
         timeMenuOpen = false;
+        _onGamePauseEnd();
         document.getElementById('game-menu').style.display = 'none';
         updateTopCornerHudVisibility();
         if (!playerDead) {

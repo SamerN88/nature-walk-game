@@ -489,6 +489,14 @@ function animate() {
     const rawDelta = currentTime - lastTime;
     lastTime = currentTime;
 
+    // True pause while the menu is open: no updates at all, just re-render the
+    // frozen frame (keeps the canvas valid across window resizes). Wall-clock
+    // based timers are shifted on resume — see the pause bookkeeping in hud.js.
+    if (timeMenuOpen) {
+        renderer.render(scene, camera);
+        return;
+    }
+
     if (rawDelta > 250) {
         // Tab was backgrounded; the huge accumulated delta would teleport physics
         // entities through walls. Skip the update and just re-render.
@@ -584,22 +592,6 @@ deathScreen.addEventListener('click', e => {
     e.preventDefault();
 });
 
-// Start game
-document.getElementById('start-btn').addEventListener('click', () => {
-    const btn = document.getElementById('start-btn');
-    // Lock exact dimensions before replacing text so size never changes
-    btn.style.width  = btn.offsetWidth  + 'px';
-    btn.style.height = btn.offsetHeight + 'px';
-    btn.style.padding = '0';
-    btn.innerHTML = '<span class="btn-spinner"></span>';
-    btn.classList.add('loading');
-    // Two rAF calls guarantee the browser paints the spinner before the blocking init()
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            init();
-            document.getElementById('start-screen').style.display = 'none';
-            animate();
-            renderer.domElement.requestPointerLock();
-        });
-    });
-});
+// Start game — title screen and boot flow (browser Start button, Electron
+// save-file selection, seeded worlds) live in save.js.
+initTitleScreen();

@@ -37,7 +37,14 @@ nature-walk-game/
 │   ├── creatures.js    Night creature system: zombie, crawler, weeping angel, cemetery zombies
 │   ├── noose.js        Special noose portal landmark, rope/body construction, debug spawn
 │   ├── altar.js        Sacrificial altar: ritual mechanics, pillar symbols, corpse ascent, holy gem
+│   ├── hints.js        Progressive hint system (menu Hint button, milestone latching)
+│   ├── save.js         Save/load system: seeded RNG, snapshot capture/apply, autosave, title screens
 │   └── main.js         `init()`, `animate()`, `update()` — the game loop
+├── electron/
+│   ├── main.js         Electron main process: window + save-file IPC (userData/saves/*.json)
+│   └── preload.js      contextBridge exposing window.gameSaves to the renderer
+├── build/              App icons (icon.icns, icon.ico) used by electron-builder
+├── package.json        Electron/electron-builder config (`npm start`, `npm run dist:mac`, `dist:win`)
 └── CODEBASE.md         This file
 ```
 
@@ -408,7 +415,7 @@ All UI update functions:
 - `updateMenuPanels()` — populates controls list and kill breakdown in the pause menu
 - `updateBestDemonRoundsRun()` — updates best hell-run stats in menu
 - `updateTopCornerHudVisibility()` — shows/hides top-right stats based on game phase
-- `openTimeMenu()` / `toggleTimeMenu()` — show/hide the pause menu
+- `openTimeMenu()` / `toggleTimeMenu()` — show/hide the pause menu (P key). Opening is a **true pause**: `animate()` stops all updates while `timeMenuOpen`, and `_onGamePauseEnd()` shifts wall-clock anchors (`gameStartRealTimeMs`, item spawn times) forward by the paused duration on resume
 - `godSpawnNPCs()` / `godKillNPCs()` / `setRespawnRate()` — god-mode NPC controls from menu (hidden until holy gem is collected; `DEBUG_GOD_CONTROLS` bypasses the gate)
 - `resolveRoofCollision(previousY)` — resolves player Y against ceiling colliders (placed here for historical reasons; affects HUD updates via player position)
 
@@ -480,7 +487,7 @@ Loaded after `creatures.js` so its zombie mesh/color dependencies are explicit. 
 
 ### `js/input.js`
 Raw input event handlers:
-- `onKeyDown(event)` — WASD/arrow movement, Shift (run), Space (jump), E (interact), F (equip switch), B (boost toggle), T (tether toggle), M (menu), R (dragon dismount/mount), Q (dragon beam)
+- `onKeyDown(event)` — WASD/arrow movement, Shift (run), Space (jump), E (interact), F (equip switch), B (boost toggle), T (tether toggle), P (pause menu), R (dragon dismount/mount), Q (dragon beam)
 - `onKeyUp(event)` — clears movement flags
 - `onMouseDown(event)` — left click: punch or fire AK47; right click: unused
 - `onMouseUp(event)` — releases AK47 trigger
@@ -614,6 +621,21 @@ Placement is reserved and terrain is flattened during `main.js:init()` via `prep
 
 **To change altar appearance:** edit `createSacrificialAltar` and the `_build*` helpers.
 **To change what the holy gem does:** edit `collectHolyGem`.
+
+---
+
+### `js/save.js` + `electron/`
+Desktop save system. In the Electron app (`npm start`, or the packaged Mac/Windows builds from `npm run dist:mac` / `dist:win`), gameplay is persisted to JSON save files in `userData/saves/`; a plain browser `index.html` session behaves exactly as before (Start button, no persistence).
+
+**Seeded worlds:** each save file stores a `seed`. `applyGameSeed()` replaces `Math.random` with a mulberry32 PRNG before `init()`, so all world generation (water/structure/HH/cemetery/altar placement, forests, mountains) replays identically on every load. World layout is therefore never stored — only the seed plus dynamic state.
+
+**Snapshots:** `captureSnapshot()` serializes all logical game state — player/camera, progression flags, inventory/hotbar, kill counts, hint milestones, world-item state (chest, doors, gates, tree damage, dropped notes/key/talisman), altar and HH sequence state, night creatures, demons, shadow man, hell run, dragon, gems, noose body, NPCs (with per-NPC appearance), and the day/night clock. `applySnapshot()` rebuilds all of it after a seeded `init()` by replaying the real game code paths (e.g. `_lightAltarTorch`, `removeHHEntrance`, `createDemon(false, restore)`). Transient VFX (particles, beams, flashes) are not persisted.
+
+**Autosave:** every 5 s in the background (skipped during states that can't snapshot cleanly: death screen, shadow-man cutscene, HH flashbang, altar strike/ascension, noose fade — `canSnapshotNow()`). "Save & quit" in the pause menu writes a final snapshot and returns to the title screen. `hardReset()` ("RESTART WORLD", creature death, lava) resets the active save to a fresh seed and relaunches into it.
+
+**Title screens:** first run shows the classic Start button (creates the first, unnamed save). Once saves exist: "New save file" / "Load save file"; the load screen lists saves with a gear menu for rename/delete.
+
+**To add new global state:** add it to `state.js` as usual, then mirror it in `captureSnapshot()` and `applySnapshot()` — otherwise it silently resets on load.
 
 ---
 

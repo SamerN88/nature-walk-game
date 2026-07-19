@@ -245,10 +245,10 @@ function createRabbit() {
     });
 }
 
-function createBird(birdScale = 1) {
+function createBird(birdScale = 1, opts = {}) {
     const bird = new THREE.Group();
     bird.userData.ignoreCameraOcclusion = true;
-    const bodyColor = [0x4444FF, 0xFF4444, 0xFFFF00, 0x44FF44, 0xFF8800][Math.floor(Math.random() * 5)];
+    const bodyColor = opts.bodyColor ?? [0x4444FF, 0xFF4444, 0xFFFF00, 0x44FF44, 0xFF8800][Math.floor(Math.random() * 5)];
     const bodyMaterial = new THREE.MeshLambertMaterial({ color: bodyColor });
     const wingMaterial = new THREE.MeshLambertMaterial({ color: bodyColor, side: THREE.DoubleSide });
     const wings = [];
@@ -356,6 +356,8 @@ function createBird(birdScale = 1) {
         mesh: bird,
         type: 'bird',
         hitProfile,
+        birdScale,
+        bodyColor,
         waterHeight: 0.35 * birdScale,
         speed: birdScale > 1 ? (20 + Math.random() * 30) : (8 + Math.random() * 6),
         direction: Math.random() * Math.PI * 2,
@@ -419,14 +421,15 @@ function createHuman(options = {}) {
     const isFarmer = options.isFarmer === true;
     const human = new THREE.Group();
     human.userData.ignoreCameraOcclusion = true;
-    const skinColor = isFarmer
+    const appearance = options.appearance || {};
+    const skinColor = appearance.skinColor ?? (isFarmer
         ? 0xFFDBAC
-        : [0xFFDBAC, 0xD2A06F, 0x8D5524, 0xC68642][Math.floor(Math.random() * 4)];
-    const shirtColor = isFarmer
+        : [0xFFDBAC, 0xD2A06F, 0x8D5524, 0xC68642][Math.floor(Math.random() * 4)]);
+    const shirtColor = appearance.shirtColor ?? (isFarmer
         ? 0xF2F2F2
-        : [0x3366CC, 0xCC3333, 0x33AA33, 0x9933CC, 0xCC9933][Math.floor(Math.random() * 5)];
-    const pantsColor = isFarmer ? 0x3366CC : 0x444444;
-    const hairColor = [0x000000, 0x3D2314, 0x8B4513, 0xFFD700, 0xA52A2A][Math.floor(Math.random() * 5)];
+        : [0x3366CC, 0xCC3333, 0x33AA33, 0x9933CC, 0xCC9933][Math.floor(Math.random() * 5)]);
+    const pantsColor = appearance.pantsColor ?? (isFarmer ? 0x3366CC : 0x444444);
+    const hairColor = appearance.hairColor ?? [0x000000, 0x3D2314, 0x8B4513, 0xFFD700, 0xA52A2A][Math.floor(Math.random() * 5)];
     const skinMaterial = new THREE.MeshLambertMaterial({ color: skinColor });
     const shirtMaterial = new THREE.MeshLambertMaterial({ color: shirtColor });
     const pantsMaterial = new THREE.MeshLambertMaterial({ color: pantsColor });
@@ -540,6 +543,7 @@ function createHuman(options = {}) {
         mesh: human,
         type: 'human',
         isFarmer,
+        appearance: { skinColor, shirtColor, pantsColor, hairColor },
         hitProfile,
         waterHeight: 1.96 * humanScale,
         speed: 1.5 + Math.random() * 1.5,

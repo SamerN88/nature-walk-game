@@ -6,7 +6,7 @@ const _CAMPFIRE_ARC_CIRC = 2 * Math.PI * 13;
 // Cached DOM element for the damage flash overlay (avoid getElementById in hot loop)
 const _damageFlashEl = document.getElementById('damage-flash');
 
-function createDemon(biasedSpeed = false) {
+function createDemon(biasedSpeed = false, restore = null) {
     const demon = new THREE.Group();
     demon.userData.ignoreCameraOcclusion = true;
     const skinMat  = new THREE.MeshLambertMaterial({ color: 0x220000 });
@@ -74,7 +74,7 @@ function createDemon(biasedSpeed = false) {
     faceAnimatedParts.push(jawGroup);
 
     // children[6,7,8,9]: Arms + hands (animated)
-    const DEMON_TYPE = Math.floor(Math.random() * 4);  // we have 4 different styles for the arms
+    const DEMON_TYPE = restore ? restore.demonType : Math.floor(Math.random() * 4);  // we have 4 different styles for the arms
     const armGeo = new THREE.CylinderGeometry(0.15, 0.12, 2.9, 6);
     const armLongSpikeGeo = new THREE.CylinderGeometry(0.01, 0.19, 2.9, 6);
     const armShortSpikeGeo = new THREE.CylinderGeometry(0.01, 0.19, 0.9, 6);
@@ -198,7 +198,7 @@ function createDemon(biasedSpeed = false) {
     const maxSpd = 0.6*RUN_SPEED;
     // biasedSpeed: squared sampling biased toward faster (round 3+)
     const t = biasedSpeed ? 1 - Math.pow(Math.random(), 2) : Math.random();
-    const speed  = minSpd + t * (maxSpd - minSpd);
+    const speed  = restore ? restore.speed : minSpd + t * (maxSpd - minSpd);
     const normalizedSpd = (speed - minSpd) / (maxSpd - minSpd);
     // Hit cooldown: slowest -> 1 hit/sec (1.0s), fastest -> 2 hits/sec (0.5s)
     const hitCooldown = 1.0 - normalizedSpd * 0.5;
@@ -221,6 +221,7 @@ function createDemon(biasedSpeed = false) {
     return {
         mesh: demon,
         type: 'demon',
+        demonType: DEMON_TYPE,
         speed,
         hitCooldown,
         hitTimer: Math.random() * hitCooldown,
@@ -779,6 +780,10 @@ function showDeathScreen() {
 }
 
 function hardReset() {
+    // Under Electron, "restart world" resets the active save file to a fresh
+    // world (new seed) and relaunches into it. Falls back to a plain reload
+    // in the browser, which has no persistence.
+    if (typeof resetActiveSaveAndReload === 'function' && resetActiveSaveAndReload()) return;
     location.reload();
 }
 

@@ -1,5 +1,5 @@
 function onKeyDown(event) {
-    if (event.code === 'KeyM') {
+    if (event.code === 'KeyP') {
         if (playerDead) return;
         if (event.repeat) return;
         event.preventDefault();

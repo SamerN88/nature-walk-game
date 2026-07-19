@@ -366,6 +366,187 @@
             opacity: 0.9;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
         }
+        /* ── Save-file title screen (Electron) ── */
+        #title-main {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #save-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            align-items: center;
+        }
+        .title-btn {
+            width: 260px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.05s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .title-btn:hover { background: #5bc75f; }
+        .title-btn:active { background: #3a873d; transform: scale(0.98); }
+        .title-btn.loading { cursor: default; pointer-events: none; background: #3a873d; transform: none; }
+        .title-btn-secondary {
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.35);
+        }
+        .title-btn-secondary:hover { background: rgba(255,255,255,0.24); }
+        .title-btn-secondary:active { background: rgba(255,255,255,0.10); }
+        #load-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: min(440px, 92vw);
+        }
+        #load-screen h2 {
+            font-size: 24px;
+            margin-bottom: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        #save-list {
+            width: 100%;
+            max-height: 46vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .save-list-empty {
+            text-align: center;
+            color: #cfe3cf;
+            opacity: 0.8;
+            padding: 18px 0;
+        }
+        .save-row {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+        }
+        .save-row-main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 13px 16px;
+            background: rgba(0,0,0,0.28);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 10px;
+            color: white;
+            font-size: 16px;
+            font-family: inherit;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.1s;
+            min-width: 0;
+        }
+        .save-row-main:hover { background: rgba(255,255,255,0.12); }
+        .save-row-main.loading { pointer-events: none; opacity: 0.8; justify-content: center; }
+        .save-row-name {
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .save-row-date {
+            font-size: 12px;
+            color: #c9dcc9;
+            opacity: 0.85;
+            flex-shrink: 0;
+        }
+        .save-rename-input {
+            flex: 1;
+            min-width: 0;
+            font-size: 15px;
+            font-family: inherit;
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.4);
+            background: rgba(0,0,0,0.4);
+            color: white;
+            outline: none;
+        }
+        .save-row-gear {
+            width: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.28);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 10px;
+            color: #d8e9d8;
+            cursor: pointer;
+            transition: background 0.1s, color 0.1s;
+        }
+        .save-row-gear:hover { background: rgba(255,255,255,0.12); color: #ffffff; }
+        .save-row-menu {
+            /* Fixed so the popover escapes #save-list's overflow clipping;
+               coordinates are set from the gear button's rect at open time. */
+            position: fixed;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            min-width: 120px;
+            background: rgba(14,24,17,0.98);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 9px;
+            overflow: hidden;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+        }
+        .save-row-menu button {
+            padding: 10px 14px;
+            background: none;
+            border: none;
+            color: #e6f2e6;
+            font-size: 14px;
+            font-family: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+        .save-row-menu button:hover { background: rgba(255,255,255,0.10); }
+        .save-row-menu .save-menu-delete { color: #ff9d8f; }
+        #load-back-btn {
+            padding: 10px 34px;
+            font-size: 15px;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.35);
+            border-radius: 9px;
+            color: white;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        #load-back-btn:hover { background: rgba(255,255,255,0.24); }
+        /* Save & quit button in the game menu (Electron only) */
+        #save-quit-wrap {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-top: 2px;
+        }
+        #save-quit-btn {
+            padding: 10px 30px;
+            font-size: 14px;
+            font-family: inherit;
+            background: rgba(255,255,255,0.10);
+            color: #ccc;
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 8px;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: background 0.15s;
+        }
+        #save-quit-btn:hover { background: rgba(255,255,255,0.18); }
+        #save-quit-btn:disabled { opacity: 0.5; cursor: default; }
         /* ── Demon Apocalypse UI ── */
         #health-bar-container {
             position: absolute;
@@ -815,8 +996,19 @@
     <div id="start-screen">
         <h1>Nature Walk</h1>
         <p>A peaceful exploration</p>
-        <button id="start-btn">Start</button>
-        <div id="start-menu-hint">Press M to toggle menu in game. Tip: Periodically check menu for new controls.</div>
+        <div id="title-main">
+            <button id="start-btn">Start</button>
+            <div id="save-buttons" style="display:none">
+                <button id="new-save-btn" class="title-btn">New game</button>
+                <button id="load-save-btn" class="title-btn title-btn-secondary">Load game</button>
+            </div>
+        </div>
+        <div id="load-screen" style="display:none">
+            <h2>Load game</h2>
+            <div id="save-list"></div>
+            <button id="load-back-btn">Back</button>
+        </div>
+        <div id="start-menu-hint">Press P to pause and open the menu in game. Tip: Periodically check menu for new controls.</div>
     </div>
 
     <div id="underwater-tint"></div>
@@ -979,7 +1171,7 @@
         </div><!-- #god-controls -->
 
         <div id="hint-area"></div>
-        <p class="close-hint">Press M to toggle menu</p>
+        <p class="close-hint">Press P to resume</p>
         </div>
     </div>
 
@@ -1024,6 +1216,7 @@
     <script src="js/noose.js"></script>
     <script src="js/altar.js"></script>
     <script src="js/hints.js"></script>
+    <script src="js/save.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

@@ -310,7 +310,7 @@ function respawnPlayerFromDragonVolcanoLava() {
     // Hard reset back to title screen — no animation, pure reload
     if (!_lavaResetPending) {
         _lavaResetPending = true;
-        location.reload();
+        hardReset();
     }
     return true;
 }
