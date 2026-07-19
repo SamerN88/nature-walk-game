@@ -1,14 +1,14 @@
 const HINTS = [
-    "Where leaves grow.",
+    "The giving tree.",
     "Light.",
-    "Search the tents.",
-    "Go where all are equal.",
-    "In the dark woods.",
-    "Seek the pit of fire.",
+    "Campers leave things behind.",
+    "Memento mori.",
+    "In the deep dark woods.",
+    "Pit of fire.",
     "Follow him.",
     "Near the edge, they made a symbol of flesh.",
-    "The lowest point.",
-    "B&E",
+    "Hold your breath.",
+    "Anybody home?",
 ];
 
 // One condition per hint, ordered to match HINTS.
