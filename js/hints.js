@@ -11,10 +11,10 @@ const HINTS = [
     "B&E",
 ];
 
-// Conditions to advance FROM stage N to N+1.
-// Ordered to match HINTS: stage 0 advances when hasStick, etc.
+// One condition per hint, ordered to match HINTS.
+// A torch is a lit stick, so hasTorch implies the stick milestone.
 const _hintConditions = [
-    () => hasStick,
+    () => hasStick || hasTorch,
     () => hasTorch,
     () => hasShovel,
     () => hasTalisman,
@@ -26,17 +26,28 @@ const _hintConditions = [
     () => ak47Collected,
 ];
 
-// Advance hintStage past any stages whose condition is already met,
-// resetting hintRevealed each time we move forward.
-function _advanceHintStage() {
-    while (hintStage < _hintConditions.length && _hintConditions[hintStage]()) {
-        hintStage++;
+// Milestones latch: item flags can flip back (stick consumed by lighting the
+// torch, torch extinguished in the haunted house), but a condition that has
+// ever been satisfied stays satisfied for hint purposes.
+const _hintMilestonesMet = _hintConditions.map(() => false);
+
+// Called every frame (and on menu open) so milestones satisfied between menu
+// opens are never missed. hintStage = first never-met milestone, so hints for
+// already-met conditions are skipped even when they were met out of order.
+function updateHintMilestones() {
+    for (let i = 0; i < _hintConditions.length; i++) {
+        if (!_hintMilestonesMet[i] && _hintConditions[i]()) _hintMilestonesMet[i] = true;
+    }
+    const next = _hintMilestonesMet.indexOf(false);
+    const stage = next === -1 ? HINTS.length : next;
+    if (stage !== hintStage) {
+        hintStage = stage;
         hintRevealed = false;
     }
 }
 
 function updateHintArea() {
-    _advanceHintStage();
+    updateHintMilestones();
     const area = document.getElementById('hint-area');
     if (!area) return;
 

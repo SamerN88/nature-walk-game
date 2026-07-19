@@ -508,6 +508,7 @@ function animate() {
     if (demonApocalypse && !playerDead) updateDemons(delta);
     updateRoundSpawning(delta);
     updateBetweenRound(delta);
+    updateHintMilestones();
     updateShrine(delta, performance.now() / 1000);
     updateShadowMan(currentTime);
     updateShadowManCutscene(delta);
