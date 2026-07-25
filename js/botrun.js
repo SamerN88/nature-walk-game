@@ -1535,6 +1535,34 @@ async function escapeEnclosure(cx, cz, escapeR) {
     return false;
 }
 
+// The cemetery's little corner room (a stone hut with ONE south doorway, 2.2
+// wide) is registered as a playerEnclosureRegion: the collision layer rolls
+// back every boundary crossing except through that doorway band. So pushing at
+// a wall from inside can never work no matter how long the bot tries — if the
+// zombie kite ends in there it has to leave the way it came.
+function insideEnclosureRoom() {
+    if (typeof playerEnclosureRegions === 'undefined') return null;
+    for (const r of playerEnclosureRegions) {
+        const l = worldToLocalXZ(player.position.x, player.position.z, r.x, r.z, r.rotation || 0);
+        if (Math.abs(l.x) < (r.outerHalfW ?? r.halfW) + 0.6 &&
+            Math.abs(l.z) < (r.outerHalfD ?? r.halfD) + 0.6) return r;
+    }
+    return null;
+}
+// Same doctrine as the houses: stand on the interior point of the
+// centre→doorway axis, then walk that axis straight out through the band.
+async function exitEnclosureRoom(r) {
+    const vx = r.entryX - r.x, vz = r.entryZ - r.z, L = Math.hypot(vx, vz) || 1;
+    const ux = vx / L, uz = vz / L;
+    for (let i = 0; i < 4 && insideEnclosureRoom(); i++) {
+        BOT.detail = 'leaving the cemetery room ' + i;
+        await go(r.x + ux * 1.2, r.z + uz * 1.2, { arrive: 1.0, run: false, noDetour: true, timeout: 10000 }).catch(() => {});
+        await go(r.entryX + ux * 8, r.entryZ + uz * 8, { arrive: 1.5, run: false, noDetour: true, timeout: 12000 }).catch(() => {});
+    }
+    BOT.detail = '';
+    return !insideEnclosureRoom();
+}
+
 // Escape the cemetery if we're inside with the gates open (a caged trek start
 // fights the fence forever).
 async function escapeCemeteryIfInside() {
@@ -1542,6 +1570,8 @@ async function escapeCemeteryIfInside() {
         if (!cemeteryData || cemeteryData.gatesLocked) return;
         const c = cemeteryData;
         if (dist2(c.worldX, c.worldZ) > 45) return;
+        const room0 = insideEnclosureRoom();          // restored inside the hut?
+        if (room0) await exitEnclosureRoom(room0);
         const ex = c.entranceWorldX, ez = c.entranceWorldZ;
         const vx0 = ex - c.worldX, vz0 = ez - c.worldZ, L = Math.hypot(vx0, vz0) || 1;
         const pvx = -vz0 / L, pvz = vx0 / L;
@@ -2107,6 +2137,14 @@ const PHASES = [
             BOT.guardSuspended = true;   // zombies are the kite's own job
             try { await motorRun({ type: 'cemkite' }, { timeout: 180000 }); }
             finally { BOT.guardSuspended = false; }
+            // The kite orbits the whole yard and can finish inside the corner
+            // room. Leave it through its own doorway BEFORE aiming at the gate
+            // — otherwise the gate walk keeps being rolled back at the room
+            // boundary and the bot oscillates against the inside of a wall.
+            {
+                const room = insideEnclosureRoom();
+                if (room) await exitEnclosureRoom(room);
+            }
             // Leave through the gate — user doctrine, and the map agrees: the
             // graves are gridded SKIPPING the axes (local x≈0 is a grave-free
             // walkway, and tombstones have no colliders anyway), and the gate
@@ -2776,7 +2814,7 @@ async function campaign() {
 // Test bench: with window.__nwBotTestMode set BEFORE __nwBotStart(), the
 // campaign stays down and a driver can call the primitives directly.
 if (!window.__nwBotTestMode) campaign().catch(e => { if (!BOT.aborted) BOT.note = 'CAMPAIGN ERR: ' + e.message; });
-BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, hhW2L, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura, pursue,
+BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, hhW2L, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura, pursue, insideEnclosureRoom, exitEnclosureRoom,
                 phase: n => PHASES.find(p => p.name === n) };
 
 // ── Status for the supervisor ───────────────────────────────────────────────
@@ -2835,22 +2873,27 @@ document.addEventListener('keydown', (e) => {
     function botModeOn() { try { return localStorage.getItem('nw-botrun') === '1'; } catch (e) { return false; } }
 
     // The subtle "bot run" button (bottom-right of the title screen only).
-    // HIDDEN ON A VIRGIN INSTALL: a brand-new player should meet a clean title
-    // screen, so the button only appears once at least one save file exists.
-    // Once earned it is STICKY (localStorage 'nw-bot-btn') — deleting every
-    // save afterwards does not take it away again.
+    // EARNED, NOT GIVEN: it stays hidden until the demon apocalypse has been
+    // beaten at least once — in ANY save file. Once earned it is STICKY
+    // (localStorage 'nw-bot-btn'), so deleting that save never takes it away.
     function botBtnUnlocked() {
         try { return localStorage.getItem('nw-bot-btn') === '1'; } catch (e) { return false; }
     }
-    async function botBtnShouldShow() {
-        if (botBtnUnlocked()) return true;
+    function markBotBtnUnlocked() {
+        try { localStorage.setItem('nw-bot-btn', '1'); } catch (e) {}
+    }
+    // Every save record carries the war result at
+    // snapshot.shadowman.postApocalypseUnlocked (js/save.js).
+    async function anySaveBeatApocalypse() {
         try {
-            if (typeof SAVE_API !== 'undefined' && SAVE_API && SAVE_API.list) {
-                const saves = await SAVE_API.list();
-                if (saves && saves.length) {
-                    try { localStorage.setItem('nw-bot-btn', '1'); } catch (e) {}
-                    return true;
-                }
+            if (typeof SAVE_API === 'undefined' || !SAVE_API || !SAVE_API.list || !SAVE_API.read) return false;
+            for (const s of (await SAVE_API.list()) || []) {
+                if (s.hasSnapshot === false) continue;
+                try {
+                    const rec = await SAVE_API.read(s.id);
+                    if (rec && rec.snapshot && rec.snapshot.shadowman &&
+                        rec.snapshot.shadowman.postApocalypseUnlocked) return true;
+                } catch (e) {}
             }
         } catch (e) {}
         return false;
@@ -2880,14 +2923,26 @@ document.addEventListener('keydown', (e) => {
         };
         startScreen.appendChild(b);
     }
-    // Re-check while the title screen is up: a save created this session (or a
-    // profile that already had one) unlocks the button without a restart.
+    // Watcher: unlock the moment the war is won in THIS session, and otherwise
+    // look for a past victory in the save files whenever the title is up.
     (function watchBotBtn() {
-        let ticks = 0;
-        const iv = setInterval(async () => {
-            if (document.getElementById('bot-run-btn')) { clearInterval(iv); return; }
-            if (await botBtnShouldShow()) { makeBotRunButton(); clearInterval(iv); return; }
-            if (++ticks > 600) clearInterval(iv);             // ~15 min, then stop polling
+        let scanTick = 0, scanning = false;
+        setInterval(async () => {
+            if (!botBtnUnlocked() &&
+                typeof shadowManPostApocalypseUnlocked !== 'undefined' &&
+                shadowManPostApocalypseUnlocked) {
+                markBotBtnUnlocked();                         // earned it live
+            }
+            const ss = document.getElementById('start-screen');
+            if (!ss || ss.style.display === 'none') return;    // only on the title
+            if (document.getElementById('bot-run-btn')) return;
+            if (botBtnUnlocked()) { makeBotRunButton(); return; }
+            // Reading every save record is not free — throttle the scan.
+            if (scanning || (scanTick++ % 8) !== 0) return;
+            scanning = true;
+            try {
+                if (await anySaveBeatApocalypse()) { markBotBtnUnlocked(); makeBotRunButton(); }
+            } finally { scanning = false; }
         }, 1500);
     })();
 
