@@ -637,6 +637,13 @@ Desktop save system. In the Electron app (`npm start`, or the packaged Mac/Windo
 
 **To add new global state:** add it to `state.js` as usual, then mirror it in `captureSnapshot()` and `applySnapshot()` — otherwise it silently resets on load.
 
+### `js/botrun.js`
+An optional, fully deterministic bot that plays the entire campaign (items → cemetery → haunted house → altar ritual → volcano/dragon → apocalypse war → gems → hell run → save & quit). Dormant unless activated by the subtle `bot run` button in the bottom-right of the title screen (or by the standalone harness in the sibling `nature-walk-bot/` folder). Press **Esc** to stop it and take over.
+
+The button is hidden on a brand-new install and appears only once at least one save file exists; after that it is sticky (`nw-bot-btn` in localStorage) and stays even if every save is deleted.
+
+Bot mode is the `nw-botrun` localStorage flag; a boot hook re-arms the campaign after every reload, and every phase's completion is derived from live game state, so runs survive deaths, world resets and app relaunches. Structure navigation is driven from exact game geometry rather than search — houses and the cemetery are entered by orbiting to the door/gate bearing then walking its axis, and the dragon beam is aimed by solving the mounted camera's geometry in closed form.
+
 ---
 
 ## How Things Connect
