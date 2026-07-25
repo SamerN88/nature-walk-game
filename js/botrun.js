@@ -2359,11 +2359,11 @@ const PHASES = [
             await until(() => hhSeqPhase === 'timer' || hhSeqPhase === 'angel_waves', { timeout: 30000, what: 'timer' });
         }
         // ── The vigil (user-choreographed, purely cosmetic) ──────────────────
-        // Sealed in with the torch: pause a beat, turn smoothly to regard the
-        // hallway door that just shut behind us, hold it for three seconds,
-        // then turn to face where the front entrance used to be and simply
-        // wait for the house to snuff the flame. Three seconds later, draw the
-        // sword. The game's own timer is generous here (torch out at t=10s,
+        // Sealed in with the torch: pause a beat, turn to the hallway door that
+        // just shut, walk up for a close look and hold it a second, then turn
+        // away, walk to the middle of the room and wait facing where the front
+        // entrance used to be. Three seconds after the house snuffs the flame,
+        // draw the sword. The game's own timer leaves room (torch out at t=10s,
         // first angel spawns at t=17.5s and only advances at t=25s).
         MOTOR.stop();
         equip('torch');
@@ -2379,7 +2379,7 @@ const PHASES = [
                 const near = hhL2W(HH_HALL_DOOR_CX, HH_HALL_Z + 4.5);
                 await go(near.x, near.z, { arrive: 1.2, run: false, noDetour: true, timeout: 12000 }).catch(() => {});
                 await lookSmooth(dr.x, dy, dr.z, 300, true);         // re-settle after moving
-                await sleep(2000);                                   // regard it, lit
+                await sleep(1000);                                   // regard it, lit
                 // Turn away, walk to the middle of the room, and look at where
                 // the front entrance used to be.
                 const en = hhL2W(0, HH_HALF_D), ey = h.worldGroundY + 2.75;
