@@ -1091,14 +1091,29 @@ ivl(() => {
                 GUARD.prevHand = currentHandItem;
                 GUARD.lx = px; GUARD.lz = pz; GUARD.stt = performance.now();
             }
-            equip('ak47');
+            // No AK yet (early game, or a demo/save without it)? Do NOT stand
+            // there holding a trigger for a gun we do not own — that is a free
+            // kill for the creature. Fall back to the best melee weapon and
+            // fight it hand to hand.
+            const haveAK = typeof handSlots !== 'undefined' && handSlots.includes('ak47');
+            if (haveAK) equip('ak47');
+            else equip(handSlots.includes('sword-shield') ? 'sword-shield' : 'fist');
             moveForward = moveBackward = moveLeft = moveRight = false;
             const cxp = nc.mesh.position.x, czp = nc.mesh.position.z;
             const F = Math.atan2(cxp - px, czp - pz);
             const lp = leadTarget(nc, cxp, czp);
-            aimAt(new V3(lp.x, nc.mesh.position.y + (nc.gunHitCenterY || 1.4), lp.z));
-            ak47TriggerHeld = nd < 220;
+            const err0 = aimAt(new V3(lp.x, nc.mesh.position.y + (nc.gunHitCenterY || 1.4), lp.z));
+            ak47TriggerHeld = haveAK && nd < 220;
             const rx = (px - cxp) / (nd || 1), rz = (pz - czp) / (nd || 1);
+            if (!haveAK) {
+                // Melee guard: close and swing. Distance-scaled tolerance, same
+                // rule as every other melee site.
+                isRunning = nd > 4;
+                moveForward = nd > 3;
+                if (err0 < meleeAngTol(nd) && nd < 6.5) maybePunch(240);
+                BOT.note = 'guard MELEE nd=' + nd.toFixed(0) + ' hp=' + playerHealth.toFixed(0);
+                return;
+            }
             if (indoor) {
                 isRunning = false;
                 if (nd < 6) {
@@ -1643,28 +1658,28 @@ async function escapeHouseIfInside() { await exitHouse(); }
 // front-door pacing.)
 async function hhStairEntry() {
     equip('torch');                                          // torch in hand arms the sequence trigger
-    BOT.guardSuspended = true;                               // a kite mid-staircase restarts the climb
-    try {
-        for (let att = 0; att < 4 && hhSeqPhase === 'none'; att++) {
-            BOT.detail = 'hh-stairs ' + att;
-            const s0 = hhL2W(0, 46);                         // stair foot (buried steps end ≈44)
-            await go(s0.x, s0.z, { arrive: 2, run: false, noDetour: true, timeout: 25000 }).catch(() => {});
-            // Walk the steps — no hopping needed: each step is a structureBox,
-            // which snaps the player up instead of blocking (only solidWalls
-            // block horizontally). The stuck-jump fallback still covers a real
-            // wedge.
-            for (const lz of [40, 34, 29, 24, 18]) {
-                const w = hhL2W(0, lz);
-                await go(w.x, w.z, { arrive: 1.8, run: false, noDetour: true, timeout: 15000 }).catch(() => {});
-            }
+    // The GUARD STAYS LIVE (user doctrine: fighting back outranks the errand).
+    // Suspending it for the climb meant a night creature could kill the bot on
+    // the porch while it politely kept walking. A kite may pull us off the
+    // steps — the attempt loop simply climbs again.
+    for (let att = 0; att < 4 && hhSeqPhase === 'none'; att++) {
+        BOT.detail = 'hh-stairs ' + att;
+        // ONE continuous walk from the foot of the stairs to inside the main
+        // room. It used to be a ladder of six waypoints, and every leg ended
+        // with MOTOR.set → clearMove(), so the bot stopped dead and
+        // re-accelerated at each one — that is the half-second stutter.
+        // Nothing here needs steering: the steps are structureBoxes (they snap
+        // the player up rather than blocking), so a single straight noDetour
+        // leg walks the whole lane smoothly.
+        const foot = hhL2W(0, 48);
+        if (Math.abs(hhW2L(player.position.x, player.position.z).lz) > 46) {
+            await go(foot.x, foot.z, { arrive: 2.5, run: false, timeout: 25000 }).catch(() => {});
         }
-        // Mop-up: make sure we're truly in the main room, not on the threshold
-        // (the trigger already fires on the top step at local z≈25.8, and the
-        // next phase's first navTo hates starting outside the doorway).
-        const inpt = hhL2W(0, 18);
-        await go(inpt.x, inpt.z, { arrive: 2, run: false, noDetour: true, timeout: 15000 }).catch(() => {});
-        await until(() => hhSeqPhase === 'active', { timeout: 15000, what: 'hh enter' });
-    } finally { BOT.guardSuspended = false; BOT.detail = ''; }
+        const inside = hhL2W(0, 16);
+        await go(inside.x, inside.z, { arrive: 2.5, run: false, noDetour: true, timeout: 40000 }).catch(() => {});
+    }
+    BOT.detail = '';
+    await until(() => hhSeqPhase === 'active', { timeout: 15000, what: 'hh enter' });
 }
 
 // Approach a campfire through its cave mouth (many sit in sunken cave domes).
@@ -1827,6 +1842,36 @@ async function leaveWater() {
     return !inWater();
 }
 
+// Live pursuit of a MOVING target from wherever we stand — no stale waypoint
+// anywhere in the approach. combatTick re-resolves the selector every 60ms, so
+// the path CURVES to follow the target the whole way in. (Prefixing this with
+// a goto to the target's last known spot is what produced the ugly "march to
+// where he was, stop, turn 90°, walk again" approach.) The goto only appears
+// as a RECOVERY leg — it owns the detour/unstick ladder — and only if the
+// chase stops making ground against terrain.
+async function pursue(sel, done, o = {}) {
+    for (let i = 0; i < (o.rounds ?? 5) && !done(); i++) {
+        MOTOR.set({ type: 'combat', sel, weapon: o.weapon ?? 'melee', hand: o.hand,
+                    minR: 0, maxR: o.maxR ?? 4, punchAt: o.punchAt ?? 6.5,
+                    cadence: o.cadence ?? 220 });
+        let lx = player.position.x, lz = player.position.z, moveT = Date.now();
+        try {
+            await until(() => {
+                if (done() || MOTOR.task.type === 'idle') return true;
+                if (Math.hypot(player.position.x - lx, player.position.z - lz) > 3) {
+                    lx = player.position.x; lz = player.position.z; moveT = Date.now();
+                }
+                return Date.now() - moveT > 5000;            // wedged, not closing
+            }, { timeout: o.timeout ?? 120000, poll: 250 });
+        } catch (e) { /* fall through to the recovery leg */ }
+        MOTOR.stop();
+        if (done()) return true;
+        const p = resolve(sel);                              // unstick, then resume
+        if (p) await go(p.x, p.z, { arrive: 12, timeout: 45000 }).catch(() => {});
+    }
+    return done();
+}
+
 async function chargeSwordAura() {
     equip('sword-shield');
     if (dist2(0, 0) > 250) await go(0, 0, { arrive: 150, timeout: 420000 });
@@ -1961,13 +2006,12 @@ const PHASES = [
     done: () => !npcs.some(n => n.isFarmer),
     run: async () => {
         equip('fist');
-        const f = resolve('farmer');
-        // Long trek with the goto (it has the detour/unstick ladder), then hand
-        // over to live pursuit for the kill — the farmer walks, so the snapshot
-        // is only ever good enough to get us into the neighbourhood.
-        await go(f.x, f.z, { arrive: 7 });
-        // minR 0: never back away from a target we are trying to punch.
-        await motorRun({ type: 'combat', sel: 'farmer', weapon: 'melee', minR: 0, maxR: 4, punchAt: 6.5, cadence: 220, thenIdle: true, hand: 'fist' }, { timeout: 60000 });
+        // One unbroken live chase from here to the kill — the farmer walks, so
+        // every step of the approach steers at where he IS.
+        if (!(await pursue('farmer', () => !npcs.some(n => n.isFarmer),
+                           { hand: 'fist', timeout: 180000 }))) {
+            throw new Error('farmer not caught');
+        }
     },
 },
 {
@@ -2096,8 +2140,11 @@ const PHASES = [
         // Approach on OPEN ground: local (0,55) is clear of the foundation slab
         // (edge ≈27) and of the buried extra steps (they reach ≈44) — both are
         // structure boxes that used to jam the avoidance scan mid-approach.
+        // Arrive tight (2.5, not 5) and ON the stair axis, so the single
+        // straight walk-in below starts centred instead of angling across the
+        // 7-wide stair lane.
         const app = hhL2W(0, 55);
-        await go(app.x, app.z, { arrive: 5, timeout: 420000 });
+        await go(app.x, app.z, { arrive: 2.5, timeout: 420000 });
         await hhStairEntry();
     },
 },
@@ -2147,7 +2194,12 @@ const PHASES = [
             const cLx = Math.max(-21, Math.min(21, s0l.lx));
             const c1 = hhL2W(cLx, -22);
             BOT.detail = 'leg:corridor-walk';
-            await go(c1.x, c1.z, { arrive: 2.5, run: false, timeout: 40000 });
+            // noDetour is ESSENTIAL here: the corridor is only 6 wide, so the
+            // proactive-avoidance look-ahead keeps hitting its walls, decides
+            // "straight is blocked" and sidesteps — which walked the bot into
+            // the north wall for several seconds before it recovered and
+            // turned east. The corridor IS the path; just walk its axis.
+            await go(c1.x, c1.z, { arrive: 2.5, run: false, noDetour: true, timeout: 40000 });
             let climbed = false;
             for (let i = 0; i < 5; i++) {
                 BOT.detail = 'leg:stair-base-' + i;
@@ -2283,10 +2335,20 @@ const PHASES = [
                 BOT.detail = 'vigil';
                 await sleep(1000);
                 const dr = hhL2W(HH_HALL_DOOR_CX, HH_HALL_Z);        // the closed hall door
-                await lookSmooth(dr.x, h.worldGroundY + 3.0, dr.z, 500, true);
+                const dy = h.worldGroundY + 3.0;
+                await lookSmooth(dr.x, dy, dr.z, 500, true);
+                // Walk up for a CLOSE look at the door that just sealed.
+                const near = hhL2W(HH_HALL_DOOR_CX, HH_HALL_Z + 4.5);
+                await go(near.x, near.z, { arrive: 1.2, run: false, noDetour: true, timeout: 12000 }).catch(() => {});
+                await lookSmooth(dr.x, dy, dr.z, 300, true);         // re-settle after moving
                 await sleep(2000);                                   // regard it, lit
-                const en = hhL2W(0, HH_HALF_D);                      // the sealed front entrance
-                await lookSmooth(en.x, h.worldGroundY + 2.75, en.z, 500, true);
+                // Turn away, walk to the middle of the room, and look at where
+                // the front entrance used to be.
+                const en = hhL2W(0, HH_HALF_D), ey = h.worldGroundY + 2.75;
+                await lookSmooth(en.x, ey, en.z, 500, true);
+                const ctr = hhL2W(-3.5, 3);
+                await go(ctr.x, ctr.z, { arrive: 1.5, run: false, noDetour: true, timeout: 15000 }).catch(() => {});
+                await lookSmooth(en.x, ey, en.z, 300, true);
                 BOT.detail = '';
             }
             await until(() => typeof hhTorchExtinguished !== 'undefined' && hhTorchExtinguished,
@@ -2714,7 +2776,8 @@ async function campaign() {
 // Test bench: with window.__nwBotTestMode set BEFORE __nwBotStart(), the
 // campaign stays down and a driver can call the primitives directly.
 if (!window.__nwBotTestMode) campaign().catch(e => { if (!BOT.aborted) BOT.note = 'CAMPAIGN ERR: ' + e.message; });
-BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura };
+BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, hhW2L, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura, pursue,
+                phase: n => PHASES.find(p => p.name === n) };
 
 // ── Status for the supervisor ───────────────────────────────────────────────
 BOT.status = function () {
