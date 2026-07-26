@@ -937,6 +937,545 @@ function climbTick(t) {
 
 // Cemetery zombie circle-kite: orbit the cemetery center at radius 15 firing
 // the AK (penetrates 3, ignores walls); zombies (speed 6) never catch us (40).
+// ── Idle dance (purely cosmetic) ────────────────────────────────────────────
+// Something to do while waiting on the world. Sixteen beats, four figures,
+// built from the only controls a bot has: body yaw, the four movement keys,
+// jump, and the swing animation. It stays on its station — if the figures
+// drift it more than a few units it walks back before carrying on.
+// Ease the view toward a heading/pitch instead of snapping to it. Every idle
+// pastime routes its camera through these two, so a target switch or a phase
+// change reads as a quick turn of the head rather than a cut.
+function smoothLook(tyaw, tpitch, K = 0.3) {
+    let dy = tyaw - cameraYaw;
+    while (dy > Math.PI) dy -= 2 * Math.PI;
+    while (dy < -Math.PI) dy += 2 * Math.PI;
+    cameraYaw += dy * K;
+    cameraPitch += (tpitch - cameraPitch) * K;
+}
+// aimAt() snaps the yaw straight onto the target; keep its pitch feedback (the
+// only thing that knows the real camera direction) but ease into both axes.
+function aimSmooth(tx, ty, tz, K = 0.3) {
+    const y0 = cameraYaw, p0 = cameraPitch;
+    const err = aimAt(new V3(tx, ty, tz));
+    let dy = cameraYaw - y0;
+    while (dy > Math.PI) dy -= 2 * Math.PI;
+    while (dy < -Math.PI) dy += 2 * Math.PI;
+    cameraYaw = y0 + dy * K;
+    cameraPitch = p0 + (cameraPitch - p0) * K;
+    return err;
+}
+
+function danceTick(t) {
+    const now = performance.now();
+    if (!t.ds) t.ds = { phase: 'jump', jumpNo: 0, t0: now, face: cameraYaw, airT0: 0, jumped: false };
+    const d = t.ds;
+    const slots = typeof handSlots !== 'undefined' ? handSlots : [];
+    const haveAK = slots.includes('ak47'), haveTorch = slots.includes('torch');
+    moveForward = moveBackward = moveLeft = moveRight = false;
+    isRunning = false; ak47TriggerHeld = false;
+    // Jump speed 15 against gravity 40 → 0.75s in the air, split eight ways.
+    const AIR = 2 * 15 / GRAVITY * 1000, STEP = AIR / 8;
+
+    if (d.phase === 'jump') {
+        if (haveTorch) equip('torch');
+        if (!d.jumped) {
+            moveForward = true;                          // step 9: a tap of W, facing front again
+            smoothLook(d.face, 0.06, 0.35);               // drift the view back to centre
+            if (isGrounded) { jump(); d.jumped = true; d.airT0 = now; }
+            BOT.note = 'dance: jump ' + (d.jumpNo + 1) + '/3';
+            return;
+        }
+        // The BODY faces wherever it is moving, so walking the keys round the
+        // compass mid-air spins the character a full turn:
+        //   W · WA · A · AS · S · SD · D · WD   (one eighth of the hang time each)
+        const el = now - d.airT0;
+        const i = Math.min(7, Math.floor(el / STEP));
+        const combo = [[1,0,0,0],[1,0,1,0],[0,0,1,0],[0,1,1,0],
+                       [0,1,0,0],[0,1,0,1],[0,0,0,1],[1,0,0,1]][i];
+        moveForward = !!combo[0]; moveBackward = !!combo[1];
+        moveLeft = !!combo[2];    moveRight = !!combo[3];
+        smoothLook(d.face, 0.06, 0.2);                    // camera holds still; the BODY spins
+        BOT.note = 'dance: jump ' + (d.jumpNo + 1) + '/3, step ' + (i + 1) + '/8';
+        if (el >= AIR || (isGrounded && el > AIR * 0.7)) {
+            d.jumpNo++; d.jumped = false;
+            if (d.jumpNo >= 3) { d.phase = 'sweep'; d.t0 = now; }
+        }
+        return;
+    }
+
+    // Then the rifle: about 30° up, firing for 2s while sweeping right to left
+    // and back again — both passes inside the same 2s the single pass took.
+    if (haveAK) equip('ak47'); else if (haveTorch) equip('torch');
+    const f = Math.min(1, (now - d.t0) / 2000);
+    // 20° right of where it is facing, across to 20° left, then back
+    const ARC = 20 * Math.PI / 180;
+    const swing = f < 0.5 ? f * 2 : (1 - f) * 2;           // 0→1→0 across the 2s
+    smoothLook(d.face + ARC - swing * (2 * ARC), -0.43, 0.5);   // ≈30° up (measured)
+    // Point the BODY along the sweep — the rifle is held in the hand, so
+    // without this it kept aiming wherever the last jump's spin finished
+    // instead of down the middle of the arc.
+    player.rotation.y = cameraYaw;
+    if (haveAK) ak47TriggerHeld = true; else punch();
+    BOT.note = 'dance: sweeping fire ' + (f < 0.5 ? '→' : '←') + ' ' + Math.round(f * 100) + '%';
+    if (f >= 1) { d.phase = 'jump'; d.jumpNo = 0; d.jumped = false; }
+}
+
+// ── Idle pastime: bird hunting (cosmetic) ───────────────────────────────────
+// Deliberately unhurried — walking only, one bird at a time. Close to a decent
+// range, TRACK it with the crosshair for two full seconds, then fire and keep
+// firing until it actually drops (a miss just means another shot). Once the
+// squeeze starts, range no longer matters. Never strays out of the shadow-man
+// radius, since the final spawn needs us near the centre.
+function birdhuntTick(t) {
+    const now = performance.now();
+    if (!t.bs) t.bs = { phase: 'seek', target: null, t0: now };
+    const s = t.bs;
+    moveForward = moveBackward = moveLeft = moveRight = false;
+    isRunning = false;                                   // calm: never sprint
+    ak47TriggerHeld = false;
+    // After dark the torch is carried on the walk in, and the rifle only comes
+    // out to take the shot — the hunt cannot be done torch-in-hand.
+    if (isDark() && (s.phase === 'seek' || s.phase === 'admire') &&
+        handSlots.includes('torch')) equip('torch');
+    else equip('ak47');
+    if (Math.hypot(player.position.x, player.position.z) > 700) {
+        smoothLook(Math.atan2(-player.position.x, -player.position.z), 0.1);
+        moveForward = true;
+        s.phase = 'seek'; s.target = null;
+        BOT.note = 'hunt: back toward the centre';
+        return;
+    }
+    const alive = b => b && b.mesh && npcs.includes(b);
+    if (!alive(s.target)) {
+        // Dropped it? Stand and watch the spot for a beat before moving on.
+        if (s.target && (s.phase === 'lock' || s.phase === 'fire')) { s.phase = 'admire'; s.t0 = now; }
+        else if (s.phase !== 'admire') s.phase = 'seek';
+        s.target = null;
+    }
+    if (s.phase === 'admire') {                          // hold the kill shot
+        BOT.note = 'hunt: watching where it fell (' +
+                   Math.max(0, 3 - (now - s.t0) / 1000).toFixed(1) + 's)';
+        if (now - s.t0 > 3000) { s.phase = 'seek'; s.t0 = now; }
+        return;                                          // camera deliberately untouched
+    }
+    // While still CLOSING, keep re-picking the nearest bird — if another drifts
+    // closer, switch to that one. Once LOCKED (in range and tracking) the
+    // choice is final: it commits to that bird until it drops.
+    if (s.phase === 'seek') {
+        let bd = Infinity, best = null;
+        for (const n of npcs) {
+            if (n.type !== 'bird') continue;
+            const p = n.mesh.position;
+            const d = Math.hypot(p.x - player.position.x, p.z - player.position.z);
+            if (d < bd) { bd = d; best = n; }
+        }
+        s.target = best;
+    }
+    if (!s.target) { BOT.note = 'hunt: no birds about'; return; }
+    const p = s.target.mesh.position;
+    const dxz = Math.hypot(p.x - player.position.x, p.z - player.position.z);
+    if (s.phase === 'seek') {
+        // Walking up on it: face its way but keep the eyes level and a touch
+        // skyward. The crosshair only starts following once we lock on.
+        smoothLook(Math.atan2(p.x - player.position.x, p.z - player.position.z), -0.12);
+        // Close to 35: a bird's hitbox is only 2 across, so at 60 out it is a
+        // 1.9° silhouette — far too fine to hit reliably.
+        if (dxz > 35) { moveForward = true; BOT.note = 'hunt: closing ' + dxz.toFixed(0); return; }
+        s.phase = 'lock'; s.t0 = now;
+    }
+    // Track hard now: a gentle ease lags a flying target by a constant angle,
+    // which is a guaranteed miss. Lead the shot too — the beam is hitscan, so
+    // the lead only has to cover this tick's staleness.
+    const lp = leadTarget(s.target, p.x, p.z);
+    const err = aimSmooth(lp.x, p.y, lp.z, s.phase === 'fire' ? 0.85 : 0.5);
+    const d3 = Math.hypot(p.x - player.position.x, p.y - player.position.y, p.z - player.position.z);
+    if (s.phase === 'lock') {
+        BOT.note = 'hunt: tracking ' + ((now - s.t0) / 1000).toFixed(1) + 's';
+        if (now - s.t0 > 2000) { s.phase = 'fire'; s.t0 = now; }
+    } else if (s.phase === 'fire') {
+        // Fire only when the crosshair is well INSIDE the bird's silhouette
+        // (hit radius 2), not merely pointing its way.
+        const tol = Math.atan2(2, Math.max(6, d3)) * 0.55;
+        ak47TriggerHeld = err < tol;
+        BOT.note = 'hunt: firing (err ' + (err * 180 / Math.PI).toFixed(1) +
+                   '° / ' + (tol * 180 / Math.PI).toFixed(1) + '°)';
+        if (now - s.t0 > 9000) s.target = null;          // gave that one a fair go
+    }
+}
+
+// ── Idle pastime: climb something and leap off it (cosmetic) ────────────────
+// Structure primitives do not block horizontally — walking into one snaps you
+// onto its top — so "climbing" a tower or boulder is just walking at it. Then
+// jump off and turn a full circle on the way down.
+function structTopY(st) {
+    if (st.type === 'sphere') {
+        const ry = st.radiusY ?? ((st.height ?? ((st.radius ?? 1) * 2)) * 0.5);
+        return (st.centerY ?? ((st.y ?? 0) + ry)) + ry;
+    }
+    return (st.y ?? 0) + (st.height ?? 0);
+}
+// Only the landmarks worth standing on: towers (the cylinders), mountains
+// (the cones) and the stone portal arch (box parts around its frame).
+function climbKind(st) {
+    if (st.skipSupportHeight) return null;
+    if (st.type === 'cylinder') return 'tower';
+    if (st.type === 'cone') return 'mountain';
+    if (st.type === 'box' && typeof specialPortalFrameData !== 'undefined' &&
+        specialPortalFrameData && specialPortalFrameData.group) {
+        const g = specialPortalFrameData.group.position;
+        if (Math.hypot(st.x - g.x, st.z - g.z) < 14) return 'portal';
+    }
+    return null;
+}
+// Module-level only so the test harness can read it; every run of the pastime
+// starts from a clean slate. The one thing carried over is which kind ran last,
+// so a fresh run cannot open on the kind the previous one just closed with.
+const CLIMB = { phase: 'pick', target: null, kind: '', jumpsDone: 0, reps: 1,
+                done: [], queue: null, lastOf: {}, lastKind: '', t0: 0, mv: null };
+function climbfunTick(t) {
+    const now = performance.now();
+    const s = CLIMB;
+    if (!t.cf) {                        // first tick of this run — wipe and begin
+        t.cf = 1;
+        s.phase = 'pick'; s.target = null; s.kind = ''; s.jumpsDone = 0; s.reps = 1;
+        s.done = []; s.queue = null; s.lastOf = {}; s.mv = null; s.t0 = now;
+        s.first = true;                 // open on whatever is closest, not a shuffle
+    }
+    moveForward = moveBackward = moveLeft = moveRight = false;
+    isRunning = false; spaceHeld = false;
+    // A run only ends on a landmark boundary, never half-way through one, or a
+    // tower gets one jump of its three. Once its time is up the scheduler sets
+    // wrapUp; the tick clears busy after the landmark in progress is done. (A
+    // shadow man still ends the whole thing instantly — that path ignores this.)
+    if (t.finished) { t.busy = false; BOT.note = 'climb: run complete'; return; }
+    t.busy = true;
+    // Nothing here needs a weapon, so after dark the torch lights the way.
+    if (isDark() && handSlots.includes('torch')) equip('torch');
+    let ty = cameraYaw, tp = 0.05, spin = null;          // targets; smoothed below
+
+    if (s.phase === 'pick') {
+        const tall = st => structTopY(st) - getGroundHeight(st.x, st.z) >= 8;  // worth the trip
+        // Nearest landmark of one kind that this run has not used yet. The
+        // distance tiers are a PREFERENCE, not a rule — on worlds where every
+        // tower and peak sits far from the centre a hard cap left the bot
+        // standing still with "nothing nearby" for the entire wait.
+        const find = (maxD, k, barred) => {
+            let best = null, bd = Infinity;
+            for (const st of structures) {
+                if (climbKind(st) !== k || !tall(st)) continue;
+                // Already used this run — and mountains come in clusters of
+                // cones, so a neighbouring peak is effectively the same climb.
+                if (barred.some(o => o === st ||
+                    Math.hypot(o.x - st.x, o.z - st.z) < 60)) continue;
+                const d = Math.hypot(st.x - player.position.x, st.z - player.position.z);
+                if (d > maxD || d >= bd) continue;
+                bd = d; best = st;
+            }
+            return best;
+        };
+        // Rotating through the kinds is the hard rule, so a kind is never
+        // dropped merely because its instances have all been used — it starts
+        // its own list over instead. (This world carries 30 towers and 70
+        // mountains but a single portal, whose three frame boxes all count as
+        // one climb; dropping an exhausted kind is what let mountains and
+        // towers repeat once the portal was spent.)
+        const ofKind = k => s.done.filter(o => climbKind(o) === k);
+        const tryKind = k => find(300, k, s.done) || find(900, k, s.done) ||
+                             // exhausted: reuse, but never the one just done
+                             find(300, k, s.lastOf[k] ? [s.lastOf[k]] : []) ||
+                             find(900, k, s.lastOf[k] ? [s.lastOf[k]] : []) ||
+                             find(Infinity, k, s.lastOf[k] ? [s.lastOf[k]] : []) ||
+                             // only one of this kind exists in the whole world
+                             (ofKind(k).length ? find(Infinity, k, []) : null);
+        // A fresh shuffled queue of every kind this world has, never opening on
+        // the kind that just ran. Each landmark takes one entry off it, so all
+        // three kinds are used before any kind comes round again.
+        if (!s.queue || !s.queue.length) {
+            const all = ['tower', 'portal', 'mountain']
+                .filter(k => structures.some(st => climbKind(st) === k && tall(st)));
+            for (let i = all.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const tmp = all[i]; all[i] = all[j]; all[j] = tmp;
+            }
+            if (all.length > 1 && all[0] === s.lastKind) all.push(all.shift());
+            s.queue = all;
+        }
+        let r = null;
+        if (s.first) {
+            // A run opens on whatever landmark is closest, whatever kind it is
+            // — no trekking past a tower at the bot's feet to satisfy a
+            // shuffle. Its kind is struck off the queue, so the rotation simply
+            // carries on from there.
+            s.first = false;
+            let bd = Infinity;
+            for (const st of structures) {
+                if (!climbKind(st) || !tall(st)) continue;
+                const d = Math.hypot(st.x - player.position.x, st.z - player.position.z);
+                if (d >= bd) continue;
+                bd = d; r = st;
+            }
+            if (r) {
+                s.kind = climbKind(r);
+                const i = s.queue.indexOf(s.kind);
+                if (i !== -1) s.queue.splice(i, 1);
+            }
+        }
+        while (s.queue.length && !r) { s.kind = s.queue.shift(); r = tryKind(s.kind); }
+        if (!r) {
+            // Nothing climbable at all in this world — hand the wait over to
+            // another pastime rather than stand still.
+            t.unavailable = true; BOT.note = 'climb: nothing to climb nearby'; return;
+        }
+        s.lastKind = s.kind; s.lastOf[s.kind] = r;
+        s.done.push(r);                   // claimed now, so a wedge cannot re-pick it
+        s.target = r;
+        // How many times to jump off this kind of landmark.
+        s.reps = ({ tower: 3, portal: 2, mountain: 1 })[s.kind] || 1;
+        s.jumpsDone = 0; s.mv = null;
+        s.phase = 'walk'; s.t0 = now;
+    }
+    const st = s.target;
+    if (!st) { s.phase = 'pick'; return; }
+    const topY = structTopY(st);
+    const rise = topY - getGroundHeight(st.x, st.z);
+    const d = Math.hypot(st.x - player.position.x, st.z - player.position.z);
+
+    if (s.phase === 'walk') {
+        // Walking into a primitive lifts you onto it — no jumping required.
+        ty = Math.atan2(st.x - player.position.x, st.z - player.position.z);
+        tp = 0.04;
+        moveForward = true;
+        isRunning = d > 40;                                  // jog the approach
+        // No detour ladder here (this tick steers itself), so watch for a
+        // wedge: hop first, then veer around whatever is in the way. Without
+        // this the bot pushed into a rock for the full 30s timeout.
+        if (!s.mv) s.mv = { x: player.position.x, z: player.position.z, t: now, veer: 0, side: 1 };
+        const mv = s.mv;
+        if (Math.hypot(player.position.x - mv.x, player.position.z - mv.z) > 2) {
+            mv.x = player.position.x; mv.z = player.position.z; mv.t = now; mv.veer = 0;
+        } else if (now - mv.t > 1200) {
+            if (isGrounded) jump();
+            if (now - mv.t > 2600) { mv.veer = now + 1500; mv.side *= -1; mv.t = now; }
+        }
+        if (mv.veer && now < mv.veer) ty += mv.side * 1.0;   // sidestep the obstacle
+        BOT.note = 'climb: up the ' + s.kind + ' (jump ' + (s.jumpsDone + 1) + '/' + s.reps +
+                   ', ' + d.toFixed(0) + 'm out, ' + player.position.y.toFixed(0) + ' up)';
+        if (player.position.y >= topY - 4 && d < (st.radius ?? 12) + 4) {
+            s.phase = 'top'; s.t0 = now;
+            // Face the way that actually falls away: sample around us and take
+            // the steepest. Off a cone, "straight on" just walks down a slope.
+            let bestYaw = cameraYaw, bestDrop = -Infinity;
+            for (let k = 0; k < 16; k++) {
+                const a = k * Math.PI / 8;
+                const sx = player.position.x + Math.sin(a) * 14;
+                const sz = player.position.z + Math.cos(a) * 14;
+                const drop = player.position.y - surfaceH(sx, sz);
+                if (drop > bestDrop) { bestDrop = drop; bestYaw = a; }
+            }
+            s.leapYaw = bestYaw;
+        } else if (now - s.t0 > 30000) {                     // wedged: give this one up
+            // The kind still owes its turn, so put it back at the head of the
+            // queue — a different landmark of the same kind gets picked.
+            s.queue.unshift(s.kind);
+            s.target = null; s.phase = 'pick';
+            if (t.wrapUp) t.finished = true;             // a boundary: the run may end here
+        }
+    } else if (s.phase === 'top') {
+        // Two full seconds standing still at the summit.
+        ty = s.leapYaw; tp = 0.08;
+        BOT.note = 'climb: summit of the ' + s.kind + ' (' +
+                   Math.max(0, 2 - (now - s.t0) / 1000).toFixed(1) + 's)';
+        if (now - s.t0 > 2000) { s.phase = 'leap'; s.t0 = now; s.jumped = false; }
+    } else if (s.phase === 'leap') {
+        // Run off the edge — a standing jump would just drop straight down.
+        ty = s.leapYaw; tp = 0.08;
+        moveForward = true; isRunning = true;
+        // Counted at the moment of the leap, not on landing: this is the point
+        // of no return, and anything counted later can be lost to an interrupt
+        // and then repeated (which is how a tower got a fourth jump).
+        if (!s.jumped) { jump(); s.jumped = true; s.jumpsDone++; }
+        BOT.note = 'climb: leaping off the ' + s.kind;
+        if (now - s.t0 > 450) {
+            s.phase = 'air'; s.t0 = now; s.spin0 = cameraYaw;
+            // ONE turn, spread across however long the drop actually takes
+            const drop = Math.max(4, player.position.y - getGroundHeight(player.position.x, player.position.z));
+            s.spinMs = Math.max(600, Math.min(2500, Math.sqrt(2 * drop / 40) * 1000));
+        }
+    } else if (s.phase === 'air') {
+        // No input now: keep the takeoff momentum and simply turn. (Holding
+        // forward would steer the arc, since movement is camera-relative.)
+        const f = Math.min(1, (now - s.t0) / s.spinMs);
+        const e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;   // ease in-out
+        s.spinF = e;
+        spin = s.spin0 + e * Math.PI * 2;
+        tp = 0.16;
+        BOT.note = 'climb: 360 off the ' + s.kind + ' (' + Math.round(e * 360) + '°)';
+        // Touching down ends the jump — on a broad mountain that may well be
+        // the slope below rather than flat ground, which is fine.
+        if ((isGrounded && now - s.t0 > 200) || f >= 1 || now - s.t0 > 8000) {
+            s.phase = 'land'; s.t0 = now;
+        }
+    } else if (s.phase === 'land') {
+        if ((s.spinF || 1) < 1) {
+            // Short drop: carry the turn through the landing so it still reads
+            // as one continuous 360 rather than a clipped half-turn.
+            s.spinF = Math.min(1, s.spinF + 0.07);
+            spin = s.spin0 + s.spinF * Math.PI * 2;
+            tp = 0.12;
+            BOT.note = 'climb: finishing the turn (' + Math.round(s.spinF * 360) + '°)';
+            s.t0 = now;                                      // the still second starts after
+        } else {
+            tp = 0.1;
+            BOT.note = 'climb: landed ' + s.jumpsDone + '/' + s.reps + ' (' +
+                       Math.max(0, 1 - (now - s.t0) / 1000).toFixed(1) + 's)';
+            if (now - s.t0 > 1000) {
+                // s.mv has to be cleared or the re-approach starts inside the
+                // stale wedge timer and immediately veers off the landmark.
+                if (s.jumpsDone < s.reps) { s.phase = 'walk'; s.t0 = now; s.mv = null; }
+                else {
+                    s.target = null; s.phase = 'pick';
+                    if (t.wrapUp) t.finished = true;     // a boundary: the run may end here
+                }
+            }
+        }
+    }
+
+    // Smooth every camera move (fast, but never a snap).
+    const K = 0.3;
+    if (spin !== null) { cameraYaw = spin; player.rotation.y = spin; }
+    else {
+        let dy = ty - cameraYaw;
+        while (dy > Math.PI) dy -= 2 * Math.PI;
+        while (dy < -Math.PI) dy += 2 * Math.PI;
+        cameraYaw += dy * K;
+    }
+    cameraPitch += (tp - cameraPitch) * K;
+}
+
+// ── Idle pastime: one tower, over and over (cosmetic) ───────────────────────
+// The whole wait is spent on a SINGLE landmark: the tallest tower within 1000
+// of the world origin. Walk up it, two seconds at the top, leap off with one
+// full turn on the way down, a second on landing, then do it again. A shadow
+// man interrupts (the phase chases it); afterwards the bot simply walks back
+// and carries on. Deliberately simpler than climbfun, which roams between
+// kinds — that one is kept but switched off in PASTIMES.
+const TOWERFUN = { phase: 'walk', target: null, t0: 0, mv: null, jumped: false,
+                   leapYaw: 0, spin0: 0, spinMs: 0, spinF: 1 };
+// Tallest = the one standing furthest above its own ground, which is what
+// reads as tall in the world (a short tower on a peak is not a tall tower).
+function tallestTowerNearOrigin(maxFromOrigin = 1000) {
+    let best = null, bh = -Infinity;
+    for (const st of structures) {
+        if (climbKind(st) !== 'tower') continue;
+        if (Math.hypot(st.x, st.z) > maxFromOrigin) continue;
+        const rise = structTopY(st) - getGroundHeight(st.x, st.z);
+        if (rise < 8 || rise <= bh) continue;
+        bh = rise; best = st;
+    }
+    return best;
+}
+function towerfunTick(t) {
+    const now = performance.now();
+    const s = TOWERFUN;
+    if (!t.tf) {                        // first tick of this run
+        t.tf = 1;
+        s.target = tallestTowerNearOrigin(1000);
+        s.phase = 'walk'; s.t0 = now; s.mv = null; s.jumped = false; s.spinF = 1;
+    }
+    moveForward = moveBackward = moveLeft = moveRight = false;
+    isRunning = false; spaceHeld = false;
+    if (isDark() && handSlots.includes('torch')) equip('torch');
+    const st = s.target;
+    if (!st) { t.unavailable = true; BOT.note = 'tower: none within 1000 of origin'; return; }
+    let ty = cameraYaw, tp = 0.05, spin = null;          // targets; smoothed below
+    const topY = structTopY(st);
+    const d = Math.hypot(st.x - player.position.x, st.z - player.position.z);
+
+    if (s.phase === 'walk') {
+        // Walking into a primitive lifts you onto it — no jumping required.
+        ty = Math.atan2(st.x - player.position.x, st.z - player.position.z);
+        tp = 0.04;
+        moveForward = true;
+        isRunning = d > 40;                              // jog the approach
+        // This tick steers itself (no detour ladder), so watch for a wedge:
+        // hop first, then veer around whatever is in the way.
+        if (!s.mv) s.mv = { x: player.position.x, z: player.position.z, t: now, veer: 0, side: 1 };
+        const mv = s.mv;
+        if (Math.hypot(player.position.x - mv.x, player.position.z - mv.z) > 2) {
+            mv.x = player.position.x; mv.z = player.position.z; mv.t = now; mv.veer = 0;
+        } else if (now - mv.t > 1200) {
+            if (isGrounded) jump();
+            if (now - mv.t > 2600) { mv.veer = now + 1500; mv.side *= -1; mv.t = now; }
+        }
+        if (mv.veer && now < mv.veer) ty += mv.side * 1.0;
+        BOT.note = 'tower: climbing (' + d.toFixed(0) + 'm out, ' +
+                   player.position.y.toFixed(0) + ' up)';
+        if (player.position.y >= topY - 4 && d < (st.radius ?? 12) + 4) {
+            s.phase = 'top'; s.t0 = now;
+            // Face the way that actually falls away.
+            let bestYaw = cameraYaw, bestDrop = -Infinity;
+            for (let k = 0; k < 16; k++) {
+                const a = k * Math.PI / 8;
+                const drop = player.position.y -
+                    surfaceH(player.position.x + Math.sin(a) * 14, player.position.z + Math.cos(a) * 14);
+                if (drop > bestDrop) { bestDrop = drop; bestYaw = a; }
+            }
+            s.leapYaw = bestYaw;
+        } else if (now - s.t0 > 30000) { s.mv = null; s.t0 = now; }   // wedged: start the walk over
+    } else if (s.phase === 'top') {
+        ty = s.leapYaw; tp = 0.08;
+        BOT.note = 'tower: summit (' + Math.max(0, 2 - (now - s.t0) / 1000).toFixed(1) + 's)';
+        if (now - s.t0 > 2000) { s.phase = 'leap'; s.t0 = now; s.jumped = false; }
+    } else if (s.phase === 'leap') {
+        // Run off the edge — a standing jump would just drop straight down.
+        ty = s.leapYaw; tp = 0.08;
+        moveForward = true; isRunning = true;
+        if (!s.jumped) { jump(); s.jumped = true; }
+        BOT.note = 'tower: leaping off';
+        if (now - s.t0 > 450) {
+            s.phase = 'air'; s.t0 = now; s.spin0 = cameraYaw;
+            const drop = Math.max(4, player.position.y - getGroundHeight(player.position.x, player.position.z));
+            s.spinMs = Math.max(600, Math.min(2500, Math.sqrt(2 * drop / 40) * 1000));
+        }
+    } else if (s.phase === 'air') {
+        const f = Math.min(1, (now - s.t0) / s.spinMs);
+        const e = f < 0.5 ? 2 * f * f : 1 - Math.pow(-2 * f + 2, 2) / 2;   // ease in-out
+        s.spinF = e;
+        spin = s.spin0 + e * Math.PI * 2;
+        tp = 0.16;
+        BOT.note = 'tower: 360 (' + Math.round(e * 360) + '°)';
+        if ((isGrounded && now - s.t0 > 200) || f >= 1 || now - s.t0 > 8000) {
+            s.phase = 'land'; s.t0 = now;
+        }
+    } else if (s.phase === 'land') {
+        if ((s.spinF || 1) < 1) {
+            // Short drop: carry the turn through the landing so it still reads
+            // as one continuous 360 rather than a clipped half-turn.
+            s.spinF = Math.min(1, s.spinF + 0.07);
+            spin = s.spin0 + s.spinF * Math.PI * 2;
+            tp = 0.12;
+            BOT.note = 'tower: finishing the turn (' + Math.round(s.spinF * 360) + '°)';
+            s.t0 = now;                                  // the still second starts after
+        } else {
+            tp = 0.1;
+            BOT.note = 'tower: landed (' + Math.max(0, 1 - (now - s.t0) / 1000).toFixed(1) + 's)';
+            // Straight back up the same tower — there is nowhere else to go.
+            if (now - s.t0 > 1000) { s.phase = 'walk'; s.t0 = now; s.mv = null; }
+        }
+    }
+
+    // Smooth every camera move (fast, but never a snap).
+    const K = 0.3;
+    if (spin !== null) { cameraYaw = spin; player.rotation.y = spin; }
+    else {
+        let dy = ty - cameraYaw;
+        while (dy > Math.PI) dy -= 2 * Math.PI;
+        while (dy < -Math.PI) dy += 2 * Math.PI;
+        cameraYaw += dy * K;
+    }
+    cameraPitch += (tp - cameraPitch) * K;
+}
+
 function cemkiteTick(t) {
     if (!t.ks) t.ks = { sign: 1, lx: player.position.x, lz: player.position.z, stt: performance.now() };
     const ks = t.ks;
@@ -1053,7 +1592,12 @@ ivl(() => {
         else if (t.type === 'climb') climbTick(t);
         else if (t.type === 'dragonhover') dragonhoverTick(t);
         else if (t.type === 'cemkite') cemkiteTick(t);
+        else if (t.type === 'dance') danceTick(t);
+        else if (t.type === 'birdhunt') birdhuntTick(t);
+        else if (t.type === 'climbfun') climbfunTick(t);
+        else if (t.type === 'towerfun') towerfunTick(t);
         else if (t.type === 'angels') angelsTick(t);
+        else if (t.type === 'stand') clearMove();       // pinned, see standStill()
     } catch (e) { BOT.note = 'MOTOR ERR: ' + e.message; }
 }, 60);
 
@@ -1450,6 +1994,24 @@ async function hitOnce(sel, o = {}) {
 // Steady aim-and-punch until cond — NO view oscillation. For digging, the
 // target is a KNOWN fixed point below eye level: every punch thrown while a
 // sweep pitches skyward is wasted (user call-out). Just stare at the dirt.
+// Stand perfectly still for a beat. A single clearMove() only stops the bot
+// until something else writes a movement flag; this pins them every tick for
+// the whole duration. The react layers sit ABOVE the motor, so a night creature
+// still interrupts — nothing outranks the guard.
+// Dark enough to want a torch in hand — dusk right through to dawn. altar.js's
+// _altarIsNight() cannot be reused: it only covers 19:54→midnight, because the
+// cycle fraction wraps back below NIGHT_START after midnight.
+function isDark() {
+    if (typeof gameTime === 'undefined' || typeof FULL_CYCLE === 'undefined') return false;
+    const f = (gameTime / FULL_CYCLE) % 1;
+    return f >= DUSK_START || f < DAWN_END;
+}
+async function standStill(ms) {
+    MOTOR.set({ type: 'stand' });
+    BOT.note = 'standing still';
+    await sleep(ms);
+    MOTOR.stop();
+}
 async function holdUntil(sel, cond, o = {}) {
     MOTOR.set({ type: 'aimhold', sel, punch: true, ...o });
     try { await until(cond, { timeout: o.timeout ?? 120000, what: 'hold ' + sel }); }
@@ -1783,6 +2345,19 @@ async function mountDragon(bounds) {
 
 // Dismount only over flat open terrain (dismounting into cave domes glitches
 // the dragon — user-reported). Probe a ring of candidate spots.
+// Toggle the dragon's tether ON and make sure it stuck. input.js drops every
+// key while the pointer is unlocked, so a single blind press can silently do
+// nothing — which leaves the dragon to poof at the apocalypse transition.
+async function tetherDragon() {
+    if (typeof dragonTethered === 'undefined') return false;
+    for (let i = 0; i < 6 && !dragonTethered; i++) {
+        if (!dragonBondFormed || !dragonGemCollected) return false;
+        isLocked = true;                    // the key handler's gate
+        press('KeyT');
+        await sleep(250);
+    }
+    return !!dragonTethered;
+}
 async function dismountSafe(nearX, nearZ) {
     let spot = null;
     outer:
@@ -2571,6 +3146,12 @@ const PHASES = [
         // NPCs cluster near the world centre and never flee: walk to the
         // nearest, one swipe (hits up to 3), repeat until the aura lights.
         if (!(await chargeSwordAura())) throw new Error('sword charge incomplete');
+        // Beat before the wait begins: the aura lighting should read as a
+        // moment, not roll straight into a dance. Held still, not merely
+        // un-commanded.
+        BOT.detail = 'aura lit';
+        await standStill(5000);
+        BOT.detail = '';
     },
 },
 {
@@ -2582,20 +3163,73 @@ const PHASES = [
         // Tether the dragon now (user-designed): tethered, it survives the
         // apocalypse transition (demons.js skips the poof) and auto-snipes
         // demons within 30 for the entire war. Bond + gem are guaranteed here.
-        if (typeof dragonTethered !== 'undefined' && !dragonTethered &&
-            dragonBondFormed && dragonGemCollected) press('KeyT');
+        // input.js drops every key while the pointer is unlocked, so confirm
+        // the toggle actually took rather than assume one press did it.
+        await tetherDragon();
         equip('ak47');
-        if (dist2(0, 0) > 150) await go(0, 0, { arrive: 100, timeout: 420000 });
-        for (let i = 0; i < 40 && !shadowManPhase3Ready; i++) {
+        // No trek back to the origin first: the ten pre-phase-3 spawns are
+        // placed relative to the PLAYER wherever they stand (shadowman.js), and
+        // origin distance only gates the FINAL spawn — which the apocalypse
+        // phase walks in for. Waiting here just burned ~20s of straight-line
+        // walking before the pastimes could start.
+        // Waiting on the shadow man is the one genuinely idle stretch of the
+        // run — spawn checks are every 30s at p=0.40 and only one can exist at
+        // a time. Rather than stand there, the bot picks a pastime at random,
+        // never the same one twice running, and drops it the instant a shadow
+        // man appears. These are cosmetic and live ONLY here.
+        // enabled:false keeps an activity's code in the build but out of the
+        // rotation. Only the single-tower run is live right now; the dance, the
+        // bird hunt and the roaming multi-kind climb are parked, not deleted.
+        const PASTIMES = [
+            { task: 'dance',    ms: 16000,  enabled: false },
+            { task: 'birdhunt', ms: 60000,  enabled: false },
+            { task: 'climbfun', ms: 60000,  enabled: false },
+            // One window long enough to run until a shadow man cuts it short —
+            // the bot is meant to stay on its tower, not restart every minute.
+            { task: 'towerfun', ms: 600000, enabled: true  },
+        ];
+        const LIVE = PASTIMES.filter(p => p.enabled);
+        let lastPastime = null;
+        for (let i = 0; i < 60 && !shadowManPhase3Ready; i++) {
             if (shadowMan && !shadowMan.finalPhase) {
                 // Despawn distance is 100-200: simply getting near counts the
                 // spawn. goto (with the full unstick ladder) — combat mode has
                 // no unstick and wedges on terrain en route.
+                equip('ak47');
                 const sp = shadowMan.mesh.position;
                 try { await go(sp.x, sp.z, { arrive: 80, timeout: 90000 }); } catch (e) {}
                 MOTOR.stop();
+                continue;
             }
-            await sleep(5000);
+            if (!LIVE.length) { await sleep(3000); continue; }   // all switched off
+            // The very first pastime of the wait is always the dance, when the
+            // dance is in play at all. With one activity live it simply repeats.
+            const pool = LIVE.length > 1 ? LIVE.filter(p => p.task !== lastPastime) : LIVE;
+            const opener = lastPastime === null && LIVE.find(p => p.task === 'dance');
+            const pick = opener || pool[Math.floor(Math.random() * pool.length)];
+            lastPastime = pick.task;
+            BOT.detail = 'waiting — ' + pick.task;
+            MOTOR.set({ type: pick.task });
+            // ends when the activity's time is up, or the moment a shadow man
+            // shows (whichever comes first)
+            const cut = () => (shadowMan && !shadowMan.finalPhase) || shadowManPhase3Ready ||
+                              MOTOR.task.unavailable === true;
+            await until(cut, { timeout: pick.ms, poll: 250 }).catch(() => {});
+            // Climbing owes each landmark a fixed number of jumps (tower 3,
+            // portal 2, mountain 1). Let it finish the one it is on rather than
+            // cut it off after the first — a shadow man still ends it at once.
+            if (!cut() && MOTOR.task.busy === true) {
+                MOTOR.task.wrapUp = true;
+                await until(() => cut() || MOTOR.task.busy !== true,
+                    { timeout: 90000, poll: 250 }).catch(() => {});
+            }
+            MOTOR.stop();
+            ak47TriggerHeld = false;
+            // A beat between activities, so they read as separate rather than
+            // one running straight into the next. Skipped when a shadow man is
+            // what ended it — that gets chased immediately.
+            if (!cut()) { BOT.detail = 'waiting'; await sleep(2000); }
+            BOT.detail = '';
         }
     },
 },
@@ -2606,8 +3240,7 @@ const PHASES = [
         if (mountedOnDragon) await dismountSafe(0, 0);
         // Re-assert the tether right before the war (idempotent; a reload
         // could have restored an untethered dragon).
-        if (typeof dragonTethered !== 'undefined' && !dragonTethered &&
-            dragonBondFormed && dragonGemCollected) press('KeyT');
+        await tetherDragon();
         if (!demonApocalypse) {
             equip('ak47');
             if (dist2(0, 0) > 90) await go(0, 0, { arrive: 60, timeout: 300000 });
@@ -2814,7 +3447,16 @@ async function campaign() {
 // Test bench: with window.__nwBotTestMode set BEFORE __nwBotStart(), the
 // campaign stays down and a driver can call the primitives directly.
 if (!window.__nwBotTestMode) campaign().catch(e => { if (!BOT.aborted) BOT.note = 'CAMPAIGN ERR: ' + e.message; });
-BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, hhW2L, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura, pursue, insideEnclosureRoom, exitEnclosureRoom,
+BOT._test = { go, navTo, fly, motorRun, equip, houseRecs, insideHouse, enterHouse, exitHouse, hhStairEntry, enterCaveTo, exitCave, strikeCorpse, holdUntil, pickupLocked, lookSmooth, hhL2W, hhW2L, aimAt, leaveWater, inWater, meleeNPCs, chargeSwordAura, pursue, insideEnclosureRoom, exitEnclosureRoom, structTopY,
+                tallestTowerNearOrigin,
+                towerState: () => ({ phase: TOWERFUN.phase,
+                    tgt: TOWERFUN.target ? [Math.round(TOWERFUN.target.x), Math.round(TOWERFUN.target.z),
+                        Math.round(structTopY(TOWERFUN.target) -
+                                   getGroundHeight(TOWERFUN.target.x, TOWERFUN.target.z))] : null }),
+                climbState: () => ({ phase: CLIMB.phase, kind: CLIMB.kind,
+                    jumpsDone: CLIMB.jumpsDone, reps: CLIMB.reps, lastKind: CLIMB.lastKind,
+                    queue: (CLIMB.queue || []).slice(), done: CLIMB.done.length,
+                    tgt: CLIMB.target ? [Math.round(CLIMB.target.x), Math.round(CLIMB.target.z)] : null }),
                 phase: n => PHASES.find(p => p.name === n) };
 
 // ── Status for the supervisor ───────────────────────────────────────────────
