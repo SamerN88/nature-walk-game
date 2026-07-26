@@ -486,6 +486,7 @@ function boxedInEscapeHeading(px, pz, py) {
 }
 
 function gotoTick(t) {
+    travelTorch(t);
     const px = player.position.x, pz = player.position.z;
     const dx = t.x - px, dz = t.z - pz;
     const dist = Math.hypot(dx, dz);
@@ -615,6 +616,7 @@ function gotoTick(t) {
 }
 
 function navTick(t) {
+    travelTorch(t);
     if (!t.ns) t.ns = { sign: 1, commit: 0, lx: 0, lz: 0, stt: performance.now() };
     const ns = t.ns;
     const px = player.position.x, pz = player.position.z, py = player.position.y;
@@ -2005,6 +2007,17 @@ function isDark() {
     if (typeof gameTime === 'undefined' || typeof FULL_CYCLE === 'undefined') return false;
     const f = (gameTime / FULL_CYCLE) % 1;
     return f >= DUSK_START || f < DAWN_END;
+}
+// Travelling after dark: the torch is simply what the bot carries. Anything
+// with an actual REASON to be in hand outranks it — a task naming its own hand,
+// the war, and the creature guard, which arms the AK itself and owns input
+// while engaged so this never fights it. Only a default-ish hand is displaced
+// (the rifle or bare fists); a stick, shovel or sword is there on purpose and
+// is left alone. Arrival is safe: combat/aimhold/sweep re-equip every tick.
+function travelTorch(t) {
+    if (!isDark() || warArmed() || (t && t.hand)) return;
+    if (currentHandItem !== 'ak47' && currentHandItem !== 'fist') return;
+    if (typeof handSlots !== 'undefined' && handSlots.includes('torch')) equip('torch');
 }
 async function standStill(ms) {
     MOTOR.set({ type: 'stand' });
@@ -3481,6 +3494,11 @@ BOT.status = function () {
             smSpawns: shadowManTotalSpawns, smP3: shadowManPhase3Ready,
             apoc: demonApocalypse, round: roundMode ? currentRound : 0,
             mounted: mountedOnDragon,
+            // Whether the dragon is tethered decides if it survives the
+            // apocalypse transition at all (demons.js poofs an untethered one),
+            // so it belongs in the status rather than being inferred.
+            teth: typeof dragonTethered !== 'undefined' && dragonTethered,
+            dragonUp: typeof dragon !== 'undefined' && !!dragon && dragon.visible,
             ctxLost: (typeof renderer !== 'undefined') ? renderer.getContext().isContextLost() : false,
             complete: (function () { try { return localStorage.getItem(COMPLETE_KEY) === '1'; } catch (e) { return false; } })(),
         };
