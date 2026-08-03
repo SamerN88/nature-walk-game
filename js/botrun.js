@@ -3542,21 +3542,47 @@ document.addEventListener('keydown', (e) => {
     function markBotBtnUnlocked() {
         try { localStorage.setItem('nw-bot-btn', '1'); } catch (e) {}
     }
+    // Back door: a world named this unlocks the button without the war. Kept
+    // here with the rest of the gate rather than in the save system, so naming
+    // and renaming both work with no hook of ours in js/save.js.
+    const BOTBTN_PASSPHRASE = '6972593';
     // Every save record carries the war result at
-    // snapshot.shadowman.postApocalypseUnlocked (js/save.js).
-    async function anySaveBeatApocalypse() {
+    // snapshot.shadowman.postApocalypseUnlocked (js/save.js). The name comes
+    // back with the listing, so the pass check costs nothing extra.
+    // Two different kinds of unlock, so they are reported separately:
+    //   earned — the war was won in some save. Permanent, survives deletion.
+    //   pass   — a world is CURRENTLY named the passphrase. Lives and dies with
+    //            that world, so deleting it takes the button away again.
+    async function scanSaves() {
+        const out = { earned: false, pass: false };
         try {
-            if (typeof SAVE_API === 'undefined' || !SAVE_API || !SAVE_API.list || !SAVE_API.read) return false;
-            for (const s of (await SAVE_API.list()) || []) {
+            if (typeof SAVE_API === 'undefined' || !SAVE_API || !SAVE_API.list || !SAVE_API.read) return out;
+            const saves = (await SAVE_API.list()) || [];
+            out.pass = saves.some(s => (s.name || '').trim() === BOTBTN_PASSPHRASE);
+            for (const s of saves) {
                 if (s.hasSnapshot === false) continue;
                 try {
                     const rec = await SAVE_API.read(s.id);
                     if (rec && rec.snapshot && rec.snapshot.shadowman &&
-                        rec.snapshot.shadowman.postApocalypseUnlocked) return true;
+                        rec.snapshot.shadowman.postApocalypseUnlocked) { out.earned = true; break; }
                 } catch (e) {}
             }
         } catch (e) {}
-        return false;
+        return out;
+    }
+    // "New game" opens a name prompt now (js/save.js), so clicking it no longer
+    // starts a world — the bot would sit staring at the dialog. Go straight to
+    // the creation call and skip the prompt.
+    function botStartFreshWorld(btn) {
+        if (typeof _startFreshGame === 'function') { _startFreshGame(btn || null, 'Bot run'); return; }
+        const nb = document.getElementById('new-save-btn');
+        const sb = document.getElementById('start-btn');
+        if (nb && nb.offsetParent !== null) nb.click();
+        else if (sb) sb.click();
+    }
+    function removeBotRunButton() {
+        const b = document.getElementById('bot-run-btn');
+        if (b) b.remove();
     }
     function makeBotRunButton() {
         const startScreen = document.getElementById('start-screen');
@@ -3576,17 +3602,14 @@ document.addEventListener('keydown', (e) => {
                 localStorage.removeItem('nw-bot-complete');
                 localStorage.removeItem('nw-botrun-save');
             } catch (e) {}
-            const nb = document.getElementById('new-save-btn');
-            const sb = document.getElementById('start-btn');
-            if (nb && nb.offsetParent !== null) nb.click();
-            else if (sb) sb.click();
+            botStartFreshWorld(b);
         };
         startScreen.appendChild(b);
     }
     // Watcher: unlock the moment the war is won in THIS session, and otherwise
     // look for a past victory in the save files whenever the title is up.
     (function watchBotBtn() {
-        let scanTick = 0, scanning = false;
+        let scanTick = 0, scanning = false, passOpen = false;
         setInterval(async () => {
             if (!botBtnUnlocked() &&
                 typeof shadowManPostApocalypseUnlocked !== 'undefined' &&
@@ -3595,13 +3618,21 @@ document.addEventListener('keydown', (e) => {
             }
             const ss = document.getElementById('start-screen');
             if (!ss || ss.style.display === 'none') return;    // only on the title
-            if (document.getElementById('bot-run-btn')) return;
-            if (botBtnUnlocked()) { makeBotRunButton(); return; }
-            // Reading every save record is not free — throttle the scan.
-            if (scanning || (scanTick++ % 8) !== 0) return;
+            if (botBtnUnlocked()) { makeBotRunButton(); return; }   // earned: permanent
+            // Not earned, so the button stands only while a passphrase world
+            // does. That means this cannot settle once the button is up — it
+            // has to keep checking and take the button away again.
+            if (passOpen) makeBotRunButton(); else removeBotRunButton();
+            // Reading every save record is not free — throttle the scan. Four
+            // ticks keeps naming and deleting feeling immediate (~6s) without
+            // parsing every save file twice a second.
+            if (scanning || (scanTick++ % 4) !== 0) return;
             scanning = true;
             try {
-                if (await anySaveBeatApocalypse()) { markBotBtnUnlocked(); makeBotRunButton(); }
+                const r = await scanSaves();
+                if (r.earned) { markBotBtnUnlocked(); makeBotRunButton(); passOpen = false; return; }
+                passOpen = r.pass;
+                if (passOpen) makeBotRunButton(); else removeBotRunButton();
             } finally { scanning = false; }
         }, 1500);
     })();
@@ -3665,10 +3696,7 @@ document.addEventListener('keydown', (e) => {
         // a resume into a fresh world.
         if (tick - lastClickTick < (triedSavedLoad ? 30 : 12)) return;
         lastClickTick = tick;
-        const nb = document.getElementById('new-save-btn');
-        const sb = document.getElementById('start-btn');
-        if (nb && nb.offsetParent !== null) nb.click();
-        else if (sb) sb.click();
+        botStartFreshWorld(null);
     }, 1200);
 
     // A user-initiated "Save & quit" ends the bot run on the spot (the bot's

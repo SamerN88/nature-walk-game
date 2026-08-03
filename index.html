@@ -412,6 +412,33 @@
             margin-bottom: 18px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
+        #name-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: min(440px, 92vw);
+        }
+        #name-screen h2 {
+            font-size: 24px;
+            margin-bottom: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        #name-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 13px 16px;
+            margin-bottom: 20px;
+            font-size: 16px;
+            font-family: inherit;
+            color: white;
+            background: rgba(0,0,0,0.28);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 10px;
+            outline: none;
+        }
+        #name-input:focus { border-color: rgba(255,255,255,0.45); }
+        #name-input::placeholder { color: rgba(255,255,255,0.45); }
+        #name-buttons { display: flex; gap: 12px; }
         #save-list {
             width: 100%;
             max-height: 46vh;
@@ -455,6 +482,9 @@
         .save-row-main.loading { pointer-events: none; opacity: 0.8; justify-content: center; }
         .save-row-name {
             font-weight: 600;
+            /* Pinned so the rename input can be given the identical box and
+               swapping one for the other cannot resize the row. */
+            line-height: 20px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -468,9 +498,14 @@
         .save-rename-input {
             flex: 1;
             min-width: 0;
+            /* Exactly the box .save-row-name occupies — border-box so the
+               border and padding live inside those 20px. */
+            height: 20px;
+            box-sizing: border-box;
+            line-height: 18px;
             font-size: 15px;
             font-family: inherit;
-            padding: 3px 8px;
+            padding: 0 8px;
             border-radius: 6px;
             border: 1px solid rgba(255,255,255,0.4);
             background: rgba(0,0,0,0.4);
@@ -1007,6 +1042,14 @@
             <h2>Load game</h2>
             <div id="save-list"></div>
             <button id="load-back-btn">Back</button>
+        </div>
+        <div id="name-screen" style="display:none">
+            <h2>Name your world</h2>
+            <input id="name-input" type="text" maxlength="40" placeholder="World name" autocomplete="off">
+            <div id="name-buttons">
+                <button id="name-create-btn" class="title-btn">Create</button>
+                <button id="name-cancel-btn" class="title-btn title-btn-secondary">Cancel</button>
+            </div>
         </div>
         <div id="start-menu-hint">Press P to pause and open the menu in game. Tip: Check menu after milestones for new controls.</div>
     </div>

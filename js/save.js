@@ -877,10 +877,10 @@ function _bootWithSpinner(btn, bootFn) {
     requestAnimationFrame(() => requestAnimationFrame(bootFn));
 }
 
-async function _startFreshGame(btn) {
+async function _startFreshGame(btn, name = null) {
     _showButtonSpinner(btn);
     const seed = makeNewSeed();
-    activeSaveMeta = { name: null, createdAt: Date.now(), seed };
+    activeSaveMeta = { name: name || null, createdAt: Date.now(), seed };
     if (SAVE_API) {
         try {
             activeSaveId = await SAVE_API.create(_buildSaveRecord(null));
@@ -1060,6 +1060,21 @@ async function _refreshTitleButtons() {
     saveButtons.style.display = haveSaves ? 'flex' : 'none';
 }
 
+// The name prompt for a NEW world. Only reached from "New game", which only
+// exists once a save does — the very first world is named for the player, so
+// nothing stands between the Start button and the game.
+const FIRST_WORLD_NAME = 'First world';
+function _showNameScreen(show) {
+    const main = document.getElementById('title-main');
+    const name = document.getElementById('name-screen');
+    const input = document.getElementById('name-input');
+    if (main) main.style.display = show ? 'none' : '';
+    if (name) name.style.display = show ? 'flex' : 'none';
+    const hint = document.getElementById('start-menu-hint');
+    if (hint) hint.style.display = show ? 'none' : '';
+    if (show && input) { input.value = ''; input.focus(); }
+}
+
 function _showLoadScreen(show) {
     const main = document.getElementById('title-main');
     const load = document.getElementById('load-screen');
@@ -1091,7 +1106,9 @@ function _injectSaveQuitButton() {
 async function initTitleScreen() {
     const startBtn = document.getElementById('start-btn');
     if (startBtn) {
-        startBtn.addEventListener('click', () => _startFreshGame(startBtn));
+        // Start only shows when there are no saves at all, so this world is by
+        // definition the first one — name it and get out of the way.
+        startBtn.addEventListener('click', () => _startFreshGame(startBtn, FIRST_WORLD_NAME));
     }
 
     if (!SAVE_API) return; // browser mode: plain Start button, no persistence
@@ -1101,9 +1118,23 @@ async function initTitleScreen() {
     const newBtn = document.getElementById('new-save-btn');
     const loadBtn = document.getElementById('load-save-btn');
     const backBtn = document.getElementById('load-back-btn');
-    if (newBtn) newBtn.addEventListener('click', () => _startFreshGame(newBtn));
+    if (newBtn) newBtn.addEventListener('click', () => _showNameScreen(true));
     if (loadBtn) loadBtn.addEventListener('click', () => _showLoadScreen(true));
     if (backBtn) backBtn.addEventListener('click', () => _showLoadScreen(false));
+
+    const nameInput = document.getElementById('name-input');
+    const createBtn = document.getElementById('name-create-btn');
+    const cancelBtn = document.getElementById('name-cancel-btn');
+    // An empty name is allowed — the row just reads "Unnamed save", exactly as
+    // every world did before this prompt existed.
+    const createNamed = () => _startFreshGame(createBtn, nameInput ? nameInput.value.trim() : null);
+    if (createBtn) createBtn.addEventListener('click', createNamed);
+    if (cancelBtn) cancelBtn.addEventListener('click', () => _showNameScreen(false));
+    if (nameInput) nameInput.addEventListener('keydown', e => {
+        e.stopPropagation();                       // the game binds plain keys
+        if (e.key === 'Enter') createNamed();
+        if (e.key === 'Escape') _showNameScreen(false);
+    });
 
     document.addEventListener('click', () => {
         document.querySelectorAll('.save-row-menu').forEach(m => { m.style.display = 'none'; });
