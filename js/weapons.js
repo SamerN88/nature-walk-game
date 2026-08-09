@@ -1,50 +1,33 @@
+// The rifle is a CAD model, baked into js/ak47model.js with the game's frame
+// already applied: +Z down the barrel, +Y up, the tip and stock on the same z
+// extents the old box-built rifle had, and the bore at y=0.02. Every caller,
+// mount point and shot effect therefore works exactly as before.
+let _ak47Geometry = null;
+function _getAk47Geometry() {
+    if (_ak47Geometry) return _ak47Geometry;                 // shared: hand + chest
+    const decode = (b64, Type) => {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Type(bytes.buffer);
+    };
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(decode(AK47_MODEL.positions, Float32Array), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(decode(AK47_MODEL.normals, Float32Array), 3));
+    g.setIndex(new THREE.BufferAttribute(decode(AK47_MODEL.index, Uint32Array), 1));
+    // Two draw groups: 0 = the metalwork, 1 = the wood furniture.
+    for (const grp of AK47_MODEL.groups) g.addGroup(grp.start, grp.count, grp.mat === 'Cherry' ? 1 : 0);
+    _ak47Geometry = g;
+    return g;
+}
+
 function createAK47Mesh(scale = 1) {
     const rifle = new THREE.Group();
-    const metal = new THREE.MeshLambertMaterial({ color: 0x242424 });
-    const darkMetal = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+    const metal = new THREE.MeshLambertMaterial({ color: 0x2b2b2b });
     const wood = new THREE.MeshLambertMaterial({ color: 0x6f4a2f });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.62), metal);
-    body.position.set(0, 0, 0.02);
-    rifle.add(body);
-
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.35), wood);
-    stock.position.set(0, 0.01, -0.46);
-    rifle.add(stock);
-
-    const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 0.38), wood);
-    handguard.position.set(0, -0.005, 0.36);
-    rifle.add(handguard);
-
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.72), darkMetal);
-    barrel.position.set(0, 0.025, 0.73);
-    rifle.add(barrel);
-
-    const muzzleCap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.1), darkMetal);
-    muzzleCap.position.set(0, 0.025, 1.13);
-    rifle.add(muzzleCap);
-
-    const gasTube = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.34), darkMetal);
-    gasTube.position.set(0, 0.08, 0.39);
-    rifle.add(gasTube);
-
-    const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.07), darkMetal);
-    rearSight.position.set(0, 0.11, -0.12);
-    rifle.add(rearSight);
-
-    const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.04), darkMetal);
-    frontSight.position.set(0, 0.09, 0.95);
-    rifle.add(frontSight);
-
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.1), darkMetal);
-    grip.position.set(0, -0.16, -0.12);
-    grip.rotation.x = -0.35;
-    rifle.add(grip);
-
-    const magazine = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.24, 0.14), darkMetal);
-    magazine.position.set(0, -0.18, 0.13);
-    magazine.rotation.x = -0.25;
-    rifle.add(magazine);
+    const gun = new THREE.Mesh(_getAk47Geometry(), [metal, wood]);
+    rifle.add(gun);
 
     rifle.scale.setScalar(scale);
     enableMeshShadows(rifle);
