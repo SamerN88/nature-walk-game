@@ -663,7 +663,14 @@ function flyTick(t) {
     const dx = t.x - dragon.position.x, dz = t.z - dragon.position.z;
     const dh = Math.hypot(dx, dz), dy = t.y - dragon.position.y;
     if (dh < (t.arrive ?? 6) && Math.abs(dy) < 5) { clearMove(); MOTOR.task = { type: 'idle' }; BOT.note = 'arrived(air)'; return; }
-    cameraYaw = Math.atan2(dx, dz); cameraPitch = 0;
+    // Only re-aim while there is a real horizontal direction to aim at. Sitting
+    // over the target and climbing, dx/dz are jitter, and atan2 of jitter swings
+    // through the whole circle — the dragon spins on the spot for the entire
+    // ascent (most visible right after mounting at the volcano, where the climb
+    // target IS where we already are). Below this the bot never translates
+    // anyway: moveForward needs dh >= arrive.
+    if (dh > 4) cameraYaw = Math.atan2(dx, dz);
+    cameraPitch = 0;
     // Fly-high doctrine: long hops cruise at near-ceiling altitude (325 clears
     // every mountain and crater rim in the world), then descend at the target.
     // Low-altitude cross-country flying orbits inside crater bowls forever.
