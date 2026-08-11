@@ -363,6 +363,18 @@ function updateDragon(delta) {
 
     // Tether: float above the player and auto-shoot nearby demons.
     if (dragonTethered && !mountedOnDragon) {
+        // Tethering CALLS THE DRAGON BACK. It can have been sent away in the
+        // meantime — each hell round starts by poofing an untethered dragon
+        // (hellrun.js) — and this block never checked, so it flew and sniped a
+        // hidden dragon: demons dropping to beams out of an empty sky. Bring it
+        // in from overhead so it flies back to its post instead of popping in.
+        if (!dragon.visible) {
+            dragon.visible = true;
+            dragonDescending = false;
+            dragon.position.set(player.position.x,
+                                player.position.y + DRAGON_TETHER_HEIGHT + 90,
+                                player.position.z);
+        }
         // Smoothly follow the target position above the player.
         const targetX = player.position.x;
         const targetY = player.position.y + DRAGON_TETHER_HEIGHT;
