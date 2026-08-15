@@ -164,6 +164,10 @@ function showRoundBanner(title, subtitle, titleColor = '#ff2200', subtitleColor 
 }
 
 function startDemonRound(roundNumber) {
+    // Is this the ENTRY to the hell run, or just the next round inside one?
+    // Read before roundMode is set below. Only the entry decides whether the
+    // dragon comes along; every later round must leave it exactly as it is.
+    const enteringHell = !roundMode;
     // Demons per round: 50, 100, 200, 300, 400, 500, ...
     currentRound       = roundNumber;
     roundDemonsTotal   = getRoundDemonCount(roundNumber); //DEBUG - change to get through rounds quickly
@@ -212,9 +216,14 @@ function startDemonRound(roundNumber) {
     document.getElementById('demon-counter').style.display = 'block';
     document.getElementById('health-bar-container').style.display = 'block';
 
-    // Always dismount the player; then poof the dragon only if not tethered.
+    // Always dismount the player; then, ONLY when entering hell, leave an
+    // untethered dragon behind in the overworld. Once the dragon is down here
+    // it stays for the rest of the run whether tethered or not: the player is
+    // free to untether it and park it somewhere, and it has to still be there
+    // when the next round starts. Poofing it every round meant an untethered
+    // dragon vanished the moment a round ended.
     if (mountedOnDragon) unmountDragon();
-    if (dragon && dragon.visible && !dragonTethered) {
+    if (enteringHell && dragon && dragon.visible && !dragonTethered) {
         const poofPos = dragon.position.clone();
         const poofGroup = new THREE.Group();
         poofGroup.userData.ignoreCameraOcclusion = true;
