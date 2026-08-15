@@ -1018,15 +1018,22 @@ function _escapeHtml(str) {
 
 function _beginRenameSave(row, saveMeta, menu) {
     menu.style.display = 'none';
-    const nameEl = row.querySelector('.save-row-name');
-    if (!nameEl) return;
+    const main = row.querySelector('.save-row-main');
+    if (!main) return;
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'save-rename-input';
     input.maxLength = 40;
     input.value = saveMeta.name || '';
     input.placeholder = 'Save name';
-    nameEl.replaceWith(input);
+    // The input must NOT go inside .save-row-main. That element is a <button>,
+    // and a button containing interactive content is invalid HTML: Chromium
+    // activates a button on the SPACE keyup, so typing a space in the name ran
+    // the row's click handler — which loaded the save and tore the input out of
+    // the DOM mid-rename, committing a half-typed name. Swap the whole button
+    // out for the input instead, so no button is in the key path at all.
+    main.style.display = 'none';
+    row.insertBefore(input, main);
     input.focus();
     input.select();
 

@@ -496,19 +496,20 @@
             flex-shrink: 0;
         }
         .save-rename-input {
+            /* Stands in for the whole .save-row-main button while renaming, so
+               it must match that button's box exactly or the row changes height:
+               13+13 padding + 20 line + 2 border = the same 48px. */
             flex: 1;
             min-width: 0;
-            /* Exactly the box .save-row-name occupies — border-box so the
-               border and padding live inside those 20px. */
-            height: 20px;
             box-sizing: border-box;
-            line-height: 18px;
-            font-size: 15px;
+            padding: 13px 16px;
+            line-height: 20px;
+            font-size: 16px;
+            font-weight: 600;
             font-family: inherit;
-            padding: 0 8px;
-            border-radius: 6px;
+            border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.4);
-            background: rgba(0,0,0,0.4);
+            background: rgba(0,0,0,0.28);
             color: white;
             outline: none;
         }
