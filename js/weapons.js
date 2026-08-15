@@ -1133,6 +1133,8 @@ function fireAK47() {
         hit.target.gunShotsToKill = Math.max(0, (hit.target.gunShotsToKill ?? 2) - 1);
         if (hit.target.gunShotsToKill <= 0) {
             explodeDemon(hit.target, idx);
+        } else {
+            flashDemonHit(hit.target);   // it took the bullet — show it
         }
     }
 }

@@ -458,6 +458,45 @@ function explodeDemon(zData, index) {
 // every 3 frames for <100 demons, +1 frame per additional 100 demons.
 let _demonSepFrame = 0;
 
+// ── Hit feedback ─────────────────────────────────────────────────────────────
+// A demon soaks several bullets, and with no reaction the gun reads as if it is
+// missing. Every non-fatal hit lights the whole body — limbs and head — red for
+// a moment. Driven off a timestamp cleared in updateDemons rather than a
+// setTimeout: overlapping hits simply push the deadline out, and a demon that
+// dies mid-flash takes its materials with it instead of leaving a timer behind.
+// Tied to the beam's own lifetime rather than a second hand-picked number: at
+// 600 RPM the bullets are 100ms apart, so anything longer than the beam re-lit
+// the demon before it could clear and read as one continuous glow instead of a
+// pulse per bullet.
+const DEMON_HIT_FLASH_MS  = AK47_BEAM_LIFETIME * 1000;   // 30ms, one beam
+// Deliberately well below the eyes' unlit 0xff0000: bright enough to be
+// unmistakable, dark enough that the shading and the glowing eyes still read.
+const DEMON_HIT_FLASH_HEX = 0x7a1000;
+
+function flashDemonHit(demon) {
+    if (!demon || !demon.mesh) return;
+    // Collect the emissive materials once. Captured BEFORE the first flash is
+    // applied, so what is stored is always the demon's true resting colour.
+    // (Demon materials are built per demon in createDemon and never swapped,
+    // so these references stay valid for the demon's whole life.)
+    if (!demon._flashMats) {
+        demon._flashMats = [];
+        demon.mesh.traverse(o => {
+            if (o.isMesh && o.material && o.material.emissive) {
+                demon._flashMats.push({ mat: o.material, hex: o.material.emissive.getHex() });
+            }
+        });
+    }
+    for (const m of demon._flashMats) m.mat.emissive.setHex(DEMON_HIT_FLASH_HEX);
+    demon.hitFlashUntil = performance.now() + DEMON_HIT_FLASH_MS;
+}
+
+function _clearDemonHitFlash(demon) {
+    if (!demon._flashMats) return;
+    for (const m of demon._flashMats) m.mat.emissive.setHex(m.hex);
+    demon.hitFlashUntil = 0;
+}
+
 function updateDemons(delta) {
     if (!demonApocalypse || playerDead || demons.length === 0) return;
 
@@ -503,8 +542,11 @@ function updateDemons(delta) {
     const sepRadius = 6;   // minimum distance between demons
     const demonRadius = 0.8; // for wall collision
 
+    const flashNow = performance.now();
+
     for (let i = demons.length - 1; i >= 0; i--) {
         const z  = demons[i];
+        if (z.hitFlashUntil && flashNow >= z.hitFlashUntil) _clearDemonHitFlash(z);
         const zp = z.mesh.position;
         const dx = targetPos.x - zp.x;
         const dz = targetPos.z - zp.z;
