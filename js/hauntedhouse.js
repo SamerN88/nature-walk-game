@@ -2560,17 +2560,25 @@ function _triggerPlayerTalismanPulse() {
 }
 
 
+// Remember the blade's normal material so the aura can be taken back off.
+// EVERY path that paints the blade white must call this first. _deactivate
+// silently leaves the blade white when it has nothing to restore, and the
+// glow-material paths do not all run in one session: load a save with the aura
+// spent and only _reactivateSwordAura() ever fires, so nothing was recorded and
+// the blade stayed lit — white, no particles, no charge.
+function _rememberOriginalBladeMaterial() {
+    if (!playerSwordMesh || playerSwordMesh.userData.originalBladeMaterial) return;
+    playerSwordMesh.traverse(obj => {
+        if (obj.isMesh && obj.userData.isBlade && !playerSwordMesh.userData.originalBladeMaterial) {
+            playerSwordMesh.userData.originalBladeMaterial = obj.material;
+        }
+    });
+}
+
 // ── Upgrade sword blade to MeshBasicMaterial after HH sequence victory ────────
 function _upgradeSwordBlade() {
     if (!playerSwordMesh) return;
-    // Save original blade material on first upgrade so we can restore it later
-    if (!playerSwordMesh.userData.originalBladeMaterial) {
-        playerSwordMesh.traverse(obj => {
-            if (obj.isMesh && obj.userData.isBlade && !playerSwordMesh.userData.originalBladeMaterial) {
-                playerSwordMesh.userData.originalBladeMaterial = obj.material;
-            }
-        });
-    }
+    _rememberOriginalBladeMaterial();
     const basicMat = new THREE.MeshBasicMaterial({ color: 0xe3ecff });
     playerSwordMesh.traverse(obj => {
         if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
@@ -2601,6 +2609,7 @@ function _deactivateSwordAura() {
 // ── Reactivate sword aura after 100 kills ─────────────────────────────────────
 function _reactivateSwordAura() {
     if (!playerSwordMesh) return;
+    _rememberOriginalBladeMaterial();     // may be the first glow of this session
     const basicMat = new THREE.MeshBasicMaterial({ color: 0xe3ecff });
     playerSwordMesh.traverse(obj => {
         if (obj.isMesh && obj.userData.isBlade) obj.material = basicMat;
